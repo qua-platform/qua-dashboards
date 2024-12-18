@@ -1,0 +1,16 @@
+[project]
+name = "qua-dashboards"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "dash-bootstrap-components>=1.6.0",
+    "dash>=2.18.2",
+    "pandas>=2.2.3",
+    "xarray>=2024.11.0",
+    "ipykernel>=6.29.5",
+]
+
+[tool.setuptools]
+packages = ["qua_dashboards"]

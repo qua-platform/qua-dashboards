@@ -34,7 +34,6 @@ class DataVisualizer:
                 html.H1("Data Visualizer"),
                 html.Div(id="data-container", children=[]),
                 dcc.Interval(id="interval-component", interval=200, n_intervals=0),
-                html.Button("Update data", id="update-data-button"),
             ]
         )
 
@@ -50,14 +49,9 @@ class DataVisualizer:
         @self.app.callback(
             [Output("data-container", "children")],
             [Input("interval-component", "n_intervals")],
-            # [Input("update-data-button", "n_clicks")],
             [State("data-container", "children")],
         )
         def update_if_required(n_intervals, current_children):
-            # def update_if_required(n_clicks, current_children):
-            # if not n_clicks:
-            #     raise dash.exceptions.PreventUpdate
-
             if not self._requires_update:
                 raise dash.exceptions.PreventUpdate
             t0 = time.perf_counter()

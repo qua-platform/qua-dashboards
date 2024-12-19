@@ -32,9 +32,13 @@ def update_xarray_plot(fig, data_array):
 
     if data_array.ndim == 1:
         logger.debug("Updating 1D line plot")
+        if not fig.data:
+            fig.add_trace(go.Scatter())
         fig.update_traces(x=data_array.coords[data_array.dims[0]], y=data_array.values)
     elif data_array.ndim == 2:
         logger.debug("Updating 2D heatmap")
+        if not fig.data:
+            fig.add_trace(go.Heatmap())
         fig.update_traces(
             z=data_array.values,
             x=data_array.coords[data_array.dims[1]],

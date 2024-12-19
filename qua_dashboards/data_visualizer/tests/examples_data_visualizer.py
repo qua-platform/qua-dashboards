@@ -22,8 +22,10 @@ time.sleep(1)
 
 
 # %% Send xarray data
-data = {"array": xr.DataArray(np.random.rand(10, 10))}
+data = {"array": xr.DataArray(np.random.rand(10, 10), name="my_arr")}
 send_data_to_dash(data)
 time.sleep(1)
+
+# %%
 
 # %%

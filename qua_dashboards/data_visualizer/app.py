@@ -1,27 +1,37 @@
 import xarray as xr
 import dash
-from dash import State, html, dcc, Input, Output
+from dash import html, dcc
 from qua_dashboards.logging_config import logger
 from flask import request, jsonify
-from qua_dashboards.data_visualizer.plotting import (
-    plot_xarray,
-    update_xarray_plot,
-)
+from plotly import graph_objects as go
+from qua_dashboards.data_visualizer.plotting import update_xarray_plot
 from qua_dashboards.data_visualizer.data_serialisation import deserialise_data
+from qua_dashboards.utils.dash_utils import convert_to_dash_component
+from dash_extensions.enrich import (
+    DashProxy,
+    Output,
+    Input,
+    State,
+    BlockingCallbackTransform,
+)
 
 
 class DataVisualizer:
     def __init__(self):
-        self.app = dash.Dash(__name__)
+        self.app = DashProxy(
+            __name__,
+            title="Data Visualizer",
+            transforms=[BlockingCallbackTransform(timeout=10)],
+        )
         self.server = self.app.server  # Access the Flask server
         logger.info("Dash app initialized")
 
         self.app.layout = html.Div(
             [
                 html.H1("Data Visualizer"),
-                html.Button("Click me", id="my-button", n_clicks=0),
-                html.Div(id="data-container", children=[html.Label("Hello")]),
+                html.Div(id="data-container", children=[]),
                 dcc.Interval(id="interval-component", interval=1000, n_intervals=0),
+                html.Button("Update data", id="update-data-button"),
             ]
         )
 
@@ -35,30 +45,22 @@ class DataVisualizer:
 
     def setup_callbacks(self):
         @self.app.callback(
-            Output("data-container", "children"),
-            # [Input("interval-component", "n_intervals")],
-            [Input("my-button", "n_clicks")],
+            [Output("data-container", "children")],
+            [Input("interval-component", "n_intervals")],
+            # [Input("update-data-button", "n_clicks")],
             [State("data-container", "children")],
         )
-        def update_if_required(n_clicks, current_children):
-            logger.info(f"{current_children=}")
-            if n_clicks == 0:
-                return current_children
-            if not self._requires_update:
-                return current_children
-            elif any(isinstance(child, dict) for child in current_children):
-                # Why is it sometimes a dict?
-                print("Warning: data-container children is a dict")
-                current_children = [
-                    html.Div(**child["props"]) for child in current_children
-                ]
-                # return current_children
+        def update_if_required(n_intervals, current_children):
+            # def update_if_required(n_clicks, current_children):
+            # if not n_clicks:
+            #     raise dash.exceptions.PreventUpdate
 
-            logger.debug(f"{current_children=}")
+            if not self._requires_update:
+                raise dash.exceptions.PreventUpdate
+
+            current_children = convert_to_dash_component(current_children)
 
             print("Updating data-container children")
-            # new_item = html.Div(f"Item ")
-            # return current_children + [new_item]
 
             current_children_dict = {child.id: child for child in current_children}
 
@@ -70,11 +72,8 @@ class DataVisualizer:
                     child = html.Div(id=key)
 
                 self.update_div_value(child, value)
-                current_children.append(child)
-
-            # TODO REMOVEME
-            current_children[0]["props"]["children"] = "Bye"
-            return current_children
+                children.append(child)
+            return (children,)
 
     @staticmethod
     def update_div_value(div, value):
@@ -84,13 +83,17 @@ class DataVisualizer:
                 or len(div.children) != 1
                 or not isinstance(div.children[0], dcc.Graph)
             ):
-                fig = plot_xarray(value)
-                div.children = [dcc.Graph(figure=fig)]
+                fig = go.Figure()
+                graph = dcc.Graph(figure=fig)
+                logger.info("Plotting new xarray plot")
+                div.children = [graph]
             else:
-                update_xarray_plot(div.children[0], value)
+                logger.info("Updating xarray plot")
+                graph = div.children[0]
+                fig = graph.figure
+            update_xarray_plot(fig, value)
         else:
-            # div.children = [html.P(str(value))]
-            pass
+            div.children = [html.P(str(value))]
 
     def update_data(self, data):
         self.data = data

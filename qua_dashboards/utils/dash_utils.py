@@ -21,6 +21,10 @@ def convert_to_dash_component(elem: Union[dict, list]) -> Any:
             if isinstance(elem["props"].get("figure"), dict):
                 elem["props"]["figure"] = go.Figure(**elem["props"]["figure"])
             return dcc.Graph(**elem["props"])
+        elif component_type == "P":
+            return html.P(**elem["props"])
+        elif component_type == "B":
+            return html.B(**elem["props"])
         else:
             warnings.warn(f"Unknown component type: {component_type}")
             return elem

@@ -1,27 +1,30 @@
+import time
 import xarray as xr
 import dash
-from dash import html, dcc
+from dash import Dash, html, dcc, State, Input, Output
 from qua_dashboards.logging_config import logger
 from flask import request, jsonify
 from plotly import graph_objects as go
 from qua_dashboards.data_visualizer.plotting import update_xarray_plot
 from qua_dashboards.data_visualizer.data_serialisation import deserialise_data
 from qua_dashboards.utils.dash_utils import convert_to_dash_component
-from dash_extensions.enrich import (
-    DashProxy,
-    Output,
-    Input,
-    State,
-    BlockingCallbackTransform,
-)
+
+# from dash_extensions.enrich import (
+#     DashProxy,
+#     Output,
+#     Input,
+#     State,
+#     BlockingCallbackTransform,
+# )
+
+GRAPH_STYLE = {"aspect-ratio": "1 / 1", "max-width": "800px"}
 
 
 class DataVisualizer:
     def __init__(self):
-        self.app = DashProxy(
+        self.app = Dash(
             __name__,
             title="Data Visualizer",
-            transforms=[BlockingCallbackTransform(timeout=10)],
         )
         self.server = self.app.server  # Access the Flask server
         logger.info("Dash app initialized")
@@ -30,7 +33,7 @@ class DataVisualizer:
             [
                 html.H1("Data Visualizer"),
                 html.Div(id="data-container", children=[]),
-                dcc.Interval(id="interval-component", interval=1000, n_intervals=0),
+                dcc.Interval(id="interval-component", interval=200, n_intervals=0),
                 html.Button("Update data", id="update-data-button"),
             ]
         )
@@ -57,6 +60,7 @@ class DataVisualizer:
 
             if not self._requires_update:
                 raise dash.exceptions.PreventUpdate
+            t0 = time.perf_counter()
 
             current_children = convert_to_dash_component(current_children)
 
@@ -71,27 +75,33 @@ class DataVisualizer:
                 else:
                     child = html.Div(id=key)
 
-                self.update_div_value(child, value)
+                self.update_div_value(child, value, title=key)
                 children.append(child)
+
+            self._requires_update = False
+            print(f"Update taken: {time.perf_counter() - t0:.2f} seconds")
             return (children,)
 
     @staticmethod
-    def update_div_value(div, value):
+    def update_div_value(div, value, title=None):
         if isinstance(value, xr.DataArray):
-            if (
-                div.children is None
-                or len(div.children) != 1
-                or not isinstance(div.children[0], dcc.Graph)
-            ):
-                fig = go.Figure()
-                graph = dcc.Graph(figure=fig)
+            if div.children is None:
+                div.children = []
+
+            try:
+                graph = next(
+                    child for child in div.children if isinstance(child, dcc.Graph)
+                )
+            except StopIteration:
+                fig = go.Figure(layout=dict(margin=dict(l=20, r=20, t=20, b=20)))
+                graph = dcc.Graph(figure=fig, style=GRAPH_STYLE)
                 logger.info("Plotting new xarray plot")
                 div.children = [graph]
-            else:
-                logger.info("Updating xarray plot")
-                graph = div.children[0]
-                fig = graph.figure
-            update_xarray_plot(fig, value)
+                if title:
+                    div.children.insert(0, html.H2(title))
+
+            logger.info("Updating xarray plot")
+            update_xarray_plot(graph.figure, value)
         else:
             div.children = [html.P(str(value))]
 

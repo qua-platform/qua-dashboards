@@ -27,6 +27,7 @@ class DataVisualizer:
         self.app = Dash(
             __name__,
             title="Data Visualizer",
+            external_stylesheets=[dbc.themes.BOOTSTRAP],
         )
         self.server = self.app.server  # Access the Flask server
         logger.info("Dash app initialized")
@@ -34,7 +35,7 @@ class DataVisualizer:
         self.app.layout = html.Div(
             [
                 html.H1("Data Visualizer"),
-                html.Div(id="data-container", children=[]),
+                dbc.ListGroup(id="data-container", children=[], flush=True),
                 dcc.Interval(id="interval-component", interval=2000, n_intervals=0),
             ]
         )
@@ -79,16 +80,16 @@ class DataVisualizer:
     def value_to_dash_component(label: str, value: Any, component=None):
         if isinstance(value, xr.DataArray):
             if component is None:
-                component = html.Div(id=label, children=[])
+                component = dbc.ListGroupItem(id=label, children=[])
 
             if (
                 len(component.children) != 2
                 or not isinstance(component.children[0], html.Button)
                 or not isinstance(component.children[1], dcc.Graph)
             ):
-                title_component = html.Button(label)
+                title_component = dbc.Label(label, id=f"{label}-collapse-label")
                 fig = go.Figure(layout=dict(margin=dict(l=20, r=20, t=20, b=20)))
-                graph = dcc.Graph(figure=fig, style=GRAPH_STYLE)
+                graph = dcc.Graph(figure=fig, style=GRAPH_STYLE, id=f"{label}-content")
                 component.children = [title_component, graph]
 
             title_component, graph = component.children
@@ -96,7 +97,9 @@ class DataVisualizer:
             logger.info("Updating xarray plot")
             update_xarray_plot(graph.figure, value)
         else:
-            component = html.Div([html.P([html.B(f"{label}: "), str(value)])], id=label)
+            component = dbc.ListGroupItem(
+                [html.P([html.B(f"{label}: "), str(value)])], id=label
+            )
 
         return component
 

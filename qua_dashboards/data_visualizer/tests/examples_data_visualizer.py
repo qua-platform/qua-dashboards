@@ -22,7 +22,10 @@ time.sleep(1)
 
 
 # %% Send xarray 2D data
-data = {"array": xr.DataArray(np.random.rand(10, 10), name="my_arr")}
+data = {
+    "array": xr.DataArray(np.random.rand(10, 10), name="my_arr"),
+    "array2": xr.DataArray(np.random.rand(100, 100), name=f"my_arr_{i+1}"),
+}
 send_data_to_dash(data)
 
 # %% Repeatedly send data

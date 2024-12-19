@@ -1,5 +1,5 @@
 import time
-from typing import Any
+from typing import Any, Optional
 import xarray as xr
 import dash
 from dash import Dash, html, dcc, State, Input, Output
@@ -10,6 +10,7 @@ from plotly import graph_objects as go
 from qua_dashboards.data_visualizer.plotting import update_xarray_plot
 from qua_dashboards.utils.data_serialisation import deserialise_data
 from qua_dashboards.utils.dash_utils import convert_to_dash_component
+from dash.dependencies import MATCH
 
 # from dash_extensions.enrich import (
 #     DashProxy,
@@ -40,6 +41,8 @@ class DataVisualizer:
             ]
         )
 
+        self._collapse_button_clicks = {}
+
         self._requires_update: bool = False
         self.data = {}
         self.setup_callbacks()
@@ -61,7 +64,7 @@ class DataVisualizer:
 
             current_children = convert_to_dash_component(current_children)
 
-            print(f"Updating data-container children:\n{current_children}")
+            print(f"Updating data-container children")  #:\n{current_children}")
 
             current_children_dict = {child.id: child for child in current_children}
 
@@ -76,30 +79,68 @@ class DataVisualizer:
             print(f"Update taken: {time.perf_counter() - t0:.2f} seconds")
             return (children,)
 
+        @self.app.callback(
+            Output({"type": "collapse", "index": MATCH}, "is_open"),
+            [Input({"type": "collapse-button", "index": MATCH}, "n_clicks")],
+            [State({"type": "collapse", "index": MATCH}, "is_open")],
+        )
+        def toggle_collapse(n_clicks, is_open):
+            ctx = dash.callback_context
+            if not ctx.triggered:
+                return is_open
+
+            # Get the id of the component that triggered the callback
+            triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
+
+            # Check if the button's n_clicks has increased
+            previous_clicks = self._collapse_button_clicks.get(triggered_id, 0)
+            if n_clicks and n_clicks != previous_clicks:
+                self._collapse_button_clicks[triggered_id] = n_clicks
+                if is_open:
+                    logger.debug(f"Closing collapse: {triggered_id} with {n_clicks=}")
+                else:
+                    logger.debug(f"Opening collapse: {triggered_id} with {n_clicks=}")
+                return not is_open
+
+            return is_open
+
     @staticmethod
-    def value_to_dash_component(label: str, value: Any, component=None):
+    def value_to_dash_component(
+        label: str, value: Any, component: Optional[dbc.ListGroupItem] = None
+    ):
+        if component is None:
+            component = dbc.ListGroupItem(
+                id=label,
+                children=[
+                    dbc.Button(label, id={"type": "collapse-button", "index": label}),
+                    dbc.Collapse(
+                        [str(value)],
+                        id={"type": "collapse", "index": label},
+                        is_open=True,
+                    ),
+                ],
+            )
+
+        assert len(component.children) == 2
+        title, collapse_component = component.children
+        assert isinstance(title, dbc.Button)
+        assert isinstance(collapse_component, dbc.Collapse)
+
         if isinstance(value, xr.DataArray):
-            if component is None:
-                component = dbc.ListGroupItem(id=label, children=[])
-
-            if (
-                len(component.children) != 2
-                or not isinstance(component.children[0], html.Button)
-                or not isinstance(component.children[1], dcc.Graph)
-            ):
-                title_component = dbc.Label(label, id=f"{label}-collapse-label")
+            if not isinstance(collapse_component.children[0], dcc.Graph):
                 fig = go.Figure(layout=dict(margin=dict(l=20, r=20, t=20, b=20)))
-                graph = dcc.Graph(figure=fig, style=GRAPH_STYLE, id=f"{label}-content")
-                component.children = [title_component, graph]
-
-            title_component, graph = component.children
+                graph = dcc.Graph(
+                    figure=fig,
+                    style=GRAPH_STYLE,
+                )
+                collapse_component.children = [graph]
+            else:
+                graph = collapse_component.children[0]
 
             logger.info("Updating xarray plot")
             update_xarray_plot(graph.figure, value)
         else:
-            component = dbc.ListGroupItem(
-                [html.P([html.B(f"{label}: "), str(value)])], id=label
-            )
+            collapse_component.children = [str(value)]
 
         return component
 

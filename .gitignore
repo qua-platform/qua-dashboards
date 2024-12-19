@@ -5,7 +5,8 @@ build/
 dist/
 wheels/
 *.egg-info
-tempCodeRunnerFile.py
+tempCodeRunnerFile*
+tmp_file.py
 
 # Virtual environments
 .venv

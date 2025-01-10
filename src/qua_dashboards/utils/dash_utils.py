@@ -35,3 +35,4 @@ def convert_to_dash_component(elem: Union[dict, list]) -> Any:
         raise ValueError(f"Unknown element: {elem}")
     else:
         return elem
+    

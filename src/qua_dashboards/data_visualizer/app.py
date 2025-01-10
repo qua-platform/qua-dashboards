@@ -7,20 +7,9 @@ import dash_bootstrap_components as dbc
 from qua_dashboards.logging_config import logger
 from flask import request, jsonify
 from plotly import graph_objects as go
-from qua_dashboards.data_visualizer.plotting import update_xarray_plot
 from qua_dashboards.utils.data_serialisation import deserialise_data
 from qua_dashboards.utils.dash_utils import convert_to_dash_component
 from dash.dependencies import MATCH
-
-# from dash_extensions.enrich import (
-#     DashProxy,
-#     Output,
-#     Input,
-#     State,
-#     BlockingCallbackTransform,
-# )
-
-GRAPH_STYLE = {"aspect-ratio": "1 / 1", "max-width": "400px"}
 
 
 class DataVisualizer:
@@ -60,6 +49,7 @@ class DataVisualizer:
         def update_if_required(n_intervals, current_children):
             if not self._requires_update:
                 raise dash.exceptions.PreventUpdate
+
             t0 = time.perf_counter()
 
             current_children = convert_to_dash_component(current_children)
@@ -71,7 +61,9 @@ class DataVisualizer:
             children = []
             for key, value in self.data.items():
                 child = self.value_to_dash_component(
-                    label=key, value=value, component=current_children_dict.get(key)
+                    label=key,
+                    value=value,
+                    existing_component=current_children_dict.get(key),
                 )
                 children.append(child)
 
@@ -106,43 +98,27 @@ class DataVisualizer:
 
     @staticmethod
     def value_to_dash_component(
-        label: str, value: Any, component: Optional[dbc.ListGroupItem] = None
+        label: str, value: Any, existing_component: Optional[dbc.ListGroupItem] = None
     ):
-        if component is None:
-            component = dbc.ListGroupItem(
-                id=label,
-                children=[
-                    dbc.Button(label, id={"type": "collapse-button", "index": label}),
-                    dbc.Collapse(
-                        [str(value)],
-                        id={"type": "collapse", "index": label},
-                        is_open=True,
-                    ),
-                ],
-            )
-
-        assert len(component.children) == 2
-        title, collapse_component = component.children
-        assert isinstance(title, dbc.Button)
-        assert isinstance(collapse_component, dbc.Collapse)
+        from qua_dashboards.data_visualizer.component_types import (
+            create_data_array_component,
+            create_standard_component,
+        )
 
         if isinstance(value, xr.DataArray):
-            if not isinstance(collapse_component.children[0], dcc.Graph):
-                fig = go.Figure(layout=dict(margin=dict(l=20, r=20, t=20, b=20)))
-                graph = dcc.Graph(
-                    figure=fig,
-                    style=GRAPH_STYLE,
-                )
-                collapse_component.children = [graph]
-            else:
-                graph = collapse_component.children[0]
-
-            logger.info("Updating xarray plot")
-            update_xarray_plot(graph.figure, value)
+            return create_data_array_component(
+                label=label,
+                value=value,
+                existing_component=existing_component,
+                root_component_class=dbc.ListGroupItem,
+            )
         else:
-            collapse_component.children = [str(value)]
-
-        return component
+            return create_standard_component(
+                label=label,
+                value=value,
+                existing_component=existing_component,
+                root_component_class=dbc.ListGroupItem,
+            )
 
     def update_data(self, data):
         self.data = data

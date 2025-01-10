@@ -35,7 +35,7 @@ class DataVisualizer:
 
         self.app.layout = html.Div(
             [
-                html.H1("Data Visualizer"),
+                html.H1("Data Visualizer", id="title"),
                 dbc.ListGroup(id="data-container", children=[], flush=True),
                 dcc.Interval(id="interval-component", interval=2000, n_intervals=0),
             ]

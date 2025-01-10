@@ -38,3 +38,15 @@ def create_standard_component(
     value_component.children = str(value)
 
     return root_component
+
+
+def _validate_standard_component(
+    component: Component, root_component_class: Type[T]
+) -> bool:
+    if not isinstance(component, root_component_class):
+        return False
+    if len(component.children) != 3:
+        return False
+    if not all(isinstance(child, dbc.Label) for child in component.children):
+        return False
+    return True

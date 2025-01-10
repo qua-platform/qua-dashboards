@@ -23,7 +23,7 @@ def create_data_array_component(
     existing_component: Optional[Component] = None,
     root_component_class: Type[T] = html.Div,
 ) -> T:
-    if existing_component is None:
+    if not _validate_data_array_component(existing_component):
         root_component = root_component_class(
             id=label,
             children=[
@@ -40,7 +40,7 @@ def create_data_array_component(
 
     label_component, collapse_component = root_component.children
 
-    if not isinstance(collapse_component.children[0], dcc.Graph):
+    if not collapse_component.children:
         fig = go.Figure(layout=dict(margin=dict(l=20, r=20, t=20, b=20)))
         graph = dcc.Graph(
             figure=fig,
@@ -54,3 +54,24 @@ def create_data_array_component(
     update_xarray_plot(graph.figure, value)
 
     return root_component
+
+
+def _validate_data_array_component(
+    component: Component, root_component_class: Type[T]
+) -> bool:
+    if not isinstance(component, root_component_class):
+        return False
+    if len(component.children) != 2:
+        return False
+    if not isinstance(component.children[0], dbc.Label):
+        return False
+    if not isinstance(component.children[1], dbc.Collapse):
+        return False
+
+    collapse_component = component.children[1]
+    if not len(collapse_component.children) == 1:
+        return False
+    if not isinstance(collapse_component.children[0], dcc.Graph):
+        return False
+
+    return True

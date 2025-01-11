@@ -2,7 +2,7 @@ from typing import Type, TypeVar, Optional, Any
 
 from dash.development.base_component import Component
 from dash import html
-import dash_core_components as dcc
+from dash import dcc
 import dash_bootstrap_components as dbc
 from plotly import graph_objects as go
 
@@ -22,7 +22,10 @@ def create_standard_component(
     existing_component: Optional[Component] = None,
     root_component_class: Type[T] = html.Div,
 ) -> T:
-    if existing_component is None or len(existing_component.children) != 2:
+    if not _validate_standard_component(
+        component=existing_component, root_component_class=root_component_class
+    ):
+        logger.info(f"Creating new standard component ({label}: {value})")
         root_component = root_component_class(
             id=label,
             children=[
@@ -32,7 +35,8 @@ def create_standard_component(
             ],
         )
     else:
-        root_component = root_component_class(id=label)
+        logger.info(f"Using existing standard component ({label}: {value})")
+        root_component = existing_component
 
     value_component = root_component.children[-1]
     value_component.children = str(value)

@@ -1,0 +1,12 @@
+:root {
+    --background-color: #181818;
+    --text-color: #f8f8f8;
+}
+
+body,
+.list-group,
+.list-group-item{
+    background-color: var(--background-color);
+    color: var(--text-color);
+    font-family: monospace;
+}

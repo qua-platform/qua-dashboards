@@ -6,17 +6,26 @@ from dash import Dash, html, dcc, State, Input, Output
 import dash_bootstrap_components as dbc
 from qua_dashboards.logging_config import logger
 from flask import request, jsonify
-from plotly import graph_objects as go
-from qua_dashboards.utils.data_serialisation import deserialise_data
+
+from qua_dashboards.utils.data_utils import deserialise_data
 from qua_dashboards.utils.dash_utils import convert_to_dash_component
 from dash.dependencies import MATCH
+from qua_dashboards.data_visualizer.component_types import (
+    create_data_array_component,
+    create_standard_component,
+)
 
 
 class DataVisualizer:
-    def __init__(self):
+    def __init__(
+        self,
+        update_interval: int = 100,
+        title: str = "Data Visualizer",
+        include_title: bool = True,
+    ):
         self.app = Dash(
             __name__,
-            title="Data Visualizer",
+            title=title,
             external_stylesheets=[dbc.themes.BOOTSTRAP],
         )
         self.server = self.app.server  # Access the Flask server
@@ -24,11 +33,15 @@ class DataVisualizer:
 
         self.app.layout = html.Div(
             [
-                html.H1("Data Visualizer", id="title"),
                 dbc.ListGroup(id="data-container", children=[], flush=True),
-                dcc.Interval(id="interval-component", interval=2000, n_intervals=0),
+                dcc.Interval(
+                    id="interval-component", interval=update_interval, n_intervals=0
+                ),
+                dbc.Button("Update", id="update-button"),
             ]
         )
+        if include_title:
+            self.app.layout.children.insert(0, html.H1("Data Visualizer", id="title"))
 
         self._collapse_button_clicks = {}
 
@@ -43,18 +56,22 @@ class DataVisualizer:
     def setup_callbacks(self):
         @self.app.callback(
             [Output("data-container", "children")],
-            [Input("interval-component", "n_intervals")],
+            [
+                Input("interval-component", "n_intervals"),
+                Input("update-button", "n_clicks"),
+            ],
             [State("data-container", "children")],
         )
-        def update_if_required(n_intervals, current_children):
+        def update_if_required(n_intervals, n_clicks, current_children):
             if not self._requires_update:
                 raise dash.exceptions.PreventUpdate
+            self._requires_update = False
 
             t0 = time.perf_counter()
 
             current_children = convert_to_dash_component(current_children)
 
-            print(f"Updating data-container children")  #:\n{current_children}")
+            logger.info(f"Updating data-container children")
 
             current_children_dict = {child.id: child for child in current_children}
 
@@ -67,7 +84,6 @@ class DataVisualizer:
                 )
                 children.append(child)
 
-            self._requires_update = False
             print(f"Update taken: {time.perf_counter() - t0:.2f} seconds")
             return (children,)
 
@@ -100,11 +116,6 @@ class DataVisualizer:
     def value_to_dash_component(
         label: str, value: Any, existing_component: Optional[dbc.ListGroupItem] = None
     ):
-        from qua_dashboards.data_visualizer.component_types import (
-            create_data_array_component,
-            create_standard_component,
-        )
-
         if isinstance(value, xr.DataArray):
             return create_data_array_component(
                 label=label,

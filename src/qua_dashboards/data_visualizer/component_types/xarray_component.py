@@ -2,8 +2,7 @@ import xarray as xr
 from typing import Type, TypeVar, Optional
 
 from dash.development.base_component import Component
-from dash import html
-import dash_core_components as dcc
+from dash import html, dcc
 import dash_bootstrap_components as dbc
 from plotly import graph_objects as go
 
@@ -23,19 +22,27 @@ def create_data_array_component(
     existing_component: Optional[Component] = None,
     root_component_class: Type[T] = html.Div,
 ) -> T:
-    if not _validate_data_array_component(existing_component):
+    if not _validate_data_array_component(
+        existing_component, root_component_class=root_component_class
+    ):
+        logger.info(f"Creating new data array component ({label}: {value})")
         root_component = root_component_class(
             id=label,
             children=[
-                dbc.Label(label, id={"type": "collapse-button", "index": label}),
+                dbc.Label(
+                    label,
+                    id={"type": "collapse-button", "index": label},
+                    style={"fontWeight": "bold"},
+                ),
                 dbc.Collapse(
-                    [str(value)],
+                    [],
                     id={"type": "collapse", "index": label},
                     is_open=True,
                 ),
             ],
         )
     else:
+        logger.info(f"Using existing data array component ({label}: {value})")
         root_component = existing_component
 
     label_component, collapse_component = root_component.children

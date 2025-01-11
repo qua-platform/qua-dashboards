@@ -1,5 +1,6 @@
 import xarray as xr
 import warnings
+import requests
 
 
 def serialise_data(data):
@@ -30,3 +31,14 @@ def deserialise_data(data):
         return [deserialise_data(item) for item in data]
     else:
         return data
+
+
+def send_data_to_dash(data, url="http://localhost:8050"):
+    serialised_data = serialise_data(data)
+    response = requests.post(f"{url}/update-data", json=serialised_data)
+    if response.ok:
+        print("Data sent successfully")
+        return True
+    else:
+        print("Failed to send data")
+        return False

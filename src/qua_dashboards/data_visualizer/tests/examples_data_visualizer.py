@@ -3,7 +3,7 @@ import requests
 import time
 import numpy as np
 import xarray as xr
-from qua_dashboards.utils.data_serialisation import serialise_data
+from qua_dashboards.utils.data_utils import serialise_data
 
 
 def send_data_to_dash(data):

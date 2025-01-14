@@ -23,7 +23,9 @@ def create_standard_component(
     root_component_class: Type[T] = html.Div,
 ) -> T:
     if not _validate_standard_component(
-        component=existing_component, root_component_class=root_component_class
+        component=existing_component,
+        value=value,
+        root_component_class=root_component_class,
     ):
         logger.info(f"Creating new standard component ({label}: {value})")
         root_component = root_component_class(
@@ -33,6 +35,7 @@ def create_standard_component(
                 dbc.Label(":  ", style={"whiteSpace": "pre"}),
                 dbc.Label(str(value)),
             ],
+            **{"data-class": "standard_component"},
         )
     else:
         logger.info(f"Using existing standard component ({label}: {value})")
@@ -45,12 +48,10 @@ def create_standard_component(
 
 
 def _validate_standard_component(
-    component: Component, root_component_class: Type[T]
+    component: Component, value: Any, root_component_class: Type[T]
 ) -> bool:
     if not isinstance(component, root_component_class):
         return False
-    if len(component.children) != 3:
-        return False
-    if not all(isinstance(child, dbc.Label) for child in component.children):
+    if not getattr(component, "data-class", None) == "standard_component":
         return False
     return True

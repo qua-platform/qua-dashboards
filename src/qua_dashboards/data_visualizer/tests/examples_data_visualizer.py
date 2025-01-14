@@ -60,7 +60,7 @@ data = {
         }
     )
 }
-serialised_data = serialise_data(data)
-print(serialised_data)
 send_data_to_dash(data)
+# %%
+
 # %%

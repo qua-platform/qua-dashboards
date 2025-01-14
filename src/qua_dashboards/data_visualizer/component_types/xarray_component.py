@@ -12,7 +12,9 @@ GRAPH_STYLE = {"aspect-ratio": "1 / 1", "max-width": "400px"}
 T = TypeVar("T", bound=Component)
 
 
-def _create_root_component(label: str, root_component_class: Type[T]) -> T:
+def _create_root_component(
+    label: str, root_component_class: Type[T], data_class: str
+) -> T:
     """
     Create the root component structure with a label and a collapsible section.
 
@@ -37,11 +39,12 @@ def _create_root_component(label: str, root_component_class: Type[T]) -> T:
                 is_open=True,
             ),
         ],
+        **{"data-class": data_class},
     )
 
 
-def _validate_component_structure(
-    component: Component, root_component_class: Type[T]
+def _validate_data_array_component(
+    component: Component, value: xr.DataArray, root_component_class: Type[T]
 ) -> bool:
     """
     Validate the structure of a component to ensure it matches the expected layout.
@@ -55,21 +58,8 @@ def _validate_component_structure(
     """
     if not isinstance(component, root_component_class):
         return False
-    if len(component.children) != 2:
+    if not getattr(component, "data-class", None) == "xarray_data_array_component":
         return False
-    if not isinstance(component.children[0], dbc.Label):
-        return False
-    if not isinstance(component.children[1], dbc.Collapse):
-        return False
-
-    collapse_component = component.children[1]
-    if not all(isinstance(child, dbc.Col) for child in collapse_component.children):
-        return False
-    if not all(
-        isinstance(col.children[0], dcc.Graph) for col in collapse_component.children
-    ):
-        return False
-
     return True
 
 
@@ -91,9 +81,13 @@ def create_data_array_component(
     Returns:
         T: The created or updated component.
     """
-    if not _validate_component_structure(existing_component, root_component_class):
+    if not _validate_data_array_component(
+        existing_component, value, root_component_class
+    ):
         logger.info(f"Creating new data array component ({label}: {value})")
-        root_component = _create_root_component(label, root_component_class)
+        root_component = _create_root_component(
+            label, root_component_class, "xarray_data_array_component"
+        )
     else:
         logger.info(f"Using existing data array component ({label}: {value})")
         root_component = existing_component
@@ -118,6 +112,30 @@ def create_data_array_component(
     return root_component
 
 
+def _validate_dataset_component(
+    component: Component, value: xr.Dataset, root_component_class: Type[T]
+) -> bool:
+    if not isinstance(component, root_component_class):
+        return False
+    if not getattr(component, "data-class", None) == "xarray_dataset_component":
+        return False
+
+    collapse_component = component.children[1]
+    graph_containers = collapse_component.children.children
+    labels = [
+        graph_container.children.children[0].children
+        for graph_container in graph_containers
+    ]
+    html_array_names = [label.rsplit("/", 1)[1] for label in labels]
+
+    xarray_array_names = list(value.data_vars.keys())
+
+    if html_array_names != xarray_array_names:
+        return False
+
+    return True
+
+
 def create_dataset_component(
     label: str,
     value: xr.Dataset,
@@ -136,18 +154,16 @@ def create_dataset_component(
     Returns:
         T: The created or updated component.
     """
-    if not _validate_component_structure(existing_component, root_component_class):
+    if not _validate_dataset_component(existing_component, value, root_component_class):
         logger.info(f"Creating new dataset component ({label}: {value})")
-        root_component = _create_root_component(label, root_component_class)
-    else:
-        logger.info(f"Using existing dataset component ({label}: {value})")
-        root_component = existing_component
+        root_component = _create_root_component(
+            label, root_component_class, "xarray_dataset_component"
+        )
 
-    label_component, collapse_component = root_component.children
+        collapse_component = root_component.children[1]
 
-    if not collapse_component.children:
         # Create a new graph for each DataArray in the Dataset
-        graphs = []
+        graph_containers = []
         for data_array_name, data_array in value.data_vars.items():
             fig = go.Figure(layout=dict(margin=dict(l=20, r=20, t=20, b=20)))
             graph = dcc.Graph(
@@ -155,8 +171,7 @@ def create_dataset_component(
                 style=GRAPH_STYLE,
                 id={"type": "graph", "index": data_array_name},
             )
-            update_xarray_plot(graph.figure, data_array)
-            graphs.append(
+            graph_containers.append(
                 dbc.Col(
                     html.Div(
                         [
@@ -170,13 +185,20 @@ def create_dataset_component(
                 )
             )
 
-        collapse_component.children = [dbc.Row(graphs, style={"display": "flex"})]
+        collapse_component.children = dbc.Row(
+            graph_containers, style={"display": "flex"}
+        )
+
     else:
-        # Update existing graphs
-        for col, (data_array_name, data_array) in zip(
-            collapse_component.children[0].children, value.data_vars.items()
-        ):
-            graph = col.children[0]
-            update_xarray_plot(graph.figure, data_array)
+        logger.info(f"Using existing dataset component ({label}: {value})")
+        root_component = existing_component
+        collapse_component = root_component.children[1]
+        graph_containers = collapse_component.children.children
+
+    for graph_container, (data_array_name, data_array) in zip(
+        graph_containers, value.data_vars.items()
+    ):
+        graph = graph_container.children.children[1]
+        update_xarray_plot(graph.figure, data_array)
 
     return root_component

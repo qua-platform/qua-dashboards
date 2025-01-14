@@ -37,11 +37,12 @@ class DataVisualizerApp:
 
         self.app.layout = html.Div(
             [
-                dbc.ListGroup(id="data-container", children=[], flush=True),
+                html.Div(id="data-container", children=[]),
                 dcc.Interval(
                     id="interval-component", interval=update_interval, n_intervals=0
                 ),
-            ]
+            ],
+            style={"margin": "10px"},
         )
 
         self.update_button = update_button
@@ -138,21 +139,18 @@ class DataVisualizerApp:
                 label=label,
                 value=value,
                 existing_component=existing_component,
-                root_component_class=dbc.ListGroupItem,
             )
         elif isinstance(value, xr.Dataset):
             return create_dataset_component(
                 label=label,
                 value=value,
                 existing_component=existing_component,
-                root_component_class=dbc.ListGroupItem,
             )
         else:
             return create_standard_component(
                 label=label,
                 value=value,
                 existing_component=existing_component,
-                root_component_class=dbc.ListGroupItem,
             )
 
     def update_data(self, data):

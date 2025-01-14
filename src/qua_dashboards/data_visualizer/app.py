@@ -53,8 +53,13 @@ class DataVisualizer:
     def run(self, threaded: bool = False):
         self.app.run(debug=True, threaded=threaded)
 
-    def setup_callbacks(self):
-        @self.app.callback(
+    def setup_callbacks(self, app=None):
+        if app is None:
+            app = self.app
+
+        logger.info("Setting up callbacks for data-visualizer")
+
+        @app.callback(
             [Output("data-container", "children")],
             [
                 Input("interval-component", "n_intervals"),
@@ -87,7 +92,7 @@ class DataVisualizer:
             print(f"Update taken: {time.perf_counter() - t0:.2f} seconds")
             return (children,)
 
-        @self.app.callback(
+        @app.callback(
             Output({"type": "collapse", "index": MATCH}, "is_open"),
             [Input({"type": "collapse-button", "index": MATCH}, "n_clicks")],
             [State({"type": "collapse", "index": MATCH}, "is_open")],
@@ -135,8 +140,13 @@ class DataVisualizer:
         self.data = data
         self._requires_update = True
 
-    def setup_api(self):
-        @self.server.route("/update-data", methods=["POST"])
+    def setup_api(self, app=None):
+        if app is None:
+            server = self.server
+        else:
+            server = app.server
+
+        @server.route("/data-visualizer/update-data", methods=["POST"])
         def update_data_endpoint():
             serialised_data = request.json
             data = deserialise_data(serialised_data)

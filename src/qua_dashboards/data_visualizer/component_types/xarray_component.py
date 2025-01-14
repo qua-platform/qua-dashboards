@@ -156,11 +156,21 @@ def create_dataset_component(
                 id={"type": "graph", "index": data_array_name},
             )
             update_xarray_plot(graph.figure, data_array)
-            graphs.append(dbc.Col(graph, width="auto"))
+            graphs.append(
+                dbc.Col(
+                    html.Div(
+                        [
+                            html.Label(
+                                f"{label}/{data_array_name}",
+                                style={"display": "flex", "justify-content": "center"},
+                            ),
+                            graph,
+                        ],
+                    )
+                )
+            )
 
-        collapse_component.children = [
-            dbc.Row(graphs, style={"display": "flex", "flex-wrap": "nowrap"})
-        ]
+        collapse_component.children = [dbc.Row(graphs, style={"display": "flex"})]
     else:
         # Update existing graphs
         for col, (data_array_name, data_array) in zip(

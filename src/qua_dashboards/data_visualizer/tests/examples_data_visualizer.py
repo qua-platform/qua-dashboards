@@ -41,8 +41,26 @@ data = {
         {"array": xr.DataArray(np.random.rand(10, 10), name="my_arr")}
     )
 }
+send_data_to_dash(data)
+
+# %% Send xarray dataset with multiple data arrays
+data = {
+    "dataset": xr.Dataset(
+        {
+            "array": xr.DataArray(
+                np.random.rand(10, 10),
+                name="my_arr",
+                coords={"x": np.arange(10), "y": np.arange(10)},
+            ),
+            "array2": xr.DataArray(
+                np.random.rand(100, 100),
+                name="my_arr2",
+                coords={"x2": np.arange(100), "y2": np.arange(100)},
+            ),
+        }
+    )
+}
 serialised_data = serialise_data(data)
 print(serialised_data)
 send_data_to_dash(data)
-
 # %%

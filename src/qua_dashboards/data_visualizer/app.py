@@ -22,13 +22,14 @@ class DataVisualizer:
         update_interval: int = 100,
         title: str = "Data Visualizer",
         include_title: bool = True,
+        update_button: bool = False,
     ):
         self.app = Dash(
             __name__,
             title=title,
+            assets_folder="../assets",
             external_stylesheets=[dbc.themes.BOOTSTRAP],
         )
-        self.server = self.app.server  # Access the Flask server
         logger.info("Dash app initialized")
 
         self.app.layout = html.Div(
@@ -37,9 +38,12 @@ class DataVisualizer:
                 dcc.Interval(
                     id="interval-component", interval=update_interval, n_intervals=0
                 ),
-                dbc.Button("Update", id="update-button"),
             ]
         )
+
+        self.update_button = update_button
+        if update_button:
+            self.app.layout.children.insert(0, dbc.Button("Update", id="update-button"))
         if include_title:
             self.app.layout.children.insert(0, html.H1("Data Visualizer", id="title"))
 
@@ -59,15 +63,20 @@ class DataVisualizer:
 
         logger.info("Setting up callbacks for data-visualizer")
 
+        inputs = [Input("interval-component", "n_intervals")]
+        if self.update_button:
+            inputs.append(Input("update-button", "n_clicks"))
+
         @app.callback(
             [Output("data-container", "children")],
-            [
-                Input("interval-component", "n_intervals"),
-                Input("update-button", "n_clicks"),
-            ],
+            inputs,
             [State("data-container", "children")],
         )
-        def update_if_required(n_intervals, n_clicks, current_children):
+        def update_if_required(*args):
+            # if not self.update_button: args == [n_intervals, current_children]
+            # if self.update_button: args == [n_intervals, n_clicks, current_children]
+            current_children = args[-1]
+
             if not self._requires_update:
                 raise dash.exceptions.PreventUpdate
             self._requires_update = False
@@ -142,9 +151,8 @@ class DataVisualizer:
 
     def setup_api(self, app=None):
         if app is None:
-            server = self.server
-        else:
-            server = app.server
+            app = self.app
+        server = app.server
 
         @server.route("/data-visualizer/update-data", methods=["POST"])
         def update_data_endpoint():

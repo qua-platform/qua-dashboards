@@ -1,11 +1,26 @@
 import dash
-from dash import html
+from dash import html, dcc
 
 dash.register_page(__name__, path="/")
 
-layout = html.Div(
-    [
-        html.H1("This is our Home page"),
-        html.Div("This is our Home page content."),
-    ]
-)
+
+def layout(**kwags):
+    layout = html.Div(
+        [
+            html.H1("Available Dashboards"),
+            html.Div(
+                [
+                    html.Div(
+                        dcc.Link(
+                            page["name"],
+                            href=page["relative_path"],
+                        )
+                    )
+                    for page in dash.page_registry.values()
+                    if page["path"] != "/"
+                ]
+            ),
+        ]
+    )
+
+    return layout

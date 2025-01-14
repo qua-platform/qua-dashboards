@@ -16,7 +16,7 @@ from qua_dashboards.data_visualizer.component_types import (
 )
 
 
-class DataVisualizer:
+class DataVisualizerApp:
     def __init__(
         self,
         update_interval: int = 100,
@@ -163,5 +163,5 @@ class DataVisualizer:
 
 
 if __name__ == "__main__":
-    app = DataVisualizer()
+    app = DataVisualizerApp()
     app.run(threaded=True)

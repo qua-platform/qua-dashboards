@@ -1,12 +1,12 @@
 from time import sleep
 import xarray as xr
 import numpy as np
-from src.qua_dashboards.data_visualizer.app import DataVisualizer
+from src.qua_dashboards.data_visualizer.app import DataVisualizerApp
 from qua_dashboards.utils.data_communication import send_data_to_dash
 
 
 def test_002_data_visualizer_basic_types(dash_duo):
-    data_visualizer = DataVisualizer()
+    data_visualizer = DataVisualizerApp()
     dash_duo.start_server(data_visualizer.app)
 
     dash_duo.wait_for_text_to_equal("#title", "Data Visualizer", timeout=4)
@@ -28,7 +28,7 @@ def test_002_data_visualizer_basic_types(dash_duo):
 
 
 def test_003_data_visualizer_data_array(dash_duo):
-    data_visualizer = DataVisualizer()
+    data_visualizer = DataVisualizerApp()
     dash_duo.start_server(data_visualizer.app)
 
     dash_duo.wait_for_text_to_equal("#title", "Data Visualizer", timeout=4)

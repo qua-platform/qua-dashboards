@@ -4,6 +4,9 @@ import xarray as xr
 import dash
 from dash import Dash, html, dcc, State, Input, Output
 import dash_bootstrap_components as dbc
+from qua_dashboards.data_visualizer.component_types.xarray_component import (
+    create_dataset_component,
+)
 from qua_dashboards.logging_config import logger
 from flask import request, jsonify
 
@@ -132,6 +135,13 @@ class DataVisualizerApp:
     ):
         if isinstance(value, xr.DataArray):
             return create_data_array_component(
+                label=label,
+                value=value,
+                existing_component=existing_component,
+                root_component_class=dbc.ListGroupItem,
+            )
+        elif isinstance(value, xr.Dataset):
+            return create_dataset_component(
                 label=label,
                 value=value,
                 existing_component=existing_component,

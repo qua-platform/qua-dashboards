@@ -30,7 +30,7 @@ def create_standard_component(
             id=label,
             children=[
                 dbc.Label(label, style={"fontWeight": "bold"}),
-                dbc.Label(":  "),
+                dbc.Label(":  ", style={"whiteSpace": "pre"}),
                 dbc.Label(str(value)),
             ],
         )

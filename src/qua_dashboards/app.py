@@ -1,5 +1,5 @@
 import dash
-from dash import Dash, html, dcc
+from dash import Dash, html
 from qua_dashboards.logging_config import logger
 from qua_dashboards.pages import dashboards_registry
 import dash_bootstrap_components as dbc

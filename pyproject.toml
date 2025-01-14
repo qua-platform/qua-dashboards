@@ -11,6 +11,7 @@ dependencies = [
     "xarray>=2024.11.0",
     "ipykernel>=6.29.5",
     "dash-extensions>=1.0.19",
+    "matplotlib>=3.10.0",
 ]
 
 [build-system]

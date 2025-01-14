@@ -3,19 +3,22 @@ from typing import Any, Optional
 import xarray as xr
 import dash
 from dash import Dash, html, dcc, State, Input, Output
+from dash.development.base_component import Component
 import dash_bootstrap_components as dbc
 from qua_dashboards.data_visualizer.component_types.xarray_component import (
     create_dataset_component,
 )
 from qua_dashboards.logging_config import logger
 from flask import request, jsonify
+import matplotlib.pyplot as plt
 
-from qua_dashboards.utils.data_utils import deserialise_data
+from qua_dashboards.utils.data_utils import deserialise_data, serialise_data
 from qua_dashboards.utils.dash_utils import convert_to_dash_component
 from dash.dependencies import MATCH
 from qua_dashboards.data_visualizer.component_types import (
     create_data_array_component,
     create_standard_component,
+    create_image_component,
 )
 
 
@@ -132,7 +135,7 @@ class DataVisualizerApp:
 
     @staticmethod
     def value_to_dash_component(
-        label: str, value: Any, existing_component: Optional[dbc.ListGroupItem] = None
+        label: str, value: Any, existing_component: Optional[Component] = None
     ):
         if isinstance(value, xr.DataArray):
             return create_data_array_component(
@@ -144,6 +147,19 @@ class DataVisualizerApp:
             return create_dataset_component(
                 label=label,
                 value=value,
+                existing_component=existing_component,
+            )
+        elif isinstance(value, plt.Figure):
+            image_base64 = serialise_data(value)
+            return create_image_component(
+                label=label,
+                image_base64=image_base64,
+                existing_component=existing_component,
+            )
+        elif isinstance(value, str) and value.startswith("data:image/png;base64,"):
+            return create_image_component(
+                label=label,
+                image_base64=value,
                 existing_component=existing_component,
             )
         else:

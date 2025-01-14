@@ -4,6 +4,7 @@ import time
 import numpy as np
 import xarray as xr
 from qua_dashboards.utils.data_utils import serialise_data, send_data_to_dash
+import matplotlib.pyplot as plt
 
 # %% Send basic data
 data = {"current_time": time.time(), "random_value": np.random.rand()}
@@ -61,6 +62,23 @@ data = {
     )
 }
 send_data_to_dash(data)
+
+
+# %% Send Matplotlib figure with random data
+def create_random_figure():
+    fig, ax = plt.subplots()
+    x = np.linspace(0, 10, 100)
+    y = np.sin(x) + np.random.normal(0, 0.1, size=x.shape)
+    ax.plot(x, y, label="Random Data")
+    ax.set_title("Random Matplotlib Figure")
+    ax.legend()
+    return fig
+
+
+fig = create_random_figure()
+data = {"random_matplotlib_figure": fig}
+send_data_to_dash(data)
+
 # %%
 
 # %%

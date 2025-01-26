@@ -1,15 +1,15 @@
 from time import sleep
 import xarray as xr
 import numpy as np
-from src.qua_dashboards.data_visualizer.app import DataVisualizerApp
-from qua_dashboards.utils.data_communication import send_data_to_dash
+from src.qua_dashboards.data_dashboard.app import DataDashboardApp
+from qua_dashboards.utils.data_utils import send_data_to_dash
 
 
-def test_002_data_visualizer_basic_types(dash_duo):
-    data_visualizer = DataVisualizerApp()
-    dash_duo.start_server(data_visualizer.app)
+def test_002_data_dashboard_basic_types(dash_duo):
+    data_dashboard_app = DataDashboardApp()
+    dash_duo.start_server(data_dashboard_app.app)
 
-    dash_duo.wait_for_text_to_equal("#title", "Data Visualizer", timeout=4)
+    dash_duo.wait_for_text_to_equal("#title", "Data Dashboard", timeout=4)
     assert dash_duo.get_logs() == [], "browser console should contain no error"
 
     send_data_to_dash(
@@ -27,11 +27,11 @@ def test_002_data_visualizer_basic_types(dash_duo):
     assert dash_duo.get_logs() == [], "browser console should contain no error"
 
 
-def test_003_data_visualizer_data_array(dash_duo):
-    data_visualizer = DataVisualizerApp()
-    dash_duo.start_server(data_visualizer.app)
+def test_003_data_dashboard_data_array(dash_duo):
+    data_dashboard_app = DataDashboardApp()
+    dash_duo.start_server(data_dashboard_app.app)
 
-    dash_duo.wait_for_text_to_equal("#title", "Data Visualizer", timeout=4)
+    dash_duo.wait_for_text_to_equal("#title", "Data Dashboard", timeout=4)
     assert dash_duo.get_logs() == [], "browser console should contain no error"
 
     send_data_to_dash(

@@ -55,7 +55,7 @@ def deserialise_data(data):
         return data
 
 
-def send_data_to_dash(data, url="http://localhost:8050/data-visualizer"):
+def send_data_to_dash(data, url="http://localhost:8050/data-dashboard"):
     serialised_data = serialise_data(data)
     response = requests.post(f"{url}/update-data", json=serialised_data)
     if response.ok:

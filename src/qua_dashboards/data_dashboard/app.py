@@ -5,7 +5,7 @@ import dash
 from dash import Dash, html, dcc, State, Input, Output
 from dash.development.base_component import Component
 import dash_bootstrap_components as dbc
-from qua_dashboards.data_visualizer.component_types.xarray_component import (
+from qua_dashboards.data_dashboard.component_types.xarray_component import (
     create_dataset_component,
 )
 from qua_dashboards.logging_config import logger
@@ -15,18 +15,18 @@ import matplotlib.pyplot as plt
 from qua_dashboards.utils.data_utils import deserialise_data, serialise_data
 from qua_dashboards.utils.dash_utils import convert_to_dash_component
 from dash.dependencies import MATCH
-from qua_dashboards.data_visualizer.component_types import (
+from qua_dashboards.data_dashboard.component_types import (
     create_data_array_component,
     create_standard_component,
     create_image_component,
 )
 
 
-class DataVisualizerApp:
+class DataDashboardApp:
     def __init__(
         self,
         update_interval: int = 100,
-        title: str = "Data Visualizer",
+        title: str = "Data Dashboard",
         include_title: bool = True,
         update_button: bool = False,
     ):
@@ -68,7 +68,7 @@ class DataVisualizerApp:
         if app is None:
             app = self.app
 
-        logger.info("Setting up callbacks for data-visualizer")
+        logger.info("Setting up callbacks for data-dashboard")
 
         inputs = [Input("interval-component", "n_intervals")]
         if self.update_button:
@@ -178,7 +178,7 @@ class DataVisualizerApp:
             app = self.app
         server = app.server
 
-        @server.route("/data-visualizer/update-data", methods=["POST"])
+        @server.route("/data-dashboard/update-data", methods=["POST"])
         def update_data_endpoint():
             serialised_data = request.json
             data = deserialise_data(serialised_data)
@@ -187,5 +187,5 @@ class DataVisualizerApp:
 
 
 if __name__ == "__main__":
-    app = DataVisualizerApp()
+    app = DataDashboardApp()
     app.run(threaded=True)

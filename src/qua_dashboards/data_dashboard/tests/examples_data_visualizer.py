@@ -75,9 +75,11 @@ def create_random_figure():
     return fig
 
 
-fig = create_random_figure()
-data = {"random_matplotlib_figure": fig}
-send_data_to_dash(data)
+for k in range(100):
+    fig = create_random_figure()
+    data = {"random_matplotlib_figure": fig}
+    send_data_to_dash(data)
+    time.sleep(0.2)
 
 # %%
 

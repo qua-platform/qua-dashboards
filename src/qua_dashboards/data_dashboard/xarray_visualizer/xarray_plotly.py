@@ -2,7 +2,7 @@ import dash
 from dash import html, dcc
 from dash.dependencies import Input, Output, State
 import plotly.graph_objects as go
-from qua_dashboards.data_visualizer.plotting import plot_xarray, update_plot_figure
+from qua_dashboards.data_dashboard.plotting import plot_xarray, update_plot_figure
 from data_generation import generate_random_xarray
 from qua_dashboards.logging_config import logger
 from typing import Optional

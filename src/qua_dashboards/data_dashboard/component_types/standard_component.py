@@ -7,7 +7,7 @@ import dash_bootstrap_components as dbc
 from plotly import graph_objects as go
 
 from qua_dashboards.logging_config import logger
-from qua_dashboards.data_visualizer.plotting import update_xarray_plot
+from qua_dashboards.data_dashboard.plotting import update_xarray_plot
 
 
 GRAPH_STYLE = {"aspect-ratio": "1 / 1", "max-width": "400px"}

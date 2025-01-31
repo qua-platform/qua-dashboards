@@ -3,15 +3,15 @@ name = "qua-dashboards"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.9,<3.13"
 dependencies = [
     "dash-bootstrap-components>=1.6.0",
     "dash>=2.18.2",
     "pandas>=2.2.3",
-    "xarray>=2024.11.0",
+    "xarray==2024.07.0",
     "ipykernel>=6.29.5",
     "dash-extensions>=1.0.19",
-    "matplotlib>=3.10.0",
+    "matplotlib>=3.9.0",
 ]
 
 [build-system]

@@ -2,12 +2,9 @@ from typing import Type, TypeVar, Optional, Any
 
 from dash.development.base_component import Component
 from dash import html
-from dash import dcc
 import dash_bootstrap_components as dbc
-from plotly import graph_objects as go
 
 from qua_dashboards.logging_config import logger
-from qua_dashboards.data_dashboard.plotting import update_xarray_plot
 
 
 GRAPH_STYLE = {"aspect-ratio": "1 / 1", "max-width": "400px"}
@@ -29,7 +26,7 @@ def create_standard_component(
     ):
         logger.info(f"Creating new standard component ({label}: {value})")
         root_component = root_component_class(
-            id=label,
+            id=f"data-entry-{label}",
             children=[
                 dbc.Label(label, style={"fontWeight": "bold"}),
                 dbc.Label(":  ", style={"whiteSpace": "pre"}),

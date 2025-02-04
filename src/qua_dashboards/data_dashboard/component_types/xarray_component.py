@@ -26,7 +26,7 @@ def _create_root_component(
         T: An instance of the root component class.
     """
     return root_component_class(
-        id=label,
+        id=f"data-entry-{label}",
         children=[
             dbc.Label(
                 label,
@@ -59,6 +59,8 @@ def _validate_data_array_component(
     if not isinstance(component, root_component_class):
         return False
     if not getattr(component, "data-class", None) == "xarray_data_array_component":
+        return False
+    if value.ndim > 2:
         return False
     return True
 

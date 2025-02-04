@@ -27,7 +27,7 @@ class DataDashboardApp:
         self,
         update_interval: int = 100,
         title: str = "Data Dashboard",
-        include_title: bool = True,
+        include_title: bool = False,
         update_button: bool = False,
     ):
         self.app = Dash(
@@ -52,7 +52,7 @@ class DataDashboardApp:
         if update_button:
             self.app.layout.children.insert(0, dbc.Button("Update", id="update-button"))
         if include_title:
-            self.app.layout.children.insert(0, html.H1("Data Visualizer", id="title"))
+            self.app.layout.children.insert(0, html.H1("Data Dashboard", id="title"))
 
         self._collapse_button_clicks = {}
 
@@ -92,9 +92,11 @@ class DataDashboardApp:
 
             current_children = convert_to_dash_component(current_children)
 
-            logger.info(f"Updating data-container children")
+            logger.info("Updating data-container children")
 
-            current_children_dict = {child.id: child for child in current_children}
+            current_children_dict = {
+                child.id.replace("data-entry-", ""): child for child in current_children
+            }
 
             children = []
             for key, value in self.data.items():

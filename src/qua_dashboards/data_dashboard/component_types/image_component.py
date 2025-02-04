@@ -21,7 +21,7 @@ def _create_root_component(
         T: An instance of the root component class.
     """
     return root_component_class(
-        id=label,
+        id=f"data-entry-{label}",
         children=[
             dbc.Label(
                 label,

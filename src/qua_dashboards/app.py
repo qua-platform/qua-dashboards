@@ -8,7 +8,7 @@ import dash_bootstrap_components as dbc
 def create_app(requests_pathname_prefix: Optional[str] = None) -> Dash:
     kwargs = {}
     if requests_pathname_prefix is not None:
-        kwargs["requests_pathname_prefix"] = "/dashboards/"
+        kwargs["requests_pathname_prefix"] = requests_pathname_prefix
     app = Dash(
         __name__,
         use_pages=True,
@@ -16,6 +16,7 @@ def create_app(requests_pathname_prefix: Optional[str] = None) -> Dash:
         **kwargs,
     )
 
+    # TODO remove
     dash.register_page(
         "another_home", layout=html.Div("We're home!"), path="/other-path"
     )
@@ -24,24 +25,6 @@ def create_app(requests_pathname_prefix: Optional[str] = None) -> Dash:
     )
 
     app.layout = html.Div()
-    #     [
-    #         html.H1("App Frame"),
-    #         html.Div(
-    #             [
-    #                 html.Div(
-    #                     dcc.Link(
-    #                         f"{page['name']} - {page['path']}",
-    #                         href=(page["relative_path"])
-    #                     )
-    #                 )
-    #                 for page in dash.page_registry.values()
-    #                 if page["module"] != "pages.not_found_404"
-    #             ]
-    #         ),
-    #         html.Hr(),
-    #         dash.page_container,
-    #     ]
-    # )
     return app
 
 

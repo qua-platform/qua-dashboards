@@ -1,10 +1,10 @@
-from qualang_tools.control_panel.video_mode.dash_tools import *
-from qualang_tools.control_panel.video_mode.sweep_axis import SweepAxis
-from qualang_tools.control_panel.video_mode.voltage_parameters import *
-from qualang_tools.control_panel.video_mode.inner_loop_actions import *
-from qualang_tools.control_panel.video_mode.scan_modes import *
-from qualang_tools.control_panel.video_mode.data_acquirers import *
-from qualang_tools.control_panel.video_mode.video_mode import *
+from qua_dashboards.video_mode.dash_tools import *
+from qua_dashboards.video_mode.sweep_axis import SweepAxis
+from qua_dashboards.video_mode.voltage_parameters import *
+from qua_dashboards.video_mode.inner_loop_actions import *
+from qua_dashboards.video_mode.scan_modes import *
+from qua_dashboards.video_mode.data_acquirers import *
+from qua_dashboards.video_mode.video_mode import *
 
 
 if __name__ == "__main__":

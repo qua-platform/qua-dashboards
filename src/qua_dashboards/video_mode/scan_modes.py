@@ -7,7 +7,7 @@ from matplotlib.ticker import MultipleLocator
 from qm.qua import declare, fixed, if_, assign, for_, for_each_, QuaVariableType
 
 from qualang_tools.loops import from_array
-from qualang_tools.control_panel.video_mode.dash_tools import BaseDashComponent
+from qua_dashboards.video_mode.dash_tools import BaseDashComponent
 
 
 class ScanMode(BaseDashComponent, ABC):
@@ -23,7 +23,9 @@ class ScanMode(BaseDashComponent, ABC):
     def get_idxs(self, x_points: int, y_points: int) -> Tuple[np.ndarray, np.ndarray]:
         pass
 
-    def plot_scan(self, x_points: int, y_points: int) -> Tuple[figure.Figure, axes.Axes]:
+    def plot_scan(
+        self, x_points: int, y_points: int
+    ) -> Tuple[figure.Figure, axes.Axes]:
         idxs_x, idxs_y = self.get_idxs(x_points, y_points)
 
         u = np.diff(idxs_x)
@@ -84,7 +86,9 @@ class SwitchRasterScan(ScanMode):
             For an array centered around 0, the scan will start with 0 and progressively increase in amplitude.
     """
 
-    def __init__(self, component_id: str = "switch-raster-scan", start_from_middle: bool = True):
+    def __init__(
+        self, component_id: str = "switch-raster-scan", start_from_middle: bool = True
+    ):
         super().__init__(component_id=component_id)
         self.start_from_middle = start_from_middle
 
@@ -106,7 +110,9 @@ class SwitchRasterScan(ScanMode):
         return np.array(interleaved)
 
     def get_idxs(self, x_points: int, y_points: int) -> Tuple[np.ndarray, np.ndarray]:
-        y_idxs = self.interleave_arr(np.arange(y_points), start_from_middle=self.start_from_middle)
+        y_idxs = self.interleave_arr(
+            np.arange(y_points), start_from_middle=self.start_from_middle
+        )
         x_idxs = np.tile(np.arange(x_points), y_points)
         y_idxs = np.repeat(y_idxs, x_points)
         return x_idxs, y_idxs

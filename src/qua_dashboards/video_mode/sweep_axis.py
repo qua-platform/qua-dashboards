@@ -3,7 +3,7 @@ from typing import Optional
 
 import numpy as np
 
-from qualang_tools.control_panel.video_mode.voltage_parameters import VoltageParameter
+from qua_dashboards.video_mode.voltage_parameters import VoltageParameter
 
 
 __all__ = ["SweepAxis"]

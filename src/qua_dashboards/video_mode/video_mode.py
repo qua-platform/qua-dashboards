@@ -1,14 +1,20 @@
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
-from dash import dcc, html, ALL, MATCH
-from dash_extensions.enrich import DashProxy, Output, Input, State, BlockingCallbackTransform
+from dash import dcc, html, ALL
+from dash_extensions.enrich import (
+    DashProxy,
+    Output,
+    Input,
+    State,
+    BlockingCallbackTransform,
+)
 import dash_bootstrap_components as dbc  # Add this import
 
 import logging
 
-from qualang_tools.control_panel.video_mode.data_acquirers import BaseDataAcquirer
-from .dash_tools import create_axis_layout, create_input_field, xarray_to_plotly
+from qua_dashboards.video_mode.data_acquirers import BaseDataAcquirer
+from qua_dashboards.video_mode.dash_tools import xarray_to_plotly
 
 
 __all__ = ["VideoMode"]
@@ -18,14 +24,17 @@ class VideoMode:
     """
     A class for visualizing and controlling data acquisition in video mode.
 
-    This class provides a dashboard interface for visualizing and controlling data acquisition in video mode.
-    It uses Dash for the web interface and Plotly for the heatmap visualization.
+    This class provides a dashboard interface for visualizing and controlling data
+    acquisition in video mode. It uses Dash for the web interface and Plotly for the
+    heatmap visualization.
 
     Attributes:
-        data_acquirer (BaseDataAcquirer): The data acquirer object that provides the data to be visualized.
+        data_acquirer (BaseDataAcquirer): The data acquirer object that provides the
+            data to be visualized.
         save_path (Union[str, Path]): The path where data and images will be saved.
-        update_interval (float): The interval at which the data is updated in the dashboard (in seconds).
-            If the previous update was not finished in the given interval, the update will be skipped.
+        update_interval (float): The interval at which the data is updated in the
+            dashboard (in seconds). If the previous update was not finished in the given
+            interval, the update will be skipped.
     """
 
     def __init__(
@@ -100,7 +109,11 @@ class VideoMode:
                                     ],
                                     className="mb-4",
                                 ),
-                                html.Div(self.data_acquirer.get_dash_components(include_subcomponents=True)),
+                                html.Div(
+                                    self.data_acquirer.get_dash_components(
+                                        include_subcomponents=True
+                                    )
+                                ),
                                 dbc.Row(
                                     [
                                         dbc.Col(
@@ -136,12 +149,18 @@ class VideoMode:
                         ),
                     ]
                 ),
-                dcc.Interval(id="interval-component", interval=self.update_interval * 1000, n_intervals=0),
+                dcc.Interval(
+                    id="interval-component",
+                    interval=self.update_interval * 1000,
+                    n_intervals=0,
+                ),
             ],
             fluid=True,
             style={"height": "100vh"},
         )
-        logging.debug(f"Dash layout created, update interval: {self.update_interval*1000} ms")
+        logging.debug(
+            f"Dash layout created, update interval: {self.update_interval * 1000} ms"
+        )
         self.add_callbacks()
 
     def add_callbacks(self):
@@ -165,16 +184,22 @@ class VideoMode:
             blocking=True,
         )
         def update_heatmap(n_intervals):
-            logging.debug(f"*** Dash callback {n_intervals} called at {datetime.now().strftime('%H:%M:%S.%f')[:-3]}")
+            logging.debug(
+                f"*** Dash callback {n_intervals} called at {datetime.now().strftime('%H:%M:%S.%f')[:-3]}"
+            )
 
             if self.paused or self._is_updating:
-                logging.debug(f"Updates paused at iteration {self.data_acquirer.num_acquisitions}")
+                logging.debug(
+                    f"Updates paused at iteration {self.data_acquirer.num_acquisitions}"
+                )
                 return self.fig, f"Iteration: {self.data_acquirer.num_acquisitions}"
 
             # Increment iteration counter and update frontend
             updated_xarr = self.data_acquirer.update_data()
             self.fig = xarray_to_plotly(updated_xarr)
-            logging.debug(f"Updating heatmap, num_acquisitions: {self.data_acquirer.num_acquisitions}")
+            logging.debug(
+                f"Updating heatmap, num_acquisitions: {self.data_acquirer.num_acquisitions}"
+            )
             return self.fig, f"Iteration: {self.data_acquirer.num_acquisitions}"
 
         # Create states for all input components
@@ -198,8 +223,12 @@ class VideoMode:
             params = {}
             component_inputs_iterator = iter(component_inputs)
             for component_id in self.data_acquirer.get_component_ids():
-                ids, values = next(component_inputs_iterator), next(component_inputs_iterator)
-                params[component_id] = {id["index"]: value for id, value in zip(ids, values)}
+                ids, values = next(component_inputs_iterator), next(
+                    component_inputs_iterator
+                )
+                params[component_id] = {
+                    id["index"]: value for id, value in zip(ids, values)
+                }
 
             logging.debug(f"Updating params: {params}")
             self.data_acquirer.update_parameters(params)
@@ -217,7 +246,7 @@ class VideoMode:
 
     def run(self, debug: bool = True, use_reloader: bool = False):
         logging.debug("Starting Dash server")
-        self.app.run_server(debug=debug, use_reloader=use_reloader)
+        self.app.server.run(debug=debug, use_reloader=use_reloader)
 
     def save_data(self, idx: Optional[int] = None):
         """
@@ -253,14 +282,18 @@ class VideoMode:
                 idx += 1
 
         if idx > 9999:
-            raise ValueError("Maximum number of data files (9999) reached. Cannot save more.")
+            raise ValueError(
+                "Maximum number of data files (9999) reached. Cannot save more."
+            )
 
         filename = f"data_{idx}.h5"
         filepath = data_save_path / filename
 
         if filepath.exists():
             raise FileExistsError(f"File {filepath} already exists.")
-        self.data_acquirer.data_array.to_netcdf(filepath)  # , engine="h5netcdf", format="NETCDF4")
+        self.data_acquirer.data_array.to_netcdf(
+            filepath
+        )  # , engine="h5netcdf", format="NETCDF4")
         logging.info(f"Data saved successfully: {filepath}")
         logging.info("Data save operation completed.")
         return idx
@@ -297,7 +330,9 @@ class VideoMode:
             self.fig.write_image(filepath)
             logging.info(f"Image saved successfully: {filepath}")
         else:
-            raise ValueError("Maximum number of screenshots (9999) reached. Cannot save more.")
+            raise ValueError(
+                "Maximum number of screenshots (9999) reached. Cannot save more."
+            )
         logging.info("Image save operation completed.")
 
         return idx
@@ -330,7 +365,9 @@ class VideoMode:
         try:
             self.save_data(idx)
         except FileExistsError:
-            logging.warning(f"Data file with index {idx} already exists. Image saved, but data was not overwritten.")
+            logging.warning(
+                f"Data file with index {idx} already exists. Image saved, but data was not overwritten."
+            )
 
         logging.info(f"Save operation completed with index: {idx}")
         return idx

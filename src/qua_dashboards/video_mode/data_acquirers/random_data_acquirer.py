@@ -4,9 +4,9 @@ from typing import Any, Dict, List
 
 from dash import html
 
-from qualang_tools.control_panel.video_mode.sweep_axis import SweepAxis
-from qualang_tools.control_panel.video_mode.data_acquirers.base_data_aqcuirer import BaseDataAcquirer
-from qualang_tools.control_panel.video_mode.dash_tools import create_input_field, ModifiedFlags
+from qua_dashboards.video_mode.sweep_axis import SweepAxis
+from qua_dashboards.video_mode.data_acquirers.base_data_aqcuirer import BaseDataAcquirer
+from qua_dashboards.video_mode.dash_tools import create_input_field, ModifiedFlags
 
 
 __all__ = ["RandomDataAcquirer"]

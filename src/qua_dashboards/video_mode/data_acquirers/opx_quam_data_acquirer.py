@@ -2,9 +2,9 @@ from typing import Any, Callable, Literal, Optional
 
 from qm import QuantumMachinesManager
 
-from qualang_tools.control_panel.video_mode.data_acquirers.opx_data_acquirer import OPXDataAcquirer
-from qualang_tools.control_panel.video_mode.scan_modes import ScanMode
-from qualang_tools.control_panel.video_mode.sweep_axis import SweepAxis
+from qua_dashboards.video_mode.data_acquirers.opx_data_acquirer import OPXDataAcquirer
+from qua_dashboards.video_mode.scan_modes import ScanMode
+from qua_dashboards.video_mode.sweep_axis import SweepAxis
 
 
 __all__ = ["OPXQuamDataAcquirer"]

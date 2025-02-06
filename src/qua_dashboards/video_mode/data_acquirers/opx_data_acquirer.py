@@ -10,10 +10,10 @@ from qm import QuantumMachinesManager, Program
 from qm.jobs.running_qm_job import RunningQmJob
 from qm.qua import program, declare_stream, infinite_loop_, save, stream_processing, wait
 
-from qualang_tools.control_panel.video_mode.dash_tools import ModifiedFlags
-from qualang_tools.control_panel.video_mode.data_acquirers.base_data_aqcuirer import BaseDataAcquirer
-from qualang_tools.control_panel.video_mode.sweep_axis import SweepAxis
-from qualang_tools.control_panel.video_mode.scan_modes import ScanMode
+from qua_dashboards.video_mode.dash_tools import ModifiedFlags
+from qua_dashboards.video_mode.data_acquirers.base_data_aqcuirer import BaseDataAcquirer
+from qua_dashboards.video_mode.sweep_axis import SweepAxis
+from qua_dashboards.video_mode.scan_modes import ScanMode
 
 
 __all__ = ["OPXDataAcquirer"]

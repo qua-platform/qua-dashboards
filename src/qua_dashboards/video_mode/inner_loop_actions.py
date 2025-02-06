@@ -19,7 +19,11 @@ from qm.qua import (
     if_,
     ramp_to_zero,
 )
-from qualang_tools.control_panel.video_mode.dash_tools import BaseDashComponent, ModifiedFlags, create_input_field
+from qua_dashboards.video_mode.dash_tools import (
+    BaseDashComponent,
+    ModifiedFlags,
+    create_input_field,
+)
 from qualang_tools.units.units import unit
 from qm.qua.lib import Cast, Math
 
@@ -29,7 +33,9 @@ class InnerLoopAction(BaseDashComponent, ABC):
         super().__init__(component_id=component_id)
 
     @abstractmethod
-    def __call__(self, x: QuaVariableType, y: QuaVariableType) -> Tuple[QuaVariableType, QuaVariableType]:
+    def __call__(
+        self, x: QuaVariableType, y: QuaVariableType
+    ) -> Tuple[QuaVariableType, QuaVariableType]:
         pass
 
     def initial_action(self):
@@ -72,7 +78,9 @@ class BasicInnerLoopAction(InnerLoopAction):
         set_dc_offset(self.x_elem, "single", x)
         set_dc_offset(self.y_elem, "single", y)
 
-    def __call__(self, x: QuaVariableType, y: QuaVariableType) -> Tuple[QuaVariableType, QuaVariableType]:
+    def __call__(
+        self, x: QuaVariableType, y: QuaVariableType
+    ) -> Tuple[QuaVariableType, QuaVariableType]:
         outputs = {"I": declare(fixed), "Q": declare(fixed)}
 
         self.set_dc_offsets(x, y)
@@ -142,10 +150,16 @@ class BasicInnerLoopActionQuam(InnerLoopAction):
 
         with if_(duration > 4):
             with if_(dV > 0):
-                assign(self.reached_voltage, previous_voltage + Cast.mul_fixed_by_int(qua_ramp, duration << 2))
+                assign(
+                    self.reached_voltage,
+                    previous_voltage + Cast.mul_fixed_by_int(qua_ramp, duration << 2),
+                )
                 play(ramp(self.ramp_rate / 1e9), element.name, duration=duration)
             with else_():
-                assign(self.reached_voltage, previous_voltage - Cast.mul_fixed_by_int(qua_ramp, duration << 2))
+                assign(
+                    self.reached_voltage,
+                    previous_voltage - Cast.mul_fixed_by_int(qua_ramp, duration << 2),
+                )
                 play(ramp(-self.ramp_rate / 1e9), element.name, duration=duration)
         with else_():
             ramp_rate = dV * (1 / 16e-9)
@@ -171,7 +185,9 @@ class BasicInnerLoopActionQuam(InnerLoopAction):
             assign(self._last_x_voltage, x)
             assign(self._last_y_voltage, y)
 
-    def __call__(self, x: QuaVariableType, y: QuaVariableType) -> Tuple[QuaVariableType, QuaVariableType]:
+    def __call__(
+        self, x: QuaVariableType, y: QuaVariableType
+    ) -> Tuple[QuaVariableType, QuaVariableType]:
         self.set_dc_offsets(x, y)
         align()
 
@@ -258,8 +274,13 @@ class BasicInnerLoopActionQuam(InnerLoopAction):
             raise
 
         flags = ModifiedFlags.NONE
-        if self.readout_pulse.channel.intermediate_frequency != params["readout_frequency"]:
-            self.readout_pulse.channel.intermediate_frequency = params["readout_frequency"]
+        if (
+            self.readout_pulse.channel.intermediate_frequency
+            != params["readout_frequency"]
+        ):
+            self.readout_pulse.channel.intermediate_frequency = params[
+                "readout_frequency"
+            ]
             flags |= ModifiedFlags.PARAMETERS_MODIFIED
             flags |= ModifiedFlags.PROGRAM_MODIFIED
             flags |= ModifiedFlags.CONFIG_MODIFIED

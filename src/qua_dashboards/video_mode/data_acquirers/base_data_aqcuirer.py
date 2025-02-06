@@ -6,9 +6,13 @@ import numpy as np
 from dash import html
 import dash_bootstrap_components as dbc
 
-from qualang_tools.control_panel.video_mode.sweep_axis import SweepAxis
-from qualang_tools.control_panel.video_mode.dash_tools import create_axis_layout, create_input_field
-from qualang_tools.control_panel.video_mode.dash_tools import BaseDashComponent, ModifiedFlags
+from qua_dashboards.video_mode.sweep_axis import SweepAxis
+from qua_dashboards.video_mode.dash_tools import (
+    create_axis_layout,
+    create_input_field,
+    BaseDashComponent,
+    ModifiedFlags,
+)
 
 
 __all__ = ["BaseDataAcquirer"]
@@ -104,7 +108,9 @@ class BaseDataAcquirer(BaseDashComponent, ABC):
             self.data_array.coords[axis.name].attrs.update(attrs)
 
         mean_abs_data = np.mean(np.abs(averaged_data))
-        logging.debug(f"Data acquired with shape: {self.data_array.shape}, mean(abs(data)) = {mean_abs_data}")
+        logging.debug(
+            f"Data acquired with shape: {self.data_array.shape}, mean(abs(data)) = {mean_abs_data}"
+        )
         return self.data_array
 
     def get_dash_components(self, include_subcomponents: bool = True) -> List[html.Div]:

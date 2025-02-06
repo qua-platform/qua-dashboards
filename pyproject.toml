@@ -12,6 +12,7 @@ dependencies = [
     "ipykernel>=6.29.5",
     "dash-extensions>=1.0.19",
     "matplotlib>=3.9.0",
+    "qualang-tools>=0.18.2",
 ]
 
 [build-system]

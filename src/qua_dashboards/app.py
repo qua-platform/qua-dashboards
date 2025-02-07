@@ -1,7 +1,6 @@
 from typing import Optional
 
-import dash
-from dash import Dash, html, dcc
+from dash import Dash, html
 import dash_bootstrap_components as dbc
 
 
@@ -16,18 +15,10 @@ def create_app(requests_pathname_prefix: Optional[str] = None) -> Dash:
         **kwargs,
     )
 
-    # TODO remove
-    dash.register_page(
-        "another_home", layout=html.Div("We're home!"), path="/other-path"
-    )
-    dash.register_page(
-        "very_important", layout=html.Div("Don't miss it!"), path="/important", order=0
-    )
-
     app.layout = html.Div()
     return app
 
 
 if __name__ == "__main__":
     app = create_app()
-    app.run(debug=True)
+    app.run(debug=False)

@@ -29,16 +29,9 @@ class DataDashboardApp:
         title: str = "Data Dashboard",
         include_title: bool = False,
         update_button: bool = False,
+        app: Optional[Dash] = None,
     ):
-        self.app = Dash(
-            __name__,
-            title=title,
-            assets_folder="../assets",
-            external_stylesheets=[dbc.themes.BOOTSTRAP],
-        )
-        logger.info("Dash app initialized")
-
-        self.app.layout = html.Div(
+        self.layout = html.Div(
             [
                 html.Div(id="data-container", children=[]),
                 dcc.Interval(
@@ -47,6 +40,18 @@ class DataDashboardApp:
             ],
             style={"margin": "10px"},
         )
+
+        if app is None:
+            self.app = Dash(
+                __name__,
+                title=title,
+                assets_folder="../assets",
+                external_stylesheets=[dbc.themes.BOOTSTRAP],
+            )
+            self.app.layout = self.layout
+        else:
+            self.app = app
+        logger.info("Dash app initialized")
 
         self.update_button = update_button
         if update_button:

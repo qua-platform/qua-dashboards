@@ -1,4 +1,3 @@
-import numpy as np
 import xarray as xr
 from typing import Type, TypeVar, Optional
 from dash.development.base_component import Component
@@ -74,45 +73,26 @@ class DataArrayComponent(BaseDataComponent):
             # Use the same width as the graph.
             graph_width = GRAPH_STYLE.get("max-width", "400px")
 
-            # Create the inner control (slider or dropdown). For sliders, we do not pass a style
-            # directly since dcc.Slider doesn't accept a style argument; instead we wrap it.
-            if isinstance(first_value, (int, float, np.number)):
-                control_inner = dcc.Slider(
-                    id={"type": "data-array-slicer", "index": label},
-                    min=0,
-                    max=len(coord) - 1,
-                    step=1,
-                    value=0,
-                    updatemode="drag",
-                    marks={i: str(coord[i]) for i in range(len(coord))},
-                    tooltip={"placement": "bottom", "always_visible": True},
-                )
-            elif isinstance(first_value, str):
-                control_inner = dcc.Dropdown(
-                    id={"type": "data-array-slicer", "index": label},
-                    options=[
-                        {"label": str(v), "value": i} for i, v in enumerate(coord)
-                    ],
-                    value=0,
-                    style={"width": "100%"},
-                )
-            else:
-                control_inner = dcc.Slider(
-                    id={"type": "data-array-slicer", "index": label},
-                    min=0,
-                    max=len(coord) - 1,
-                    updatemode="drag",
-                    step=1,
-                    value=0,
-                    marks={i: str(coord[i]) for i in range(len(coord))},
-                )
+            # Always use a slider. The slider's marks display the string labels,
+            # and we force updatemode="drag". We disable the built-in tooltip to prevent
+            # showing the numeric index.
+            control_inner = dcc.Slider(
+                id={"type": "data-array-slicer", "index": label},
+                min=0,
+                max=len(coord) - 1,
+                step=1,
+                value=0,
+                marks={i: str(coord[i]) for i in range(len(coord))},
+                tooltip={"placement": "bottom", "always_visible": False},
+                updatemode="drag",
+            )
 
-            # Wrap the control_inner in a Div to ensure it fills the grid cell.
+            # Wrap the slider in a Div to ensure it fills the grid cell.
             control_inner_wrapper = html.Div(
                 control_inner, className="control-inner", style={"width": "100%"}
             )
 
-            # Build a grid row with two columns: the label (first column) and the control (second).
+            # Build a grid row with two columns: the label and the slider.
             control_row = html.Div(
                 [
                     html.Div(

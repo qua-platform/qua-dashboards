@@ -91,7 +91,7 @@ for k in range(100):
 # %% Send a 3D xarray data array
 data = {
     "bye": "hello",
-    "data_array": random_array(80, 80, 80),
+    "data_array": random_array(10, 10, 10),
 }
 t0 = time.time()
 client.send_data(data)

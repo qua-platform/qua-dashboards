@@ -19,10 +19,10 @@ from qm.qua import (
     if_,
     ramp_to_zero,
 )
+from qua_dashboards.utils.dash_utils import create_input_field
 from qua_dashboards.video_mode.dash_tools import (
     BaseDashComponent,
     ModifiedFlags,
-    create_input_field,
 )
 from qualang_tools.units.units import unit
 from qm.qua.lib import Cast, Math

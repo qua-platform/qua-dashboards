@@ -35,4 +35,48 @@ def convert_to_dash_component(elem: Union[dict, list]) -> Any:
         raise ValueError(f"Unknown element: {elem}")
     else:
         return elem
-    
+
+
+def create_input_field(
+    id,
+    label,
+    value,
+    debounce=True,
+    input_style=None,
+    div_style=None,
+    units=None,
+    **kwargs,
+):
+    if input_style is None:
+        input_style = {"width": "80px"}
+
+    elements = [
+        dbc.Col(
+            dbc.Label(
+                f"{label}:",
+                html_for=id,
+                className="mr-2",
+                style={"white-space": "nowrap"},
+            ),
+            width="auto",
+        ),
+        dbc.Col(
+            dbc.Input(
+                id=id,
+                type="number",
+                value=value,
+                debounce=debounce,
+                style=input_style,
+                **kwargs,
+            ),
+            width="auto",
+        ),
+    ]
+    if units is not None:
+        elements.append(dbc.Col(dbc.Label(units, className="ml-2"), width="auto"))
+
+    return dbc.Row(
+        elements,
+        className="align-items-center mb-2",
+        style=div_style,
+    )

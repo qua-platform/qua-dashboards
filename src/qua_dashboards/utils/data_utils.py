@@ -1,6 +1,5 @@
 import xarray as xr
 import warnings
-import requests
 import matplotlib.pyplot as plt
 import io
 import base64
@@ -53,14 +52,3 @@ def deserialise_data(data):
         return [deserialise_data(item) for item in data]
     else:
         return data
-
-
-def send_data_to_dash(data, url="http://localhost:8050/data-dashboard"):
-    serialised_data = serialise_data(data)
-    response = requests.post(f"{url}/update-data", json=serialised_data)
-    if response.ok:
-        print("Data sent successfully")
-        return True
-    else:
-        print("Failed to send data")
-        return False

@@ -7,6 +7,8 @@ import plotly.graph_objects as go
 import xarray as xr
 import dash_bootstrap_components as dbc
 
+from qua_dashboards.utils.dash_utils import create_input_field
+
 
 __all__ = ["xarray_to_plotly", "BaseDashComponent", "ModifiedFlags"]
 
@@ -87,51 +89,6 @@ def xarray_to_plotly(da: xr.DataArray):
     )
     fig.update_layout(xaxis_title=xaxis_label, yaxis_title=yaxis_label)
     return fig
-
-
-def create_input_field(
-    id,
-    label,
-    value,
-    debounce=True,
-    input_style=None,
-    div_style=None,
-    units=None,
-    **kwargs,
-):
-    if input_style is None:
-        input_style = {"width": "80px"}
-
-    elements = [
-        dbc.Col(
-            dbc.Label(
-                f"{label}:",
-                html_for=id,
-                className="mr-2",
-                style={"white-space": "nowrap"},
-            ),
-            width="auto",
-        ),
-        dbc.Col(
-            dbc.Input(
-                id=id,
-                type="number",
-                value=value,
-                debounce=debounce,
-                style=input_style,
-                **kwargs,
-            ),
-            width="auto",
-        ),
-    ]
-    if units is not None:
-        elements.append(dbc.Col(dbc.Label(units, className="ml-2"), width="auto"))
-
-    return dbc.Row(
-        elements,
-        className="align-items-center mb-2",
-        style=div_style,
-    )
 
 
 def create_axis_layout(

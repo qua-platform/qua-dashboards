@@ -4,9 +4,10 @@ from typing import Any, Dict, List
 
 from dash import html
 
+from qua_dashboards.utils.dash_utils import create_input_field
 from qua_dashboards.video_mode.sweep_axis import SweepAxis
 from qua_dashboards.video_mode.data_acquirers.base_data_aqcuirer import BaseDataAcquirer
-from qua_dashboards.video_mode.dash_tools import create_input_field, ModifiedFlags
+from qua_dashboards.video_mode.dash_tools import ModifiedFlags
 
 
 __all__ = ["RandomDataAcquirer"]
@@ -25,7 +26,9 @@ class RandomDataAcquirer(BaseDataAcquirer):
         **kwargs,
     ):
         self.acquire_time = acquire_time
-        super().__init__(x_axis=x_axis, y_axis=y_axis, num_averages=num_averages, **kwargs)
+        super().__init__(
+            x_axis=x_axis, y_axis=y_axis, num_averages=num_averages, **kwargs
+        )
 
     def acquire_data(self) -> np.ndarray:
         """Acquire random data.
@@ -37,7 +40,9 @@ class RandomDataAcquirer(BaseDataAcquirer):
         return results
 
     def get_dash_components(self, include_subcomponents: bool = True) -> List[html.Div]:
-        dash_components = super().get_dash_components(include_subcomponents=include_subcomponents)
+        dash_components = super().get_dash_components(
+            include_subcomponents=include_subcomponents
+        )
         dash_components.extend(
             [
                 html.Div(

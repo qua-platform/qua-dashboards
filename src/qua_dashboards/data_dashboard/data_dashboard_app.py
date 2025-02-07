@@ -1,24 +1,20 @@
 import time
-from typing import Any, Optional
-import xarray as xr
+from typing import Optional
+
 import dash
+import dash_bootstrap_components as dbc
 from dash import Dash, html, dcc, State, Input, Output
 from dash.development.base_component import Component
-import dash_bootstrap_components as dbc
-from qua_dashboards.data_dashboard.component_types.xarray_component import (
-    create_dataset_component,
-)
-from qua_dashboards.logging_config import logger
-from flask import request, jsonify
-import matplotlib.pyplot as plt
-
-from qua_dashboards.utils.data_utils import deserialise_data, serialise_data
-from qua_dashboards.utils.dash_utils import convert_to_dash_component
 from dash.dependencies import MATCH
-from qua_dashboards.data_dashboard.component_types import (
-    create_data_array_component,
-    create_standard_component,
-    create_image_component,
+from flask import request, jsonify
+
+from qua_dashboards.logging_config import logger
+from qua_dashboards.utils import deserialise_data, convert_to_dash_component
+from qua_dashboards.data_dashboard.data_components import (
+    DataArrayComponent,
+    DatasetComponent,
+    ImageComponent,
+    StandardComponent,
 )
 
 
@@ -31,6 +27,12 @@ class DataDashboardApp:
         update_button: bool = False,
         app: Optional[Dash] = None,
     ):
+        self.component_types = [
+            DatasetComponent,
+            DataArrayComponent,
+            ImageComponent,
+            StandardComponent,
+        ]
         self.layout = html.Div(
             [
                 html.Div(id="data-container", children=[]),
@@ -85,8 +87,6 @@ class DataDashboardApp:
             [State("data-container", "children")],
         )
         def update_if_required(*args):
-            # if not self.update_button: args == [n_intervals, current_children]
-            # if self.update_button: args == [n_intervals, n_clicks, current_children]
             current_children = args[-1]
 
             if not self._requires_update:
@@ -105,14 +105,14 @@ class DataDashboardApp:
 
             children = []
             for key, value in self.data.items():
-                child = self.value_to_dash_component(
+                child = self.create_component(
                     label=key,
                     value=value,
                     existing_component=current_children_dict.get(key),
                 )
                 children.append(child)
 
-            print(f"Update taken: {time.perf_counter() - t0:.2f} seconds")
+            logger.info(f"Data update took: {time.perf_counter() - t0:.2f} seconds")
             return (children,)
 
         @app.callback(
@@ -140,41 +140,14 @@ class DataDashboardApp:
 
             return is_open
 
-    @staticmethod
-    def value_to_dash_component(
-        label: str, value: Any, existing_component: Optional[Component] = None
-    ):
-        if isinstance(value, xr.DataArray):
-            return create_data_array_component(
-                label=label,
-                value=value,
-                existing_component=existing_component,
-            )
-        elif isinstance(value, xr.Dataset):
-            return create_dataset_component(
-                label=label,
-                value=value,
-                existing_component=existing_component,
-            )
-        elif isinstance(value, plt.Figure):
-            image_base64 = serialise_data(value)
-            return create_image_component(
-                label=label,
-                image_base64=image_base64,
-                existing_component=existing_component,
-            )
-        elif isinstance(value, str) and value.startswith("data:image/png;base64,"):
-            return create_image_component(
-                label=label,
-                image_base64=value,
-                existing_component=existing_component,
-            )
-        else:
-            return create_standard_component(
-                label=label,
-                value=value,
-                existing_component=existing_component,
-            )
+    def create_component(
+        self, label: str, value: any, existing_component: Optional[Component] = None
+    ) -> Component:
+        for component_type in self.component_types:
+            if component_type.can_handle(value):
+                return component_type.create_component(
+                    label=label, value=value, existing_component=existing_component
+                )
 
     def update_data(self, data):
         self.data = data

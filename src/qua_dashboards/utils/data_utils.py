@@ -5,6 +5,9 @@ import io
 import base64
 
 
+__all__ = ["serialise_data", "deserialise_data"]
+
+
 def serialise_data(data):
     if isinstance(data, dict):
         return {key: serialise_data(value) for key, value in data.items()}

@@ -45,7 +45,9 @@ class DataDashboardClient:
         if self._url_future is not None:
             self._url_future.set_result(url)
         self.url = url
-        logger.info(f"Dashboard URL determined: {url}")
+
+        if url is not None:
+            logger.info(f"Data Dashboard - Using URL: {url}")
 
     @staticmethod
     def _get_dashboard_url() -> Optional[str]:
@@ -67,7 +69,7 @@ class DataDashboardClient:
             except requests.RequestException as e:
                 logger.debug(f"URL check failed for {url}: {e}")
         logger.warning(
-            "No reachable dashboard URL found; defaulting to the first candidate."
+            "Could not determine URL for Data Dashboard; Cannot send live data."
         )
         return None
 

@@ -6,7 +6,10 @@ from qua_dashboards.utils.data_utils import serialise_data
 from qua_dashboards.logging_config import logger
 
 
-class DashboardClient:
+__all__ = ["DataDashboardClient"]
+
+
+class DataDashboardClient:
     """
     Client for sending data to a Dash dashboard.
 
@@ -17,7 +20,7 @@ class DashboardClient:
 
     def __init__(self, url: Optional[str] = None):
         """
-        Initialize the DashboardClient.
+        Initialize the DataDashboardClient.
 
         Args:
             url (Optional[str]): Direct URL to the dashboard.

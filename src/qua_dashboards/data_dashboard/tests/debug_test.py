@@ -1,4 +1,4 @@
-from qua_dashboards.data_dashboard.app import DataDashboardApp
+from qua_dashboards.data_dashboard.data_dashboard_app import DataDashboardApp
 import logging
 
 logging.basicConfig(

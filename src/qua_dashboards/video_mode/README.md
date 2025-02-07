@@ -7,7 +7,7 @@ The video mode has been designed as a modular tool that is composed of four part
 1. The `OPXDataAcquirer` class, which is responsible for the data acquisition.
 2. The `ScanMode` class, which is responsible for how the 2D grid is traversed.
 3. The `InnerLoopAction` class, which is responsible for what QUA code is performed during each step of the scan.
-4. The `VideoMode` class, which handles interaction with the frontend.
+4. The `VideoModeApp` class, which handles interaction with the frontend.
 
 The `ScanMode` and `InnerLoopAction` classes are highly flexible and can be selected/modified to suit the specific needs of the user. For example, three different scan modes (`RasterScan`, `SpiralScan`, and `SwitchRasterScan`) are provided, which can be used to acquire data in different ways. Similarly, the `InnerLoopAction` class can be modified to perform additional actions, such as adding specific pulses prior to each measurement.
 
@@ -121,8 +121,8 @@ results = data_acquirer.acquire_data()
 
 Finally, we can start the video mode.
 ```python
-from qualang_tools.control_panel.video_mode.video_mode import VideoMode
-video_mode = VideoMode(data_acquirer=data_acquirer)
+from qualang_tools.control_panel.video_mode.video_mode import VideoModeApp
+video_mode = VideoModeApp(data_acquirer=data_acquirer)
 video_mode.run()
 ```
 
@@ -166,7 +166,7 @@ data_acquirer = RandomDataAcquirer(
     num_averages=5,
 )
 
-live_plotter = VideoMode(data_acquirer=data_acquirer)
+live_plotter = VideoModeApp(data_acquirer=data_acquirer)
 live_plotter.run()
 ```
 

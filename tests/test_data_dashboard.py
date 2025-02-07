@@ -3,7 +3,7 @@ import xarray as xr
 import numpy as np
 from dash.testing.composite import DashComposite
 
-from src.qua_dashboards.data_dashboard.app import DataDashboardApp
+from qua_dashboards.data_dashboard.data_dashboard_app import DataDashboardApp
 from qua_dashboards.utils.data_utils import send_data_to_dash
 
 

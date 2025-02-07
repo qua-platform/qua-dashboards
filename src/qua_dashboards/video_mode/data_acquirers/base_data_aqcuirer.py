@@ -21,8 +21,9 @@ __all__ = ["BaseDataAcquirer"]
 class BaseDataAcquirer(BaseDashComponent, ABC):
     """Base class for data acquirers.
 
-    This class defines the interface for data acquirers, which are responsible for acquiring data from a device.
-    Subclasses must implement the `acquire_data` method to provide the actual data acquisition logic.
+    This class defines the interface for data acquirers, which are responsible for
+    acquiring data from a device. Subclasses must implement the `acquire_data` method to
+    provide the actual data acquisition logic.
 
     Args:
         x_axis: The x-axis of the data acquirer.
@@ -70,7 +71,8 @@ class BaseDataAcquirer(BaseDashComponent, ABC):
     def acquire_data(self) -> np.ndarray:
         """Acquire data from the device.
 
-        This method must be implemented by subclasses to provide the actual data acquisition logic.
+        This method must be implemented by subclasses to provide the actual data
+        acquisition logic.
         """
         pass
 
@@ -109,7 +111,8 @@ class BaseDataAcquirer(BaseDashComponent, ABC):
 
         mean_abs_data = np.mean(np.abs(averaged_data))
         logging.debug(
-            f"Data acquired with shape: {self.data_array.shape}, mean(abs(data)) = {mean_abs_data}"
+            f"Data acquired with shape: {self.data_array.shape}, "
+            f"mean(abs(data)) = {mean_abs_data}"
         )
         return self.data_array
 

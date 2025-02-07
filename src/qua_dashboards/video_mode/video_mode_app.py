@@ -1,6 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
+import warnings
 from dash import dcc, html, ALL
 from dash_extensions.enrich import (
     DashProxy,
@@ -9,7 +10,7 @@ from dash_extensions.enrich import (
     State,
     BlockingCallbackTransform,
 )
-import dash_bootstrap_components as dbc  # Add this import
+import dash_bootstrap_components as dbc
 
 import logging
 
@@ -17,10 +18,10 @@ from qua_dashboards.video_mode.data_acquirers import BaseDataAcquirer
 from qua_dashboards.video_mode.dash_tools import xarray_to_plotly
 
 
-__all__ = ["VideoMode"]
+__all__ = ["VideoModeApp", "VideoMode"]
 
 
-class VideoMode:
+class VideoModeApp:
     """
     A class for visualizing and controlling data acquisition in video mode.
 
@@ -51,6 +52,7 @@ class VideoMode:
         self.update_interval = update_interval
         self._is_updating = False
 
+        # Using DashProxy so we can use dash_extensions.enrich
         self.app = DashProxy(
             __name__,
             title="Video Mode",
@@ -371,3 +373,11 @@ class VideoMode:
 
         logging.info(f"Save operation completed with index: {idx}")
         return idx
+
+
+class VideoMode(VideoModeApp):
+    def __init__(self, *args, **kwargs):
+        warnings.warn(
+            "VideoMode is deprecated, use VideoModeApp instead", DeprecationWarning
+        )
+        super().__init__(*args, **kwargs)

@@ -1,7 +1,9 @@
+import numpy as np
 import xarray as xr
 from typing import Type, TypeVar, Optional
 from dash.development.base_component import Component
 from dash import html, dcc, Input, Output, State, MATCH
+import dash_bootstrap_components as dbc
 from plotly import graph_objects as go
 from qua_dashboards.logging_config import logger
 from qua_dashboards.data_dashboard.plotting import update_xarray_plot
@@ -12,13 +14,13 @@ T = TypeVar("T", bound=Component)
 
 
 class DataArrayComponent(BaseDataComponent):
-    # Dictionary to store full 3D arrays (keyed by label) for use in callbacks.
+    # Store full 3D arrays for use in callbacks.
     _data_3d = {}
     _3d_callback_registered = False
 
     @classmethod
     def can_handle(cls, value: any) -> bool:
-        # Now accept 2D or 3D xarray DataArrays.
+        # Accept 2D or 3D xarray DataArrays.
         return isinstance(value, xr.DataArray) and value.ndim in (2, 3)
 
     @classmethod
@@ -61,58 +63,96 @@ class DataArrayComponent(BaseDataComponent):
             update_xarray_plot(graph.figure, value)
 
         elif value.ndim == 3:
-            # New behavior for 3D arrays: slice along the first (outer) dimension.
+            # For 3D arrays, assume the first dimension is the slicing dimension.
             outer_dim = value.dims[0]
-            # If a coordinate exists for the outer dimension, use it
-            # otherwise use indices.
             if outer_dim in value.coords:
                 coord = value.coords[outer_dim].values
             else:
                 coord = list(range(value.shape[0]))
             first_value = coord[0] if len(coord) > 0 else 0
 
-            # Choose a slider for numeric values and a dropdown for string values.
-            if isinstance(first_value, (int, float)):
-                control = dcc.Slider(
+            # Use the same width as the graph.
+            graph_width = GRAPH_STYLE.get("max-width", "400px")
+
+            # Create the inner control (slider or dropdown). For sliders, we do not pass a style
+            # directly since dcc.Slider doesn't accept a style argument; instead we wrap it.
+            if isinstance(first_value, (int, float, np.number)):
+                control_inner = dcc.Slider(
                     id={"type": "data-array-slicer", "index": label},
                     min=0,
                     max=len(coord) - 1,
                     step=1,
                     value=0,
+                    updatemode="drag",
                     marks={i: str(coord[i]) for i in range(len(coord))},
+                    tooltip={"placement": "bottom", "always_visible": True},
                 )
             elif isinstance(first_value, str):
-                control = dcc.Dropdown(
+                control_inner = dcc.Dropdown(
                     id={"type": "data-array-slicer", "index": label},
                     options=[
                         {"label": str(v), "value": i} for i, v in enumerate(coord)
                     ],
                     value=0,
+                    style={"width": "100%"},
                 )
             else:
-                # Fallback: use a slider with indices.
-                control = dcc.Slider(
+                control_inner = dcc.Slider(
                     id={"type": "data-array-slicer", "index": label},
                     min=0,
                     max=len(coord) - 1,
+                    updatemode="drag",
                     step=1,
                     value=0,
                     marks={i: str(coord[i]) for i in range(len(coord))},
                 )
 
-            # Create the initial slice (using index 0 of the outer dimension).
+            # Wrap the control_inner in a Div to ensure it fills the grid cell.
+            control_inner_wrapper = html.Div(
+                control_inner, className="control-inner", style={"width": "100%"}
+            )
+
+            # Build a grid row with two columns: the label (first column) and the control (second).
+            control_row = html.Div(
+                [
+                    html.Div(
+                        str(outer_dim),
+                        className="control-label",
+                        style={
+                            "textAlign": "right",
+                            "paddingRight": "10px",
+                        },
+                    ),
+                    control_inner_wrapper,
+                ],
+                style={
+                    "display": "grid",
+                    "gridTemplateColumns": "max-content 1fr",
+                    "alignItems": "center",
+                    "columnGap": "10px",
+                    "width": "100%",
+                },
+            )
+
+            # Wrap the row in a container with fixed width matching the graph.
+            control_container = html.Div(
+                children=[control_row],
+                id={"type": "data-array-control-container", "index": label},
+                style={"width": graph_width, "marginTop": "10px"},
+            )
+
+            # Create the initial slice (index 0) for the graph.
             sliced_array = value.isel({outer_dim: 0})
             fig = go.Figure(layout=dict(margin=dict(l=20, r=20, t=20, b=20)))
             update_xarray_plot(fig, sliced_array)
-            # Assign a pattern-matching id to the graph so it updates by the callback.
             graph = dcc.Graph(
                 id={"type": "data-array-graph", "index": label},
                 figure=fig,
                 style=GRAPH_STYLE,
             )
-            # Place both the graph and the slicing control in the collapsible section.
-            collapse_component.children = [graph, control]
-            # Store the full 3D array so the callback can access it.
+            # Place both the graph and the control container in the collapsible section.
+            collapse_component.children = [graph, control_container]
+            # Store the full 3D array so the callback can update slices.
             cls._data_3d[label] = value
             logger.info("Created 3D data array component with slicing control")
         else:
@@ -132,11 +172,6 @@ class DataArrayComponent(BaseDataComponent):
 
     @classmethod
     def register_callbacks(cls, app):
-        """
-        Registers a pattern-matching callback for 3D arrays.
-        This callback listens for changes in the slicing control (slider or dropdown)
-        and updates the corresponding graph.
-        """
         if not cls._3d_callback_registered:
 
             @app.callback(
@@ -154,7 +189,6 @@ class DataArrayComponent(BaseDataComponent):
                     return current_fig
                 outer_dim = full_array.dims[0]
                 sliced_array = full_array.isel({outer_dim: slice_index})
-                # Create a new figure based on the current layout.
                 fig = go.Figure(layout=current_fig["layout"])
                 update_xarray_plot(fig, sliced_array)
                 return fig

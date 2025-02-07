@@ -34,7 +34,6 @@ data = {
     "random_value": np.random.rand(),
 }
 client.send_data(data)
-time.sleep(1)
 
 
 # %% Send xarray 2D data
@@ -89,14 +88,21 @@ for k in range(100):
     time.sleep(0.2)
 
 # %% Send a 3D xarray data array
+dims = (10, 10, 10)
 data = {
     "bye": "hello",
-    "data_array": random_array(80, 80, 80),
+    "data_array": random_array(*dims),
+    "data_array_str": xr.DataArray(
+        np.random.rand(*dims),
+        name="my_arr",
+        coords={
+            "x": [f"q{i+1}" for i in range(dims[0])],
+            "y": np.arange(dims[1]),
+            "z": np.arange(dims[2]),
+        },
+    ),
 }
-t0 = time.time()
 client.send_data(data)
-t1 = time.time()
-print(f"Time taken to send 3D data array: {t1 - t0} seconds")
 
 # %% Send a 3D xarray dataset
 data = {

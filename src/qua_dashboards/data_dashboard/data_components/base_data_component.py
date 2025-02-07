@@ -47,3 +47,8 @@ class BaseDataComponent(ABC):
             ],
             **{"data-class": data_class},
         )
+
+    @classmethod
+    def register_callbacks(cls, app):
+        """Register callbacks for the component."""
+        pass

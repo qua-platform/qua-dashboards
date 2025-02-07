@@ -140,6 +140,10 @@ class DataDashboardApp:
 
             return is_open
 
+        # Register callbacks for each component type
+        for component_type in self.component_types:
+            component_type.register_callbacks(app)
+
     def create_component(
         self, label: str, value: any, existing_component: Optional[Component] = None
     ) -> Component:

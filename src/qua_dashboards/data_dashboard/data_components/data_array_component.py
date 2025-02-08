@@ -1,12 +1,11 @@
 import xarray as xr
 from typing import Type, TypeVar, Optional
-import json
 from dash.development.base_component import Component
 from dash import html, dcc, Input, Output, State, MATCH, ALL
 import dash_bootstrap_components as dbc
 from plotly import graph_objects as go
 from qua_dashboards.logging_config import logger
-from qua_dashboards.data_dashboard.plotting import update_xarray_plot
+from qua_dashboards.data_dashboard.plotting import plot_xarray, update_xarray_plot
 from .base_data_component import BaseDataComponent
 
 GRAPH_STYLE = {"aspect-ratio": "1 / 1", "max-width": "400px"}
@@ -14,14 +13,26 @@ T = TypeVar("T", bound=Component)
 
 
 class DataArrayComponent(BaseDataComponent):
+    """
+    A component for displaying xarray DataArrays.
+
+    Supports:
+      - 1D arrays: Displayed as line plots using `plot_xarray`.
+      - 2D arrays: Displayed as heatmaps or images using `update_xarray_plot`.
+      - ND arrays (ndim ≥ 3): The last two dimensions are used for the plot;
+        every outer dimension gets its own slider control.
+    """
+
     # Store full ND arrays for use in callbacks.
     _data_nd = {}
     _nd_callback_registered = False
 
     @classmethod
     def can_handle(cls, value: any) -> bool:
-        # Accept 2D or ND (>=2) xarray DataArrays.
-        return isinstance(value, xr.DataArray) and value.ndim >= 2
+        """
+        Returns True if the value is an xarray DataArray with ndim ≥ 1.
+        """
+        return isinstance(value, xr.DataArray) and value.ndim >= 1
 
     @classmethod
     def create_component(
@@ -31,6 +42,15 @@ class DataArrayComponent(BaseDataComponent):
         existing_component: Optional[Component] = None,
         root_component_class: Type[T] = html.Div,
     ) -> T:
+        """
+        Creates (or reuses) a collapsible Dash component to display an xarray DataArray.
+
+        For:
+          - 1D arrays: A line graph is created using `plot_xarray`.
+          - 2D arrays: The existing graph is updated with `update_xarray_plot`.
+          - ND arrays (ndim ≥ 3): A graph is created for the 2D slice (last two dims),
+            and slider controls are added for every outer dimension.
+        """
         if not cls._validate_existing_component(
             existing_component, value, root_component_class
         ):
@@ -45,22 +65,35 @@ class DataArrayComponent(BaseDataComponent):
             logger.info(f"Using existing data array component ({label}: {value_str})")
             root_component = existing_component
 
-        # Expect the collapsible root component to have two children: label and collapse container.
+        # Expect the collapsible root component to have two children:
+        # 1. A label component.
+        # 2. A collapse container holding the graph and (if needed) slider controls.
         label_component, collapse_component = root_component.children
 
-        if value.ndim == 2:
-            # For 2D arrays, no slicing controls are needed.
+        if value.ndim == 1:
+            # 1D arrays: Use plot_xarray to create a line trace.
+            logger.info("Plotting 1D array using plot_xarray")
+            if not collapse_component.children:
+                fig = plot_xarray(value)
+                graph = dcc.Graph(figure=fig, style=GRAPH_STYLE)
+                collapse_component.children = [graph]
+            else:
+                graph = collapse_component.children[0]
+                graph.figure = plot_xarray(value)
+        elif value.ndim == 2:
+            # 2D arrays: Use update_xarray_plot to update an existing figure.
+            logger.info("Plotting 2D array using update_xarray_plot")
             if not collapse_component.children:
                 fig = go.Figure(layout=dict(margin=dict(l=20, r=20, t=20, b=20)))
                 graph = dcc.Graph(figure=fig, style=GRAPH_STYLE)
                 collapse_component.children = [graph]
             else:
                 graph = collapse_component.children[0]
-            logger.info("Updating xarray plot for 2D array")
             update_xarray_plot(graph.figure, value)
         elif value.ndim > 2:
-            # For ND arrays (ndim>=3), assume the last two dims are for plotting,
-            # and every outer dimension (dims[:-2]) gets its own slider.
+            # ND arrays (ndim ≥ 3): Assume last two dims are for plotting.
+            # All outer dimensions (value.dims[:-2]) get a slider.
+            logger.info("Plotting ND array with slicing controls")
             outer_dims = value.dims[:-2]
             graph_width = GRAPH_STYLE.get("max-width", "400px")
 
@@ -85,6 +118,7 @@ class DataArrayComponent(BaseDataComponent):
                     tooltip={"placement": "bottom", "always_visible": False},
                     updatemode="drag",
                 )
+                # Wrap the slider in a grid row with a label.
                 control_row = html.Div(
                     [
                         html.Div(
@@ -134,7 +168,7 @@ class DataArrayComponent(BaseDataComponent):
             )
         else:
             logger.error(
-                "DataArrayComponent only supports 2D or ND arrays with ndim >= 2"
+                "DataArrayComponent supports only 1D, 2D, or ND arrays with ndim ≥ 3"
             )
 
         return root_component
@@ -143,6 +177,10 @@ class DataArrayComponent(BaseDataComponent):
     def _validate_existing_component(
         component: Component, value: xr.DataArray, root_component_class: Type[T]
     ) -> bool:
+        """
+        Validates that an existing component is of the proper type and carries
+        the correct custom data-class attribute.
+        """
         if not isinstance(component, root_component_class):
             return False
         if not getattr(component, "data-class", None) == "xarray_data_array_component":
@@ -151,6 +189,10 @@ class DataArrayComponent(BaseDataComponent):
 
     @classmethod
     def register_callbacks(cls, app):
+        """
+        Registers a callback for ND arrays (ndim ≥ 3) that updates the graph based
+        on the values of all slider controls.
+        """
         if not cls._nd_callback_registered:
 
             @app.callback(

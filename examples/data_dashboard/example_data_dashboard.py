@@ -91,8 +91,8 @@ for k in range(100):
 dims = (10, 10, 10)
 data = {
     "bye": "hello",
-    "data_array": random_array(*dims),
-    "data_array_str": xr.DataArray(
+    "data_array_3D": random_array(*dims),
+    "data_array_3D_str": xr.DataArray(
         np.random.rand(*dims),
         name="my_arr",
         coords={
@@ -101,6 +101,8 @@ data = {
             "z": np.arange(dims[2]),
         },
     ),
+    "data_array_4D": random_array(*(2, *dims)),
+
 }
 client.send_data(data)
 

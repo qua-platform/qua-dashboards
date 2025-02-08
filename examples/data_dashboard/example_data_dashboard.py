@@ -114,4 +114,26 @@ data = {
 client.send_data(data)
 
 
+# %% xarray dataset with multiple data arrays
+dims = (2, 10, 10, 10)
+data = {
+    "dataset": xr.Dataset(
+        {
+            "data_array_1D": random_array(*dims[-1:]),
+            "data_array_2D": random_array(*dims[-2:]),
+            # "data_array_3D": random_array(*dims[-3:]),
+            # "data_array_3D_str": xr.DataArray(
+            #     np.random.rand(*dims[-3:]),
+            #     name="my_arr",
+            #     coords={
+            #         "x": [f"q{i+1}" for i in range(dims[-3])],
+            #         "y": [f"q{i+1}" for i in range(dims[-2])],
+            #         "z": [f"q{i+1}" for i in range(dims[-1])],
+            #     },
+            # ),
+            # "data_array_4D": random_array(*dims),
+        }
+    )
+}
+client.send_data(data)
 # %%

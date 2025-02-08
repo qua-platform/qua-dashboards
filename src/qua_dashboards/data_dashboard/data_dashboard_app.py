@@ -100,7 +100,9 @@ class DataDashboardApp:
             logger.info("Updating data-container children")
 
             current_children_dict = {
-                child.id.replace("data-entry-", ""): child for child in current_children
+                child.id.replace("data-entry-", ""): child
+                for child in current_children
+                if hasattr(child, "id") and child.id is not None
             }
 
             children = []

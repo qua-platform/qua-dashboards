@@ -61,11 +61,7 @@ for i in range(100):
 
 
 # %% Send xarray dataset
-data = {
-    "dataset": xr.Dataset(
-        {"array": random_array(10, 10)}
-    )
-}
+data = {"dataset": xr.Dataset({"array": random_array(10, 10)})}
 client.send_data(data)
 
 # %% Send xarray dataset with multiple data arrays
@@ -88,21 +84,22 @@ for k in range(100):
     time.sleep(0.2)
 
 # %% Send a 3D xarray data array
-dims = (10, 10, 10)
+dims = (2, 10, 10, 10)
 data = {
-    "bye": "hello",
-    "data_array_3D": random_array(*dims),
+    "str_variable": "hello",
+    "data_array_1D": random_array(*dims[-1:]),
+    "data_array_2D": random_array(*dims[-2:]),
+    "data_array_3D": random_array(*dims[-3:]),
     "data_array_3D_str": xr.DataArray(
-        np.random.rand(*dims),
+        np.random.rand(*dims[-3:]),
         name="my_arr",
         coords={
-            "x": [f"q{i+1}" for i in range(dims[0])],
-            "y": np.arange(dims[1]),
-            "z": np.arange(dims[2]),
+            "x": [f"q{i+1}" for i in range(dims[-3])],
+            "y": [f"q{i+1}" for i in range(dims[-2])],
+            "z": [f"q{i+1}" for i in range(dims[-1])],
         },
     ),
-    "data_array_4D": random_array(*(2, *dims)),
-
+    "data_array_4D": random_array(*dims),
 }
 client.send_data(data)
 

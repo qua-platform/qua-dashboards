@@ -4,39 +4,69 @@ from dash.dash import Any
 import dash_bootstrap_components as dbc
 from plotly import graph_objects as go
 
-
 __all__ = ["convert_to_dash_component", "create_input_field"]
 
 
 def convert_to_dash_component(elem: Union[dict, list]) -> Any:
+    """
+    Recursively converts a serialized Dash component (represented as a dict or list)
+    into an actual Dash component instance.
+
+    This function supports components from three namespaces:
+      - dash_html_components (accessed via `html`)
+      - dash_bootstrap_components (accessed via `dbc`)
+      - dash_core_components (accessed via `dcc`)
+
+    For Graph components, if the 'figure' property is provided as a dict,
+    it is converted into a plotly.graph_objects.Figure instance.
+
+    Args:
+        elem: A dictionary or list representing a serialized Dash component.
+
+    Returns:
+        An actual Dash component instance.
+
+    Raises:
+        ValueError: If an element has an unknown namespace.
+    """
     if isinstance(elem, list):
+        # Recursively convert each element in the list.
         return [convert_to_dash_component(e) for e in elem]
     elif isinstance(elem, dict):
+        # If the element doesn't have a "namespace" key, it's not a serialized component.
         if "namespace" not in elem:
             return {
                 key: convert_to_dash_component(value) for key, value in elem.items()
             }
 
-        if elem["namespace"] == "dash_html_components":
-            cls = getattr(html, elem["type"])
-            if "children" in elem["props"]:
-                children = elem["props"].pop("children")
-                elem["props"]["children"] = convert_to_dash_component(children)
-            return cls(**elem["props"])
+        # Helper to process the 'children' key recursively.
+        def process_children(props: dict) -> dict:
+            if "children" in props:
+                props["children"] = convert_to_dash_component(props["children"])
+            return props
 
-        if elem["namespace"] == "dash_bootstrap_components":
-            cls = getattr(dbc, elem["type"])
-            if "children" in elem["props"]:
-                children = elem["props"].pop("children")
-                elem["props"]["children"] = convert_to_dash_component(children)
-            return cls(**elem["props"])
+        # Copy properties to avoid modifying the original dictionary.
+        props = process_children(elem["props"].copy())
+        namespace = elem["namespace"]
+        comp_type = elem["type"]
 
-        if elem["type"] == "Graph":
-            if isinstance(elem["props"].get("figure"), dict):
-                elem["props"]["figure"] = go.Figure(**elem["props"]["figure"])
-            return dcc.Graph(**elem["props"])
-        raise ValueError(f"Unknown element: {elem}")
+        # Convert based on the namespace.
+        if namespace == "dash_html_components":
+            cls = getattr(html, comp_type)
+            return cls(**props)
+        elif namespace == "dash_bootstrap_components":
+            cls = getattr(dbc, comp_type)
+            return cls(**props)
+        elif namespace == "dash_core_components":
+            cls = getattr(dcc, comp_type)
+            # Special handling for Graph: convert a dict figure into a Figure object.
+            if comp_type == "Graph" and isinstance(props.get("figure"), dict):
+                props["figure"] = go.Figure(**props["figure"])
+            return cls(**props)
+        else:
+            raise ValueError(f"Unknown element: {elem}")
     else:
+        # If the element is not a dict or list, return it unchanged.
         return elem
 
 
@@ -44,12 +74,31 @@ def create_input_field(
     id,
     label,
     value,
-    debounce=True,
-    input_style=None,
-    div_style=None,
-    units=None,
+    debounce: bool = True,
+    input_style: dict = None,
+    div_style: dict = None,
+    units: str = None,
     **kwargs,
-):
+) -> Any:
+    """
+    Creates a responsive numeric input field wrapped in a Bootstrap Row.
+
+    The function constructs a labeled input using Dash Bootstrap Components.
+    An optional units label can be added after the input.
+
+    Args:
+        id: The unique identifier for the input component.
+        label: The text label for the input.
+        value: The initial numeric value for the input.
+        debounce: Whether input events should be debounced (default True).
+        input_style: A dictionary of CSS styles for the input element (default width of 80px).
+        div_style: A dictionary of CSS styles for the container row.
+        units: An optional string representing measurement units.
+        **kwargs: Additional keyword arguments passed to dbc.Input.
+
+    Returns:
+        A dbc.Row containing the label, input field, and optional units.
+    """
     if input_style is None:
         input_style = {"width": "80px"}
 

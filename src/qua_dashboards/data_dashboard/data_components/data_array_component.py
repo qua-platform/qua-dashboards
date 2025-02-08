@@ -2,7 +2,7 @@ import xarray as xr
 from typing import Type, TypeVar, Optional
 import json
 from dash.development.base_component import Component
-from dash import html, dcc, Input, Output, State, MATCH, ALL, callback_context
+from dash import html, dcc, Input, Output, State, MATCH, ALL
 import dash_bootstrap_components as dbc
 from plotly import graph_objects as go
 from qua_dashboards.logging_config import logger
@@ -15,7 +15,7 @@ T = TypeVar("T", bound=Component)
 
 class DataArrayComponent(BaseDataComponent):
     # Store full ND arrays for use in callbacks.
-    _data_3d = {}
+    _data_nd = {}
     _nd_callback_registered = False
 
     @classmethod
@@ -45,36 +45,31 @@ class DataArrayComponent(BaseDataComponent):
             logger.info(f"Using existing data array component ({label}: {value_str})")
             root_component = existing_component
 
+        # Expect the collapsible root component to have two children: label and collapse container.
         label_component, collapse_component = root_component.children
 
         if value.ndim == 2:
-            # For 2D arrays, behave as before.
+            # For 2D arrays, no slicing controls are needed.
             if not collapse_component.children:
                 fig = go.Figure(layout=dict(margin=dict(l=20, r=20, t=20, b=20)))
-                graph = dcc.Graph(
-                    figure=fig,
-                    style=GRAPH_STYLE,
-                )
+                graph = dcc.Graph(figure=fig, style=GRAPH_STYLE)
                 collapse_component.children = [graph]
             else:
                 graph = collapse_component.children[0]
-
             logger.info("Updating xarray plot for 2D array")
             update_xarray_plot(graph.figure, value)
-
         elif value.ndim > 2:
-            # For ND arrays (ndim>=3), assume the last two dims are for plotting.
-            # All outer dimensions (dims[:-2]) get their own slider.
+            # For ND arrays (ndim>=3), assume the last two dims are for plotting,
+            # and every outer dimension (dims[:-2]) gets its own slider.
             outer_dims = value.dims[:-2]
             graph_width = GRAPH_STYLE.get("max-width", "400px")
 
             slider_controls = []
             for dim in outer_dims:
                 size = value.sizes[dim]
-                # Use coordinate values if available; otherwise use indices.
+                # Use coordinate values if available; otherwise default to indices.
                 if dim in value.coords:
                     coord = value.coords[dim].values
-                    # Ensure the length matches the size.
                     if len(coord) != size:
                         coord = list(range(size))
                 else:
@@ -121,7 +116,7 @@ class DataArrayComponent(BaseDataComponent):
                 style={"width": graph_width, "marginTop": "10px"},
             )
 
-            # Create the initial slice: default to index 0 for every outer dimension.
+            # Create the initial 2D slice by selecting index 0 for each outer dimension.
             slice_dict = {dim: 0 for dim in outer_dims}
             sliced_array = value.isel(**slice_dict)
             fig = go.Figure(layout=dict(margin=dict(l=20, r=20, t=20, b=20)))
@@ -132,8 +127,8 @@ class DataArrayComponent(BaseDataComponent):
                 style=GRAPH_STYLE,
             )
             collapse_component.children = [graph, control_container]
-            # Store the full ND array so the callback can update slices.
-            cls._data_3d[label] = value
+            # Store the full ND array for use in the callback.
+            cls._data_nd[label] = value
             logger.info(
                 f"Created ND data array component with slicing controls for dims: {outer_dims}"
             )
@@ -169,22 +164,18 @@ class DataArrayComponent(BaseDataComponent):
             )
             def update_nd_graph(slider_values, slider_ids, current_fig, graph_id):
                 label = graph_id["index"]
-                full_array = cls._data_3d.get(label)
+                full_array = cls._data_nd.get(label)
                 if full_array is None:
                     return current_fig
-
-                # Build a slice dictionary using the slider IDs and their corresponding values.
+                # Build a slice dictionary mapping each outer dimension to its slider value.
                 slice_dict = {}
                 for id_obj, value in zip(slider_ids, slider_values):
-                    # Each id_obj is of the form: {'type': 'data-array-slicer', 'index': label, 'dim': dim_name}
                     slice_dict[id_obj["dim"]] = value
-
-                # For any outer dimension not present (should not happen), default to 0.
+                # Ensure any missing dimension defaults to 0.
                 outer_dims = full_array.dims[:-2]
                 for d in outer_dims:
                     if d not in slice_dict:
                         slice_dict[d] = 0
-
                 sliced_array = full_array.isel(**slice_dict)
                 fig = go.Figure(layout=current_fig["layout"])
                 update_xarray_plot(fig, sliced_array)

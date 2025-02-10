@@ -32,7 +32,7 @@ First, we assume that a `QuantumMachinesManager` is already connected with varia
 
 Next we define the scan mode, which in this case is a raster scan.
 ```python
-from qualang_tools.control_panel.video_mode import scan_modes
+from qua_dashboards.video_mode import scan_modes
 scan_mode = scan_modes.RasterScan()
 ```
 
@@ -73,7 +73,7 @@ For this tutorial we will instantiate the `BasicInnerLoopAction` class:
 
 ```python
 # Define the inner loop action
-from qualang_tools.control_panel.video_mode.inner_loop_actions import InnerLoopAction
+from qua_dashboards.video_mode.inner_loop_actions import InnerLoopAction
 inner_loop_action = BasicInnerLoopAction(
     x_element="output_ch1",  # Must be a valid QUA element
     y_element="output_ch2",  # Must be a valid QUA element
@@ -102,7 +102,7 @@ The `SweepAxis` contains additional attributes, such as attenuation and a voltag
 
 Next we define the data acquirer, which is the object that will handle the data acquisition.
 ```python
-from qualang_tools.control_panel.video_mode.data_acquirer import OPXDataAcquirer
+from qua_dashboards.video_mode.data_acquirer import OPXDataAcquirer
 data_acquirer = OPXDataAcquirer(
     qmm=qmm,
     qua_config=qua_config,
@@ -121,7 +121,7 @@ results = data_acquirer.acquire_data()
 
 Finally, we can start the video mode.
 ```python
-from qualang_tools.control_panel.video_mode.video_mode import VideoModeApp
+from qua_dashboards.video_mode.video_mode import VideoModeApp
 video_mode = VideoModeApp(data_acquirer=data_acquirer)
 video_mode.run()
 ```
@@ -155,7 +155,7 @@ Note that if the offset voltage is changed, it will need to be changed in the sa
 Below is an example of how to run the video mode without an actual OPX.
 In this case, we will use the `RandomDataAcquirer` class, which simply displays uniformly-sampled random data.
 ```python
-from qualang_tools.control_panel.video_mode import *
+from qua_dashboards.video_mode import *
 
 x_axis = SweepAxis(name="X", span=0.1, points=101)
 y_axis = SweepAxis(name="Y", span=0.1, points=101)

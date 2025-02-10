@@ -28,112 +28,79 @@ def create_random_figure():
 client = DataDashboardClient()
 
 
-# %% Send basic data
+# %% Basic scalar data example
 data = {
     "current_time": time.time(),
     "random_value": np.random.rand(),
+    "str_variable": "hello",
 }
 client.send_data(data)
 
-
-# %% Send xarray 2D data
+# %% DataArray examples - single arrays of different dimensions
 data = {
-    "array": random_array(10, 10),
-    "array2": random_array(100, 100),
+    "data_array_1D": random_array(10),
+    "data_array_2D": random_array(10, 10),
+    "data_array_3D": random_array(10, 10, 10),
+    "data_array_4D": random_array(2, 10, 10, 10),
 }
 client.send_data(data)
 
-# %% Repeatedly send data
-for i in range(100):
+# %% DataArray example - with custom string coordinates
+data = {
+    "data_array_with_str_coords": xr.DataArray(
+        np.random.rand(10, 10, 10),
+        name="my_arr",
+        coords={
+            "x": [f"q{i+1}" for i in range(10)],
+            "y": [f"q{i+1}" for i in range(10)],
+            "z": [f"q{i+1}" for i in range(10)],
+        },
+    ),
+}
+client.send_data(data)
+
+# %% Dataset example - simple single array
+data = {"simple_dataset": xr.Dataset({"array": random_array(10, 10)})}
+client.send_data(data)
+
+# %% Dataset example - multiple arrays of different dimensions
+data = {
+    "complex_dataset": xr.Dataset(
+        {
+            "array_1D": random_array(10),
+            "array_2D": random_array(10, 10),
+            "array_3D": random_array(10, 10, 10),
+        }
+    )
+}
+client.send_data(data)
+
+# %% Matplotlib figure example
+fig = create_random_figure()
+data = {"matplotlib_figure": fig}
+client.send_data(data)
+
+# %% Real-time data streaming example - basic scalars
+for i in range(10):  # Reduced iterations for example
     data = {
-        "array": random_array(10, 10),
-        "array2": random_array(100, 100),
+        "current_time": time.time(),
+        "random_value": np.random.rand(),
+    }
+    client.send_data(data)
+    time.sleep(0.2)
+
+# %% Real-time data streaming example - arrays
+for i in range(10):  # Reduced iterations for example
+    data = {
+        "evolving_2D_array": random_array(10, 10),
         "current_time": time.time(),
     }
     client.send_data(data)
     time.sleep(0.2)
 
-# %% Repeatedly send simple data
-for i in range(100):
-    data = {"current_time": time.time(), "random_value": np.random.rand()}
-    client.send_data(data)
-    time.sleep(0.2)
-
-
-# %% Send xarray dataset
-data = {"dataset": xr.Dataset({"array": random_array(10, 10)})}
-client.send_data(data)
-
-# %% Send xarray dataset with multiple data arrays
-data = {
-    "dataset": xr.Dataset(
-        {
-            "array": random_array(10, 10),
-            "array2": random_array(100, 100),
-        }
-    )
-}
-client.send_data(data)
-
-
-# %% Send Matplotlib figure with random data
-for k in range(100):
+# %% Real-time data streaming example - Matplotlib
+for i in range(10):  # Reduced iterations for example
     fig = create_random_figure()
-    data = {"random_matplotlib_figure": fig}
+    data = {"real_time_plot": fig}
     client.send_data(data)
     time.sleep(0.2)
-
-# %% Send a 3D xarray data array
-dims = (2, 10, 10, 10)
-data = {
-    "str_variable": "hello",
-    "data_array_1D": random_array(*dims[-1:]),
-    "data_array_2D": random_array(*dims[-2:]),
-    "data_array_3D": random_array(*dims[-3:]),
-    "data_array_3D_str": xr.DataArray(
-        np.random.rand(*dims[-3:]),
-        name="my_arr",
-        coords={
-            "x": [f"q{i+1}" for i in range(dims[-3])],
-            "y": [f"q{i+1}" for i in range(dims[-2])],
-            "z": [f"q{i+1}" for i in range(dims[-1])],
-        },
-    ),
-    "data_array_4D": random_array(*dims),
-}
-client.send_data(data)
-
-# %% Send a 3D xarray dataset
-data = {
-    "dataset": xr.Dataset(
-        {
-            "array": random_array(10, 10, 10),
-        }
-    )
-}
-client.send_data(data)
-
-
-# %% xarray dataset with multiple data arrays
-dims = (2, 10, 10, 10)
-data = {
-    "dataset": xr.Dataset(
-        {
-            "data_array_1D": random_array(*dims[-1:]),
-            "data_array_2D": random_array(*dims[-2:]),
-            # "data_array_3D": random_array(*dims[-3:]),
-            # "data_array_3D_str": xr.DataArray(
-            #     np.random.rand(*dims[-3:]),
-            #     name="my_arr",
-            #     coords={
-            #         "x": [f"q{i+1}" for i in range(dims[-3])],
-            #         "y": [f"q{i+1}" for i in range(dims[-2])],
-            #         "z": [f"q{i+1}" for i in range(dims[-1])],
-            #     },
-            # ),
-            # "data_array_4D": random_array(*dims),
-        }
-    )
-}
-client.send_data(data)
-# %%

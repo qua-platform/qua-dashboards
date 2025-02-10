@@ -51,17 +51,17 @@ class DataArrayComponent(BaseDataComponent):
           - ND arrays (ndim ≥ 3): A graph is created for the 2D slice (last two dims),
             and slider controls are added for every outer dimension.
         """
+        value_str = str(value)
+        if len(value_str) > 100:
+            value_str = value_str[:100] + "..."
         if not cls._validate_existing_component(
             existing_component, value, root_component_class
         ):
-            logger.info(f"Creating new data array component ({label}: {value})")
+            logger.info(f"Creating new data array component ({label}: {value_str})")
             root_component = cls.create_collapsible_root_component(
                 label, root_component_class, "xarray_data_array_component"
             )
         else:
-            value_str = str(value)
-            if len(value_str) > 60:
-                value_str = value_str[:60] + "..."
             logger.info(f"Using existing data array component ({label}: {value_str})")
             root_component = existing_component
 
@@ -79,7 +79,7 @@ class DataArrayComponent(BaseDataComponent):
                 collapse_component.children = [graph]
             else:
                 graph = collapse_component.children[0]
-                graph.figure = plot_xarray(value)
+                graph.figure = update_xarray_plot(graph.figure, value)
         elif value.ndim == 2:
             # 2D arrays: Use update_xarray_plot to update an existing figure.
             logger.info("Plotting 2D array using update_xarray_plot")

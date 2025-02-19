@@ -1,14 +1,14 @@
 import xarray as xr
-from typing import Type, TypeVar, Optional, Any, List
-from dash import html, dcc, Input, Output, State, MATCH
-from dash.development.base_component import Component
+from typing import Type, TypeVar, Optional, Any, List, Dict
+from dash import html, dcc
+from dash.dependencies import Output, Input, State, MATCH
 import dash_bootstrap_components as dbc
 from qua_dashboards.logging_config import logger
 from qua_dashboards.data_dashboard.data_components.data_array_component import (
     DataArrayComponent,
 )
 
-T = TypeVar("T", bound=Component)
+T = TypeVar("T", bound=html.Div)
 
 
 class DatasetComponent:
@@ -16,12 +16,11 @@ class DatasetComponent:
     A component for visualizing an xarray Dataset.
 
     Provides two view modes:
-      - Tabbed view: Each data variable is shown in its own tab.
-      - All view: All data variables are displayed in a vertically stacked layout.
+      - Tabbed view: Each variable is shown in its own tab.
+      - All view: Variables are stacked vertically.
 
-    A toggle control (using dbc.RadioItems) allows the user to switch between these views.
-    If the displayed variables have not changed, the existing component is reused
-    so that user selections (like the current view mode or active tab) are preserved.
+    A toggle (dbc.RadioItems) allows switching views. If the displayed variables have
+    not changed, the existing component is reused, preserving state.
     """
 
     _datasets = {}  # Stores datasets keyed by label.
@@ -33,44 +32,34 @@ class DatasetComponent:
 
     @classmethod
     def _validate_existing_component(
-        cls, component: Component, dataset: xr.Dataset, root_component_class: Type[T]
+        cls, component: html.Div, dataset: xr.Dataset, root_component_class: Type[T]
     ) -> bool:
         """
-        Validate that an existing dataset component is compatible with the provided dataset.
-        Checks that:
-          - The component is an instance of the expected root_component_class.
-          - It has a custom attribute "data-class" equal to "xarray_dataset_component".
-          - The variable names currently displayed (from the content container)
-            match the keys in dataset.data_vars.
+        Validate that an existing component is compatible with the dataset.
+        Checks:
+          - Component type, id, and custom "data-class" attribute.
+          - Displayed variable names match dataset.data_vars keys.
         """
         if not isinstance(component, root_component_class):
             return False
         if getattr(component, "data-class", None) != "xarray_dataset_component":
             return False
-
         try:
-            # The component layout is assumed to have two children:
-            # 1. The toggle (dbc.RadioItems) and 2. the content container.
+            # Expect two children: a toggle and a content container.
             content = component.children[1]
             if content.children is None:
                 return False
             displayed_vars: List[str] = []
-            # If the view is "tabbed", content.children is a dcc.Tabs component.
             if isinstance(content.children, dcc.Tabs):
-                tabs = content.children.children
-                # Extract each tab's label.
-                displayed_vars = [tab.label for tab in tabs if hasattr(tab, "label")]
-            # If the view is "all", content.children is an html.Div containing a list.
+                for tab in content.children.children:
+                    if hasattr(tab, "label"):
+                        displayed_vars.append(tab.label)
             elif isinstance(content.children, list):
                 for child in content.children:
-                    # Assume each child wraps a DataArrayComponent which was created with label = var_name.
-                    # Here we try to extract the variable name from a custom id or from the first child text.
                     if hasattr(child, "id") and child.id:
-                        # For example, if DataArrayComponent sets id like "data-entry-{var_name}"
                         displayed_vars.append(child.id.replace("data-entry-", ""))
                     else:
                         try:
-                            # As fallback, assume the first child's children contains the name.
                             displayed_vars.append(child.children[0].children)
                         except Exception as e:
                             logger.error(
@@ -78,9 +67,7 @@ class DatasetComponent:
                             )
             else:
                 return False
-
             expected_vars = list(dataset.data_vars.keys())
-            # For reusability, the order must match.
             return displayed_vars == expected_vars
         except Exception as e:
             logger.error(f"Error in _validate_existing_component: {e}")
@@ -91,27 +78,21 @@ class DatasetComponent:
         cls,
         label: str,
         value: xr.Dataset,
-        existing_component: Optional[Component] = None,
+        existing_component: Optional[html.Div] = None,
         root_component_class: Type[T] = html.Div,
     ) -> T:
         """
         Create or update a component for an xarray Dataset.
 
-        The layout consists of:
-          - A toggle control (using dbc.RadioItems) for switching between "tabbed" and "all" views.
-          - A content container (an html.Div) that displays the plots.
-
-        If an existing component passes validation (i.e. the variable names have not changed),
-        it is updated rather than recreated.
+        If an existing component passes validation, it is updated.
         """
         cls._datasets[label] = value
-
         if existing_component is None or not cls._validate_existing_component(
             existing_component, value, root_component_class
         ):
-            # Create a new component.
             root_component = root_component_class(
-                [
+                id=f"data-entry-{label}",
+                children=[
                     dbc.RadioItems(
                         id={"type": "dataset-view-toggle", "index": label},
                         options=[
@@ -120,7 +101,6 @@ class DatasetComponent:
                         ],
                         value="tabbed",
                         inline=True,
-                        # Custom styling to mimic a polished left/right toggle.
                         style={
                             "display": "flex",
                             "justifyContent": "center",
@@ -140,13 +120,13 @@ class DatasetComponent:
                         },
                     ),
                     html.Div(id={"type": "dataset-content", "index": label}),
-                ]
+                ],
+                **{"data-class": "xarray_dataset_component"},
             )
-            root_component.__setattr__("data-class", "xarray_dataset_component")
         else:
             root_component = existing_component
 
-        # Preserve the current toggle value.
+        # Get current view mode from the toggle.
         current_mode = "tabbed"
         for child in root_component.children:
             if (
@@ -157,12 +137,26 @@ class DatasetComponent:
                 current_mode = child.value or "tabbed"
                 break
 
-        if current_mode == "tabbed":
-            content = cls._generate_tabbed_view(label, value)
-        else:
-            content = cls._generate_all_view(label, value)
+        # Retrieve existing view from content container, if any.
+        existing_view = None
+        for child in root_component.children:
+            if (
+                isinstance(child, html.Div)
+                and isinstance(child.id, dict)
+                and child.id.get("type") == "dataset-content"
+            ):
+                existing_view = child.children
+                break
 
-        # Update the content container (the second child).
+        if current_mode == "tabbed":
+            content = cls._generate_tabbed_view(
+                label, value, existing_tabs=existing_view
+            )
+        else:
+            content = cls._generate_all_view(
+                label, value, existing_all_view=existing_view
+            )
+
         for child in root_component.children:
             if (
                 isinstance(child, html.Div)
@@ -174,14 +168,33 @@ class DatasetComponent:
         return root_component
 
     @classmethod
-    def _generate_tabbed_view(cls, label: str, dataset: xr.Dataset) -> Any:
+    def _generate_tabbed_view(
+        cls, label: str, dataset: xr.Dataset, existing_tabs: Optional[Any] = None
+    ) -> Any:
         """
-        Generate a tabbed view (using dcc.Tabs) for the dataset.
-        Each tab displays one data variable using DataArrayComponent.
+        Generate a tabbed view for the dataset.
+        Each tab displays one variable using DataArrayComponent.
+        Reuse an existing data array component if present.
         """
+        # Build a mapping from variable name to existing component.
+        existing_mapping: Dict[str, Any] = {}
+        if (
+            existing_tabs is not None
+            and hasattr(existing_tabs, "children")
+            and isinstance(existing_tabs, dcc.Tabs)
+        ):
+            for tab in existing_tabs.children:
+                if hasattr(tab, "label"):
+                    var = tab.label
+                    if tab.children and len(tab.children) > 0:
+                        existing_mapping[var] = tab.children[0]
+
         tabs = []
         for var_name, data_array in dataset.data_vars.items():
-            da_component = DataArrayComponent.create_component(var_name, data_array)
+            existing_da = existing_mapping.get(var_name)
+            da_component = DataArrayComponent.create_component(
+                var_name, data_array, existing_component=existing_da
+            )
             tab = dcc.Tab(
                 label=var_name,
                 children=[da_component],
@@ -192,21 +205,45 @@ class DatasetComponent:
         return dcc.Tabs(children=tabs)
 
     @classmethod
-    def _generate_all_view(cls, label: str, dataset: xr.Dataset) -> Any:
+    def _generate_all_view(
+        cls, label: str, dataset: xr.Dataset, existing_all_view: Optional[Any] = None
+    ) -> Any:
         """
-        Generate an "all view" that displays every data variable in the dataset
-        in a stacked vertical layout.
+        Generate an "all view" that stacks variables vertically.
+        Each variable's component is wrapped in an html.Div.
+        Reuse existing data array components if present.
         """
+        existing_mapping: Dict[str, Any] = {}
+        if existing_all_view is not None and isinstance(existing_all_view, list):
+            for child in existing_all_view:
+                if (
+                    hasattr(child, "id")
+                    and isinstance(child.id, str)
+                    and child.id.startswith("data-entry-")
+                ):
+                    var = child.id.replace("data-entry-", "")
+                    if child.children:
+                        # child.children is assumed to be the existing subcomponent.
+                        existing_mapping[var] = child.children
+
         components: List[Any] = []
         for var_name, data_array in dataset.data_vars.items():
-            da_component = DataArrayComponent.create_component(var_name, data_array)
-            components.append(html.Div(da_component, style={"marginBottom": "20px"}))
+            existing_da = existing_mapping.get(var_name)
+            da_component = DataArrayComponent.create_component(
+                var_name, data_array, existing_component=existing_da
+            )
+            comp = html.Div(
+                da_component,
+                id=f"data-entry-{var_name}",
+                style={"marginBottom": "20px"},
+            )
+            components.append(comp)
         return html.Div(components)
 
     @classmethod
     def register_callbacks(cls, app) -> None:
         """
-        Register a callback that updates the dataset content container when the toggle changes.
+        Register a callback that updates the dataset view when toggled.
         """
         if not cls._callback_registered:
 

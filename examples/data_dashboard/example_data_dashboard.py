@@ -3,8 +3,12 @@ import time
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
+import logging
 
 from qua_dashboards.data_dashboard import DataDashboardClient
+from qua_dashboards.logging_config import logger
+
+logger.setLevel(logging.DEBUG)
 
 
 def random_array(*dims):
@@ -69,7 +73,7 @@ data = {
         {
             "array_1D": random_array(10),
             "array_2D": random_array(10, 10),
-            "array_3D": random_array(10, 10, 10),
+            "array_3D": random_array(10, 10, 100),
         }
     )
 }

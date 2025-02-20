@@ -1,4 +1,5 @@
 import requests
+import time
 from typing import Optional, Any
 from concurrent.futures import Future
 from threading import Thread
@@ -87,6 +88,8 @@ class DataDashboardClient:
             bool: True if data was sent successfully; False otherwise.
         """
         # Wait for the URL to be determined if necessary.
+        t0 = time.perf_counter()
+
         if self._url_future and not self._url_future.done():
             try:
                 self.url = self._url_future.result(timeout=5)
@@ -108,6 +111,9 @@ class DataDashboardClient:
                 f"{self.url}/update-data", json=serialised_data, timeout=2
             )
             if response.ok:
+                logger.debug(
+                    f"Data sent to {self.url} in {time.perf_counter() - t0:.2f}s"
+                )
                 return True
             logger.error(
                 f"Failed to send data to {self.url}, status code: {response.status_code}"

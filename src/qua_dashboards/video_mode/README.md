@@ -11,13 +11,6 @@ The video mode has been designed as a modular tool that is composed of four part
 
 The `ScanMode` and `InnerLoopAction` classes are highly flexible and can be selected/modified to suit the specific needs of the user. For example, three different scan modes (`RasterScan`, `SpiralScan`, and `SwitchRasterScan`) are provided, which can be used to acquire data in different ways. Similarly, the `InnerLoopAction` class can be modified to perform additional actions, such as adding specific pulses prior to each measurement.
 
-## Installation
-
-First, it is necessary to install the `qualang_tools` package with the `videomode` extra packages:
-
-```bash
-pip install qualang-tools[videomode]
-```
 
 ## Basic Usage
 To use the video mode, it is necessary to initialize the relevant classes and pass them to the `VideoMode` class. 

@@ -23,7 +23,7 @@ body,
     padding: 6px 6px !important;
     border: 1px solid #007bff;
     border-bottom: none;
-    margin-right: 2px;
+    /* margin-right: 2px; */
     cursor: pointer;
     transition: background-color 0.3s ease;
     max-width: 140px;
@@ -34,8 +34,38 @@ body,
 }
 
 /* Styling for the selected tab */
-.dash-tab--selected {
+/* .dash-tab--selected {
     background-color: var(--text-color) !important;
     color: var(--background-color) !important;
     font-weight: bold;
+} */
+
+
+.dataset-view-toggle {
+    display: flex;
+    margin-bottom: 20px;
+    margin-top: 20px;
+}
+
+
+.dataset-view-toggle input:checked {
+    background-color: #007bff;
+    border-color: #007bff;
+}
+
+/*
+.dataset-view-toggle label {
+    display: inline-block;
+    padding: 5px 10px;
+    border: 1px solid #007bff;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-right: 10px;
+    color: var(--text-color);
+    background-color: var(--background-color);
+}
+
+/* Optionally, add a hover effect */
+.dataset-view-toggle label:hover {
+    background-color: #585858;
 }

@@ -47,7 +47,7 @@ class DataArrayComponent(BaseDataComponent):
         if not cls._validate_existing_component(
             existing_component, value, root_component_class
         ):
-            logger.info("Creating new data array component (%s: %s)", label, value)
+            logger.info(f"Creating new data array component {label}")
             root_component = cls.create_collapsible_root_component(
                 label, root_component_class, "xarray_data_array_component"
             )

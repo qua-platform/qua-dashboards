@@ -132,3 +132,24 @@ def create_input_field(
         className="align-items-center mb-2",
         style=div_style,
     )
+
+
+def print_component_structure(comp, indent=0):
+    """
+    Recursively prints the structure of a Dash component.
+
+    Args:
+        comp: The component to print.
+        indent: The indentation level (default 0).
+    """
+    space = " " * indent
+    comp_id = getattr(comp, "id", None)
+    comp_children = getattr(comp, "children", None)
+    print(f"{space}{type(comp).__name__} (id={comp_id})")
+    if comp_children is None:
+        print(f"{space}  No children")
+    elif isinstance(comp_children, list):
+        for child in comp_children:
+            debug_component_structure(child, indent + 2)
+    else:
+        debug_component_structure(comp_children, indent + 2)

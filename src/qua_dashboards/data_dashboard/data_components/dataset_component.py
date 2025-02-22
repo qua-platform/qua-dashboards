@@ -212,11 +212,11 @@ class DatasetComponent:
             tab = dcc.Tab(
                 label=var_name,
                 children=[da_component],
-                style={"padding": "6px", "fontWeight": "normal"},
-                selected_style={"padding": "6px", "fontWeight": "bold"},
+                className="dash-tab",
+                selected_className="dash-tab--selected",
             )
             tabs.append(tab)
-        return dcc.Tabs(children=tabs)
+        return dcc.Tabs(children=tabs, className="dash-tabs")
 
     @classmethod
     def _generate_all_view(
@@ -291,11 +291,11 @@ class DatasetComponent:
                         tab = dcc.Tab(
                             label=var_name,
                             children=[child],
-                            style={"padding": "6px", "fontWeight": "normal"},
-                            selected_style={"padding": "6px", "fontWeight": "bold"},
+                            className="dash-tab",
+                            selected_className="dash-tab--selected",
                         )
                         tabs.append(tab)
-                    return dcc.Tabs(children=tabs)
+                    return dcc.Tabs(children=tabs, className="dash-tabs")
                 elif view_mode == "all":
                     # If already in "all" view (i.e. not wrapped in dcc.Tabs), just return as is.
                     if not isinstance(existing_content, dcc.Tabs):

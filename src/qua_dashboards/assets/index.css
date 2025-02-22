@@ -5,8 +5,37 @@
 
 body,
 .list-group,
-.list-group-item{
+.list-group-item {
     background-color: var(--background-color);
     color: var(--text-color);
     font-family: monospace;
+}
+
+.dash-tabs {
+    background-color: var(--background-color) !important;
+    border: none;
+}
+
+/* Individual tab styling */
+.dash-tab {
+    background-color: var(--background-color) !important;
+    color: var(--text-color) !important;
+    padding: 6px 6px !important;
+    border: 1px solid #007bff;
+    border-bottom: none;
+    margin-right: 2px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    max-width: 140px;
+}
+
+.dash-tab:hover {
+    background-color: #222 !important;
+}
+
+/* Styling for the selected tab */
+.dash-tab--selected {
+    background-color: var(--text-color) !important;
+    color: var(--background-color) !important;
+    font-weight: bold;
 }

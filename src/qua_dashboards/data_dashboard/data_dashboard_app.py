@@ -152,7 +152,6 @@ class DataDashboardApp:
             console.log("store_data", store_data)
         }
         """,
-            Output("dummy-output", "children"),
             Input("toggle-store", "data"),
         )
 

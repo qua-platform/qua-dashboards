@@ -186,6 +186,10 @@ class DataDashboardApp:
             return jsonify(success=True)
 
 
-if __name__ == "__main__":
+def main():
     app = DataDashboardApp(update_interval=1000)
     app.run(threaded=True)
+
+
+if __name__ == "__main__":
+    main()

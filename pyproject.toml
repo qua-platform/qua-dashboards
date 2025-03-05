@@ -17,6 +17,7 @@ dependencies = [
 
 [project.scripts]
 qua-dashboard = "qua_dashboards.app:main"
+data-dashboard = "qua_dashboards.data_dashboard.data_dashboard_app:main"
 
 [build-system]
 requires = ["hatchling"]

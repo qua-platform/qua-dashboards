@@ -117,7 +117,7 @@ class DataDashboardApp:
 
             logger.info(f"Data update took: {time.perf_counter() - t0:.2f} seconds")
             return (
-                "update",
+                "data-dashboard-update",
                 children,
             )
 
@@ -149,7 +149,7 @@ class DataDashboardApp:
         app.clientside_callback(
             """
         function(store_data) {
-            console.log("store_data", store_data)
+            window.parent.postMessage({action: 'data-dashboard-update'}, '*');
         }
         """,
             Input("toggle-store", "data"),

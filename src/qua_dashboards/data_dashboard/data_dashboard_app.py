@@ -21,7 +21,7 @@ from qua_dashboards.data_dashboard.data_components import (
 class DataDashboardApp:
     def __init__(
         self,
-        update_interval: int = 100,
+        update_interval: int = 500,
         title: str = "Data Dashboard",
         include_title: bool = False,
         update_button: bool = False,
@@ -39,6 +39,7 @@ class DataDashboardApp:
                 dcc.Interval(
                     id="interval-component", interval=update_interval, n_intervals=0
                 ),
+                dcc.Store(id="toggle-store", data=""),
             ],
             style={"margin": "10px"},
         )
@@ -82,7 +83,7 @@ class DataDashboardApp:
             inputs.append(Input("update-button", "n_clicks"))
 
         @app.callback(
-            [Output("data-container", "children")],
+            [Output("toggle-store", "data"), Output("data-container", "children")],
             inputs,
             [State("data-container", "children")],
         )
@@ -115,7 +116,10 @@ class DataDashboardApp:
                 children.append(child)
 
             logger.info(f"Data update took: {time.perf_counter() - t0:.2f} seconds")
-            return (children,)
+            return (
+                "data-dashboard-update",
+                children,
+            )
 
         @app.callback(
             Output({"type": "collapse", "index": MATCH}, "is_open"),
@@ -141,6 +145,15 @@ class DataDashboardApp:
                 return not is_open
 
             return is_open
+
+        app.clientside_callback(
+            """
+        function(store_data) {
+            window.parent.postMessage({action: 'data-dashboard-update'}, '*');
+        }
+        """,
+            Input("toggle-store", "data"),
+        )
 
         # Register callbacks for each component type
         for component_type in self.component_types:
@@ -172,6 +185,10 @@ class DataDashboardApp:
             return jsonify(success=True)
 
 
-if __name__ == "__main__":
-    app = DataDashboardApp()
+def main():
+    app = DataDashboardApp(update_interval=1000)
     app.run(threaded=True)
+
+
+if __name__ == "__main__":
+    main()

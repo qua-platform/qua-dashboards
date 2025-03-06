@@ -29,7 +29,9 @@ def create_random_figure():
     return fig
 
 
-client = DataDashboardClient()
+client = DataDashboardClient(
+    # url="http://localhost:8050/data-dashboard"
+)
 
 
 # %% Basic scalar data example

@@ -19,6 +19,10 @@ def create_app(requests_pathname_prefix: Optional[str] = None) -> Dash:
     return app
 
 
-if __name__ == "__main__":
+def main():
     app = create_app()
     app.run(debug=False)
+
+
+if __name__ == "__main__":
+    main()

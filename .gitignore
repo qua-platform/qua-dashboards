@@ -177,3 +177,5 @@ tmp_file.py
 # Virtual environments
 .venv
 uv.lock
+
+.vscode

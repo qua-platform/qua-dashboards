@@ -1,10 +1,7 @@
 from datetime import datetime
-import time
-import numpy as np
 from pathlib import Path
 from typing import Optional, Union
 import warnings
-import dash
 from dash import dcc, html, ALL
 from dash_extensions.enrich import (
     DashProxy,
@@ -13,14 +10,12 @@ from dash_extensions.enrich import (
     State,
     BlockingCallbackTransform,
 )
-import plotly.graph_objects as go
 import dash_bootstrap_components as dbc
-from dash.exceptions import PreventUpdate
 
 import logging
 
 from qua_dashboards.video_mode.data_acquirers import BaseDataAcquirer
-from qua_dashboards.video_mode.dash_tools import xarray_to_heatmap
+from qua_dashboards.video_mode.dash_tools import xarray_to_plotly
 
 
 __all__ = ["VideoModeApp", "VideoMode"]
@@ -61,7 +56,7 @@ class VideoModeApp:
         self.app = DashProxy(
             __name__,
             title="Video Mode",
-            transforms=[BlockingCallbackTransform(timeout=10)],  # Running callbacks sequentially!!!
+            transforms=[BlockingCallbackTransform(timeout=10)],
             external_stylesheets=[dbc.themes.BOOTSTRAP],
         )  # Add Bootstrap theme
         self.create_layout()
@@ -85,19 +80,7 @@ class VideoModeApp:
         Returns:
             None: The method sets up the `self.app.layout` attribute but doesn't return anything.
         """
-        
-        added_points = {'x': [], 'y': [], 'index': []}   # added points
-        selected_point_to_move = {'move': False, 'index': None}        # selected point to move
-        dict_heatmap = xarray_to_heatmap(self.data_acquirer.data_array)
-        #self.heatmap = dict_heatmap['heatmap']
-        self.figure = self._generate_figure(dict_heatmap,added_points)
-        #logging.debug(f"figure: {self.figure}")
-        #logging.debug(f"added points: {added_points}")
-        self.radio_options = [
-            {"label": "Adding and moving points", "value": "add"},
-            {"label": "Deleting points", "value": "delete"},
-            {"label": "Adding lines", "value": "line"},
-        ]
+        self.fig = xarray_to_plotly(self.data_acquirer.data_array)
 
         self.app.layout = dbc.Container(
             [
@@ -154,28 +137,6 @@ class VideoModeApp:
                                             width="auto",
                                         ),
                                     ],
-                                    className="mb-4",
-                                ),
-                                dbc.Row(
-                                    [
-                                        dbc.Col(
-                                            dbc.Card(
-                                                dbc.CardBody([
-                                                    html.H5("Points and lines", className="card-title"),
-                                                    dbc.RadioItems(
-                                                        id='mode-selector',
-                                                        options=self.radio_options,
-                                                        value="add",
-                                                        #['Adding and moving points', 'Adding lines', 'Deleting points'], 
-                                                        #'Adding and moving points',
-                                                    ),
-                                                ]),
-                                            ),
-                                            width="auto"
-                                        ),
-                                        
-                                    ],
-                                    className="mr-2"
                                 ),
                             ],
                             width=5,
@@ -183,30 +144,18 @@ class VideoModeApp:
                         dbc.Col(
                             dcc.Graph(
                                 id="live-heatmap",
-                                figure=self.figure,
+                                figure=self.fig,
                                 style={"aspect-ratio": "1 / 1"},
-                                #config={'scrollZoom': True},
                             ),
                             width=7,
                         ),
                     ]
                 ),
-                dcc.Interval( # Component  that will fire a callback periodically (for live updates)
+                dcc.Interval(
                     id="interval-component",
                     interval=self.update_interval * 1000,
                     n_intervals=0,
-                    #max_intervals=10,
                 ),
-                dcc.Store( # Store heatmap that it can be used as an input in a callback
-                    id="heatmap-data-store",
-                    #data=self.heatmap, # initial assignment, NOT automatically updated
-                    data=dict_heatmap['heatmap'], # initial assignment, NOT automatically updated
-                ),
-                dcc.Store( # Store added points that they can be used as an input in a callback
-                    id="added_points-data-store",
-                    data={'added_points': added_points, 'selected_point': selected_point_to_move},  # initial assignment, NOT automatically updated
-                ),
-                dcc.Store(id="timestamp-store-heatmap"),  # Hidden store for timing
             ],
             fluid=True,
             style={"height": "100vh"},
@@ -222,64 +171,38 @@ class VideoModeApp:
             [Input("pause-button", "n_clicks")],
         )
         def toggle_pause(n_clicks):
-            if n_clicks>0: # Button is initiated with n_clicks=0, only toggle if button was clicked!
-                self.paused = not self.paused
-                logging.debug(f"Paused: {self.paused}")
+            self.paused = not self.paused
+            logging.debug(f"Paused: {self.paused}")
             return "Resume" if self.paused else "Pause"
-        
-        # @self.app.callback(
-        #     Output("timestamp-store-heatmap", "data"),
-        #     Input("interval-component", "n_intervals"),
-        #     prevent_initial_call=True
-        #     )
-        # def store_timestamp(n_intervals):
-        #     return time.perf_counter()  # Store the timestamp before callback execution
-
 
         @self.app.callback(
             [
-                Output("heatmap-data-store", "data"),  # Change heatmap data -> can use this to fire another callback for updating the figure!
+                Output("live-heatmap", "figure"),
                 Output("iteration-output", "children"),
             ],
             [
                 Input("interval-component", "n_intervals"),
-                State("heatmap-data-store", "data"), # new
             ],
-            #State("timestamp-store", "data"),
             blocking=True,
         )
-        def update_heatmap(n_intervals,state_heatmap):
-            #logging.debug(f"data: {self.figure.data}")
-            # logging.debug(
-            #     f"*** Dash callback {n_intervals} called at {datetime.now().strftime('%H:%M:%S.%f')[:-3]}"
-            # )
-            #processing_start = time.perf_counter()  # Start measuring execution time
+        def update_heatmap(n_intervals):
+            logging.debug(
+                f"*** Dash callback {n_intervals} called at {datetime.now().strftime('%H:%M:%S.%f')[:-3]}"
+            )
 
             if self.paused or self._is_updating:
                 logging.debug(
                     f"Updates paused at iteration {self.data_acquirer.num_acquisitions}"
                 )
-                return state_heatmap, f"Iteration: {self.data_acquirer.num_acquisitions}"
+                return self.fig, f"Iteration: {self.data_acquirer.num_acquisitions}"
 
             # Increment iteration counter and update frontend
-            #ts1 = time.time()
             updated_xarr = self.data_acquirer.update_data()
-            dict_heatmap = xarray_to_heatmap(updated_xarr)
-            #self.heatmap = dict_heatmap['heatmap']
-            # logging.debug(
-            #     f"Updating heatmap, num_acquisitions: {self.data_acquirer.num_acquisitions}"
-            # )
-            #ts2 = time.time()
-            #logging.debug(f"Time to update heatmap: {ts2-ts1}s")
-
-            #processing_end = time.perf_counter()  # End measuring execution time
-
-            #execution_time = processing_end - processing_start  # Callback execution time
-            #total_delay = processing_end - start_time  # Full delay from triggering event
-            #logging.debug(f"(UPDATE HEATMAP) execution_time (Python processing): {execution_time}s")
-            #logging.debug(f"(UPDATE HEATMAP) total_delay (full UI update time): {total_delay}s")
-
-            return dict_heatmap, [f"Iteration: {self.data_acquirer.num_acquisitions}"]
+            self.fig = xarray_to_plotly(updated_xarr)
+            logging.debug(
+                f"Updating heatmap, num_acquisitions: {self.data_acquirer.num_acquisitions}"
+            )
+            return self.fig, f"Iteration: {self.data_acquirer.num_acquisitions}"
 
         # Create states for all input components
         component_states = []
@@ -322,168 +245,6 @@ class VideoModeApp:
                 self.save()
                 return "Saved!"
             return "Save"
-        
-        @self.app.callback(
-            [Output("added_points-data-store","data",allow_duplicate=True)],
-            [Input('live-heatmap','clickData')],
-            [State("added_points-data-store","data"),
-            State("mode-selector","value")],
-        )
-        def handle_clicks(clickData,dict_points,selected_mode):
-            #logging.debug(f"added_points: {self.added_points}")
-            #logging.debug(f"clickData: {clickData}")  # to check whether clickData is received
-
-            # clickData is not None AND 'points' is not missing AND 'points' is not an empty list
-            if clickData and 'points' in clickData and clickData['points']:
-
-                point = clickData['points'][0]
-                x_value, y_value = point['x'], point['y']
-                #logging.debug(f"Point: {point}")
-                added_points = dict_points['added_points']
-                selected_point_to_move = dict_points['selected_point']
-                
-                # MODE: Adding and moving points
-                if selected_mode=="add":
-                    # Select point: Already added point since 'z' is missing & first click --> MARK THIS POINT
-                    if 'z' not in point and selected_point_to_move['move']==False:
-                        #x_value, y_value = point['x'], point['y']
-                        selected_point_to_move['move'] = True
-                        selected_point_to_move['index'] = self._find_index(x_value, y_value, added_points)
-
-                    # Second click, i.e. last click was on an existing point --> MOVE selected point to clicked coordinates
-                    elif selected_point_to_move['move']==True:
-                        #x_value, y_value = point['x'], point['y']
-                        added_points['x'][selected_point_to_move['index']] = x_value  # Move point
-                        added_points['y'][selected_point_to_move['index']] = y_value
-                        selected_point_to_move['move'] = False
-                        selected_point_to_move['index'] = None
-
-                    # Add new point
-                    elif 'z' in point:
-                        #x_value, y_value = point['x'], point['y']
-
-                        # Generate point index
-                        point_index = len(added_points['x'])
-
-                        # Append new point
-                        added_points['x'].append(x_value)
-                        added_points['y'].append(y_value)
-                        added_points['index'].append(point_index)
-            
-                    return {'added_points': added_points, 'selected_point': selected_point_to_move}
-                
-                # MODE: Deleting points
-                elif selected_mode=="delete":
-                    # If click on point
-                    if 'z' not in point:
-                        # Find index of clicked point
-                        index = self._find_index(x_value, y_value, added_points)
-
-                        # Delete point in added_points
-                        del added_points['x'][index]
-                        del added_points['y'][index]
-                        
-                        # Recompute indices
-                        added_points['index'] = list(range(len(added_points['x'])))
-
-                    return {'added_points': added_points, 'selected_point': selected_point_to_move} # return points even if no point was deleted -> no problems with ordering of traces in figure
-            else:
-                return dash.no_update
-
-        # CANNOT HAVE TWO CALLBACKS WITH THE SAME INPUTS, OUTPUTS AND STATES!!! DASH CANNOT DETERMINE WHICH ONE TO EXECUTE    
-        # @self.app.callback(
-        #     [Output("added_points-data-store","data",allow_duplicate=True)],
-        #     [Input('live-heatmap','clickData')],
-        #     [State("added_points-data-store","data"),
-        #      State("mode-selector","value")],
-        # )
-        # def handle_clicks_deletePoints(clickData,dict_points,selected_mode):
-        #     return dash.no_update
-        #     # if selected_mode=='delete':
-        #     #     logging.debug(f"Point: {clickData}")
-        #     #     return dash.no_update
-        #     # else:
-        #     #     return dash.no_update
-        
-        @self.app.callback(
-            [Output("added_points-data-store","data",allow_duplicate=True)],
-            [Input('live-heatmap','hoverData')],
-            [State("added_points-data-store","data"), 
-             State("mode-selector","value")],
-        )
-        def handle_hovering(hoverData,dict_points,selected_mode):
-            #logging.debug(f"hovering: {dict_points}")
-            if selected_mode=="add":
-                if hoverData and 'points' in hoverData and hoverData['points']:
-                    added_points = dict_points['added_points']
-                    selected_point_to_move = dict_points['selected_point']
-                    if selected_point_to_move['move']==True: # only do something if point was selected
-                        point = hoverData['points'][0]
-
-                        # Move selected point
-                        added_points['x'][selected_point_to_move['index']] = point['x']
-                        added_points['y'][selected_point_to_move['index']] = point['y']        
-
-                        return {'added_points': added_points, 'selected_point': selected_point_to_move} 
-                    else:
-                        return dash.no_update
-                else:
-                    return dash.no_update       
-            else:
-                return dash.no_update
-        
-        @self.app.callback(
-            [Output('live-heatmap','figure')],
-            [Input("heatmap-data-store", "data"),
-             Input("added_points-data-store","data")],
-            #blocking = True, # Not needed as heatmap data comes from dcc.Store
-        )
-        def update_figure(dict_heatmap,dict_points):
-            #ts1 = time.time()
-            # OUTCOMMENT THIS PART, SUCH THAT POINTS CAN BE ADDED WHEN PAUSED
-            # if self.paused or self._is_updating:
-            #     logging.debug(
-            #         f"Updates paused at iteration {self.data_acquirer.num_acquisitions}"
-            #     )
-            #     return self.figure
-            added_points = dict_points['added_points']
-            self.figure = self._generate_figure(dict_heatmap,added_points)
-            #ts2 = time.time()
-            #logging.debug(f"Time to update figure: {ts2-ts1}s")
-            #logging.debug(f"figure: {figure}")
-            #logging.debug(f"type figure: {type(figure)}")
-            return self.figure
-    
-
-    def _generate_figure(self, dict_heatmap, points):
-        figure = go.Figure()
-        heatmap = dict_heatmap['heatmap']
-        figure_titles = dict_heatmap['xy-titles']
-        figure.add_trace(heatmap)
-        figure.add_trace(go.Scatter(
-            x=points['x'], 
-            y=points['y'], 
-            zorder=1,
-            mode='markers + text', 
-            marker=dict(color='white', size=10, line=dict(color='black', width=1)),
-            text=[str(int(i) + 1) for i in points['index']], # Use indices to label the points
-            textposition='top center',#'middle center', 
-            textfont=dict(color='white'), #,shadow='1px 1px 10px white'), # offset-x | offset-y | blur-radius | color
-            showlegend=False,
-            name='',
-        ))
-        figure.update_layout(xaxis_title=figure_titles['xaxis_title'], 
-                             yaxis_title=figure_titles['yaxis_title'], clickmode='event + select')
-        return figure
-
-    def _find_index(self, x_value, y_value, added_points):
-        """ 
-         Find index of a selected point (x_value, y_value) in the dict added_points
-        """
-        for i in range(len(added_points['x'])):
-            if np.isclose(added_points['x'][i], x_value, atol=0.005) and np.isclose(added_points['y'][i], y_value, atol=0.005):
-                return i  # Return the index if the point is found
-        return None  # Return None if no matching point is found
 
     def run(self, debug: bool = True, use_reloader: bool = False):
         logging.debug("Starting Dash server")

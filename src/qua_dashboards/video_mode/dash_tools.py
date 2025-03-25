@@ -90,7 +90,7 @@ def xarray_to_plotly(da: xr.DataArray):
     fig.update_layout(xaxis_title=xaxis_label, yaxis_title=yaxis_label)
     return fig
 
-
+# NOT NEEDED ANYMORE
 def xarray_to_plotly_click(da: xr.DataArray, added_points):
     """Convert an xarray DataArray to a Plotly figure.
        Add a separate trace (go.Scatter) for added points by clicks

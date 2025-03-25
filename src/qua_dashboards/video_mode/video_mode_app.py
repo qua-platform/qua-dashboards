@@ -387,6 +387,9 @@ class VideoModeApp:
                         added_points['index'] = list(range(len(added_points['x'])))
 
                     return {'added_points': added_points, 'selected_point': selected_point_to_move} # return points even if no point was deleted -> no problems with ordering of traces in figure
+                
+                elif selected_mode=="line":
+                    return dash.no_update
             else:
                 return dash.no_update
 

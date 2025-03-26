@@ -223,15 +223,24 @@ class VideoModeApp:
 
     def add_callbacks(self):
         @self.app.callback(
-            Output("pause-button", "children"),
+            [Output("pause-button", "children"),
+             Output("interval-component","disabled")],
             [Input("pause-button", "n_clicks")],
         )
         def toggle_pause(n_clicks):
-            if n_clicks>0: # Button is initiated with n_clicks=0, only toggle if button was clicked!
-                self.paused = not self.paused
+            if n_clicks % 2 == 1:
+                self.paused = True
                 logging.debug(f"Paused: {self.paused}")
-            return "Resume" if self.paused else "Pause"
-        
+                return "Resume", True
+            else:
+                self.paused = False
+                return "Pause", False
+            # if n_clicks>0: # Button is initiated with n_clicks=0, only toggle if button was clicked!
+            #     self.paused = not self.paused
+            #     logging.debug(f"Paused: {self.paused}")
+            # return "Resume" if self.paused else "Pause"
+
+
         # @self.app.callback(
         #     Output("timestamp-store-heatmap", "data"),
         #     Input("interval-component", "n_intervals"),
@@ -248,16 +257,17 @@ class VideoModeApp:
             ],
             [
                 Input("interval-component", "n_intervals"),
-                State("heatmap-data-store", "data"), # new
             ],
-            #State("timestamp-store", "data"),
+            [State("heatmap-data-store", "data")], # new
+            #State("timestamp-store-heatmap", "data")],
             blocking=True,
         )
-        def update_heatmap(n_intervals,state_heatmap):
+        def update_heatmap(n_intervals,state_heatmap):#,start_time):
             #logging.debug(f"data: {self.figure.data}")
             # logging.debug(
             #     f"*** Dash callback {n_intervals} called at {datetime.now().strftime('%H:%M:%S.%f')[:-3]}"
             # )
+            #logging.debug(f"start_time: {start_time}")
             #processing_start = time.perf_counter()  # Start measuring execution time
 
             if self.paused or self._is_updating:
@@ -271,9 +281,9 @@ class VideoModeApp:
             updated_xarr = self.data_acquirer.update_data()
             dict_heatmap = xarray_to_heatmap(updated_xarr)
             #self.heatmap = dict_heatmap['heatmap']
-            # logging.debug(
-            #     f"Updating heatmap, num_acquisitions: {self.data_acquirer.num_acquisitions}"
-            # )
+            logging.debug(
+                f"Updating heatmap, num_acquisitions: {self.data_acquirer.num_acquisitions}"
+            )
             #ts2 = time.time()
             #logging.debug(f"Time to update heatmap: {ts2-ts1}s")
 
@@ -388,17 +398,17 @@ class VideoModeApp:
                         index = self._find_index(x_value, y_value, added_points)
 
                         # Delete lines that have clicked point as start or end point
-                        logging.debug(f"lines: {added_lines}")
+                        #logging.debug(f"lines: {added_lines}")
                         i_start = [i for i, value in enumerate(added_lines['start_index']) if value==index]
                         i_end = [i for i, value in enumerate(added_lines['end_index']) if value==index]
                         i_to_remove = list(set(i_start) | set(i_end)) # combined list of line indices without duplicates
                         added_lines['start_index'] = [value for i, value in enumerate(added_lines['start_index']) if i not in i_to_remove] # delete lines
                         added_lines['end_index'] = [value for i, value in enumerate(added_lines['end_index']) if i not in i_to_remove]     # delete lines
-                        logging.debug(f"index of point to delete: {index}")
-                        logging.debug(f"i_start: {i_start}")
-                        logging.debug(f"i_end: {i_end}")
-                        logging.debug(f"indices to remove from list: {i_to_remove}")
-                        logging.debug(f"lines: {added_lines}")
+                        #logging.debug(f"index of point to delete: {index}")
+                        #logging.debug(f"i_start: {i_start}")
+                        #logging.debug(f"i_end: {i_end}")
+                        #logging.debug(f"indices to remove from list: {i_to_remove}")
+                        #logging.debug(f"lines: {added_lines}")
 
                         # Delete point in added_points
                         del added_points['x'][index]
@@ -410,7 +420,7 @@ class VideoModeApp:
                         # Recompute the line indices
                         added_lines['start_index'] = [value if value<index else value-1 for i, value in enumerate(added_lines['start_index'])]
                         added_lines['end_index'] = [value if value<index else value-1 for i, value in enumerate(added_lines['end_index'])]
-                        logging.debug(f"lines: {added_lines}")
+                        #logging.debug(f"lines: {added_lines}")
                     return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines} # return points even if no point was deleted -> no problems with ordering of traces in figure
                 
                 elif selected_mode=='line': 
@@ -428,8 +438,8 @@ class VideoModeApp:
                             #else:
                             #    logging.debug(f"Duplicated line!")
                             selected_points_for_line = []
-                        logging.debug(f"selected_points: {selected_points_for_line}")
-                        logging.debug(f"lines: {added_lines}")
+                        #logging.debug(f"selected_points: {selected_points_for_line}")
+                        #logging.debug(f"lines: {added_lines}")
                     return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}
             else:
                 return dash.no_update
@@ -469,7 +479,7 @@ class VideoModeApp:
             #blocking = True, # Not needed as heatmap data comes from dcc.Store
         )
         def update_figure(dict_heatmap,dict_points,dict_lines):
-            #ts1 = time.time()
+            ts1 = time.time()
             # OUTCOMMENT THIS PART, SUCH THAT POINTS CAN BE ADDED WHEN PAUSED
             # if self.paused or self._is_updating:
             #     logging.debug(
@@ -480,8 +490,8 @@ class VideoModeApp:
             added_lines = dict_lines['added_lines']
 
             self.figure = self._generate_figure(dict_heatmap,added_points,added_lines)
-            #ts2 = time.time()
-            #logging.debug(f"Time to update figure: {ts2-ts1}s")
+            ts2 = time.time()
+            logging.debug(f"Time to update figure: {ts2-ts1}s")
             #logging.debug(f"figure: {figure}")
             #logging.debug(f"type figure: {type(figure)}")
             return self.figure

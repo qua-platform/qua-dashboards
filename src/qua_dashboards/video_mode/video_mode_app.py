@@ -52,6 +52,7 @@ class VideoModeApp:
         self.data_acquirer = data_acquirer
         self.save_path = Path(save_path)
         self.paused = False
+        self.annotation = False
         self._last_update_clicks = 0
         self._last_save_clicks = 0
         self.update_interval = update_interval
@@ -160,6 +161,20 @@ class VideoModeApp:
                                 dbc.Row(
                                     [
                                         dbc.Col(
+                                            dbc.Button(
+                                                "Annotation (off)",
+                                                id="annotation-button",
+                                                n_clicks=0,
+                                                className="mt-3 mr-2",
+                                            ),
+                                            width="auto",
+                                        ),
+                                    ],
+                                    className="mb-1",
+                                ),
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
                                             dbc.Card(
                                                 dbc.CardBody([
                                                     html.H5("Points and lines", className="card-title"),
@@ -223,22 +238,28 @@ class VideoModeApp:
 
     def add_callbacks(self):
         @self.app.callback(
-            [Output("pause-button", "children"),
-             Output("interval-component","disabled")],
+            Output("pause-button", "children"),
             [Input("pause-button", "n_clicks")],
         )
         def toggle_pause(n_clicks):
-            if n_clicks % 2 == 1:
-                self.paused = True
+            if n_clicks>0: # Button is initiated with n_clicks=0, only toggle if button was clicked!
+                self.paused = not self.paused
                 logging.debug(f"Paused: {self.paused}")
-                return "Resume", True
+            return "Resume" if self.paused else "Pause"
+        
+        @self.app.callback(
+            [Output("annotation-button", "children"),
+             Output("interval-component","disabled")],
+            [Input("annotation-button", "n_clicks")],
+        )
+        def toggle_annotation(n_clicks):
+            if n_clicks % 2 == 1:
+                self.annotation = True
+                logging.debug(f"Annotation mode: {self.annotation}")
+                return "Annotation (on)", True
             else:
-                self.paused = False
-                return "Pause", False
-            # if n_clicks>0: # Button is initiated with n_clicks=0, only toggle if button was clicked!
-            #     self.paused = not self.paused
-            #     logging.debug(f"Paused: {self.paused}")
-            # return "Resume" if self.paused else "Pause"
+                self.annotation = False
+                return "Annotation (off)", False
 
         @self.app.callback(
             Output("added_lines-data-store","data", allow_duplicate=True),

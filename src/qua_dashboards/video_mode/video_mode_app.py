@@ -240,6 +240,16 @@ class VideoModeApp:
             #     logging.debug(f"Paused: {self.paused}")
             # return "Resume" if self.paused else "Pause"
 
+        @self.app.callback(
+            Output("added_lines-data-store","data", allow_duplicate=True),
+            Input("mode-selector","value"),
+            State("added_lines-data-store","data"),
+        )
+        def update_when_mode_change(mode,dict_lines):
+            if mode!='line':
+                dict_lines['selected_indices'] = []  # reset selected indices for line in case of mode change
+            return dict_lines
+
 
         # @self.app.callback(
         #     Output("timestamp-store-heatmap", "data"),
@@ -362,8 +372,6 @@ class VideoModeApp:
                 
                 # MODE: Adding and moving points
                 if selected_mode=="add":
-                    # No points selected for line, i.e. ensure starting over when changing the mode & clicking
-                    selected_points_for_line = [] # DOES ONLY WORK WHEN A POINT IS CLICKED
                     # Select point: Already added point since 'z' is missing & first click --> MARK THIS POINT
                     if 'z' not in point and selected_point_to_move['move']==False:
                         selected_point_to_move['move'] = True
@@ -390,8 +398,6 @@ class VideoModeApp:
                 
                 # MODE: Deleting points
                 elif selected_mode=="delete":
-                    # No points selected for line, i.e. ensure starting over when changing the mode
-                    selected_points_for_line = []  # DOES ONLY WORK WHEN A POINT IS CLICKED
                     # If click on point
                     if 'z' not in point:
                         # Find index of clicked point

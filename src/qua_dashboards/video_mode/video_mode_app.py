@@ -1,6 +1,7 @@
 from datetime import datetime
 import time
 import numpy as np
+import os
 from pathlib import Path
 from typing import Optional, Union
 import warnings
@@ -58,12 +59,16 @@ class VideoModeApp:
         self.update_interval = update_interval
         self._is_updating = False
 
+        #assets_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "assets"))
+        #logging.debug(f"path: {assets_path}")
+
         # Using DashProxy so we can use dash_extensions.enrich
         self.app = DashProxy(
             __name__,
             title="Video Mode",
             transforms=[BlockingCallbackTransform(timeout=10)],  # Running callbacks sequentially!!!
             external_stylesheets=[dbc.themes.BOOTSTRAP],
+            #assets_folder=assets_path,
         )  # Add Bootstrap theme
         self.create_layout()
 
@@ -96,13 +101,14 @@ class VideoModeApp:
         #logging.debug(f"figure: {self.figure}")
         #logging.debug(f"added points: {added_points}")
         self.radio_options = [
-            {"label": "Adding and moving points", "value": "add"},
-            {"label": "Deleting points", "value": "delete"},
-            {"label": "Adding lines", "value": "line"},
+            {"label": "Adding and moving points (SHIFT+P)", "value": "point"},
+            {"label": "Adding lines (SHIFT+L)", "value": "line"},
+            {"label": "Marking and deleting points and lines (SHIFT+D)", "value": "delete"},
         ]
 
-        self.app.layout = dbc.Container(
-            [
+        self.app.layout = html.Div([ #html.Div(dcc.Store(id="key-store", data="point")), 
+                                    dbc.Container(
+            [                     # Store to hold key press events
                 dbc.Row(
                     [
                         dbc.Col(  # Settings
@@ -181,7 +187,7 @@ class VideoModeApp:
                                                     dbc.RadioItems(
                                                         id='mode-selector',
                                                         options=self.radio_options,
-                                                        value="add",
+                                                        value="point",
                                                         #['Adding and moving points', 'Adding lines', 'Deleting points'], 
                                                         #'Adding and moving points',
                                                     ),
@@ -213,6 +219,7 @@ class VideoModeApp:
                     n_intervals=0,
                     #max_intervals=10,
                 ),
+                #dcc.Input(id="key-input", type="text", style={"opacity":0, "position": "absolute"}), # Hidden input for key events --> key events have to be ended with pressing ENTER - not what we want
                 dcc.Store( # Store heatmap that it can be used as an input in a callback
                     id="heatmap-data-store",
                     #data=self.heatmap, # initial assignment, NOT automatically updated
@@ -226,17 +233,27 @@ class VideoModeApp:
                     id="added_lines-data-store",
                     data=dict_lines,
                 ),
-                dcc.Store(id="timestamp-store-heatmap"),  # Hidden store for timing
+                #dcc.Store(id="timestamp-store-heatmap"),    # Hidden store for timing
+                #html.Script(src="/assets/keypress.js"),    # JavaScript to detect key presses (Added in assets folder) --> no ENTER needed
             ],
             fluid=True,
             style={"height": "100vh"},
-        )
+        )])
         logging.debug(
             f"Dash layout created, update interval: {self.update_interval * 1000} ms"
         )
+        #logging.debug(f"App layout: {self.app.layout}")
         self.add_callbacks()
 
     def add_callbacks(self):
+    #     @self.app.callback(
+    #         Output('key-store', 'data'),
+    #         Input('key-store', 'data')
+    #     )
+    #     def check_store(data):
+    #         print("Store Data:", data)
+    #         return data  # Keeps the value unchanged
+
         @self.app.callback(
             Output("pause-button", "children"),
             [Input("pause-button", "n_clicks")],
@@ -266,11 +283,75 @@ class VideoModeApp:
             Input("mode-selector","value"),
             State("added_lines-data-store","data"),
         )
-        def update_when_mode_change(mode,dict_lines):
+        def update_mode_change(mode,dict_lines):
             if mode!='line':
                 dict_lines['selected_indices'] = []  # reset selected indices for line in case of mode change
             return dict_lines
+        
+        # Use keyboard shortcuts to switch between radio items (modes)
+        self.app.clientside_callback(
+            """
+            function(value) {
+                document.addEventListener("keydown", function(event) {
+                    if (event.shiftKey) {
+                        let key = event.key.toLowerCase();  // Normalize to lowercase
+                        let mapping = {"p": "point", "l": "line", "d": "delete"};
 
+                        if (mapping.hasOwnProperty(key)) {
+                            event.preventDefault();  // Prevent default browser actions
+                            //console.log("Shortcut selected:", mapping[key]);
+                            
+                            // Update the RadioItems value
+                            dash_clientside.set_props("mode-selector", {value: mapping[key]})                         
+                        }
+                    }
+                });
+                
+                return window.dash_clientside.no_update;
+            }
+            """,
+            Output("mode-selector", "value"),
+            Input("mode-selector", "value")
+        )        
+
+        # self.app.clientside_callback(
+        #     """
+        #     function(stored_value) {
+        #         document.addEventListener("keydown", function(event) {
+        #             if (event.shiftKey) {
+        #                 let key = event.key.toLowerCase();  // Normalize to lowercase
+        #                 let mapping = {"p": "point", "l": "line", "d": "delete"};
+
+        #                 if (mapping.hasOwnProperty(key)) {
+        #                     event.preventDefault();  // Prevent default browser actions
+
+        #                     console.log("Shortcut selected:", mapping[key]);
+                            
+        #                     // Update the RadioItems value
+        #                     window.dash_clientside.lastSelectedMode = mapping[key];
+        #                     console.log("lastSelectedMode:", window.dash_clientside.lastSelectedMode);
+        #                     dash_clientside.set_props("key-store", {data: mapping[key]})                         
+        #                 }
+        #             }
+        #         });
+        #         console.log("return value:", window.dash_clientside.lastSelectedMode || stored_value);
+        #         return window.dash_clientside.no_update;  // Return last selected mode
+        #     }
+        #     """,
+        #     Output("key-store", "data"),
+        #     Input("key-store", "data")
+        # )  
+        
+        # @self.app.callback(
+        #     Output("mode-selector", "value"),
+        #     Input("key-store", "data"),
+        #     #prevent_initial_call=True
+        # )
+        # def update_radioItems(key_pressed):
+        #     logging.debug(f"key_pressed: {key_pressed}")
+        #     if key_pressed in ["point", "line", "delete"]:
+        #         return key_pressed
+        #     return dash.no_update
 
         # @self.app.callback(
         #     Output("timestamp-store-heatmap", "data"),
@@ -392,7 +473,7 @@ class VideoModeApp:
                 selected_points_for_line = dict_lines['selected_indices']
                 
                 # MODE: Adding and moving points
-                if selected_mode=="add":
+                if selected_mode=="point":
                     # Select point: Already added point since 'z' is missing & first click --> MARK THIS POINT
                     if 'z' not in point and selected_point_to_move['move']==False:
                         selected_point_to_move['move'] = True
@@ -479,7 +560,7 @@ class VideoModeApp:
         )
         def handle_hovering(hoverData,dict_points,selected_mode):
             #logging.debug(f"hovering: {dict_points}")
-            if selected_mode=="add":
+            if selected_mode=="point":
                 if hoverData and 'points' in hoverData and hoverData['points']:
                     added_points = dict_points['added_points']
                     selected_point_to_move = dict_points['selected_point']

@@ -59,16 +59,12 @@ class VideoModeApp:
         self.update_interval = update_interval
         self._is_updating = False
 
-        #assets_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "assets"))
-        #logging.debug(f"path: {assets_path}")
-
         # Using DashProxy so we can use dash_extensions.enrich
         self.app = DashProxy(
             __name__,
             title="Video Mode",
             transforms=[BlockingCallbackTransform(timeout=10)],  # Running callbacks sequentially!!!
             external_stylesheets=[dbc.themes.BOOTSTRAP],
-            #assets_folder=assets_path,
         )  # Add Bootstrap theme
         self.create_layout()
 
@@ -106,8 +102,7 @@ class VideoModeApp:
             {"label": "Marking and deleting points and lines (SHIFT+D)", "value": "delete"},
         ]
 
-        self.app.layout = html.Div([ #html.Div(dcc.Store(id="key-store", data="point")), 
-                                    dbc.Container(
+        self.app.layout = dbc.Container(
             [                     # Store to hold key press events
                 dbc.Row(
                     [
@@ -238,7 +233,7 @@ class VideoModeApp:
             ],
             fluid=True,
             style={"height": "100vh"},
-        )])
+        )
         logging.debug(
             f"Dash layout created, update interval: {self.update_interval * 1000} ms"
         )
@@ -246,13 +241,6 @@ class VideoModeApp:
         self.add_callbacks()
 
     def add_callbacks(self):
-    #     @self.app.callback(
-    #         Output('key-store', 'data'),
-    #         Input('key-store', 'data')
-    #     )
-    #     def check_store(data):
-    #         print("Store Data:", data)
-    #         return data  # Keeps the value unchanged
 
         @self.app.callback(
             Output("pause-button", "children"),
@@ -312,46 +300,7 @@ class VideoModeApp:
             """,
             Output("mode-selector", "value"),
             Input("mode-selector", "value")
-        )        
-
-        # self.app.clientside_callback(
-        #     """
-        #     function(stored_value) {
-        #         document.addEventListener("keydown", function(event) {
-        #             if (event.shiftKey) {
-        #                 let key = event.key.toLowerCase();  // Normalize to lowercase
-        #                 let mapping = {"p": "point", "l": "line", "d": "delete"};
-
-        #                 if (mapping.hasOwnProperty(key)) {
-        #                     event.preventDefault();  // Prevent default browser actions
-
-        #                     console.log("Shortcut selected:", mapping[key]);
-                            
-        #                     // Update the RadioItems value
-        #                     window.dash_clientside.lastSelectedMode = mapping[key];
-        #                     console.log("lastSelectedMode:", window.dash_clientside.lastSelectedMode);
-        #                     dash_clientside.set_props("key-store", {data: mapping[key]})                         
-        #                 }
-        #             }
-        #         });
-        #         console.log("return value:", window.dash_clientside.lastSelectedMode || stored_value);
-        #         return window.dash_clientside.no_update;  // Return last selected mode
-        #     }
-        #     """,
-        #     Output("key-store", "data"),
-        #     Input("key-store", "data")
-        # )  
-        
-        # @self.app.callback(
-        #     Output("mode-selector", "value"),
-        #     Input("key-store", "data"),
-        #     #prevent_initial_call=True
-        # )
-        # def update_radioItems(key_pressed):
-        #     logging.debug(f"key_pressed: {key_pressed}")
-        #     if key_pressed in ["point", "line", "delete"]:
-        #         return key_pressed
-        #     return dash.no_update
+        )
 
         # @self.app.callback(
         #     Output("timestamp-store-heatmap", "data"),
@@ -392,6 +341,7 @@ class VideoModeApp:
             #ts1 = time.time()
             updated_xarr = self.data_acquirer.update_data()
             dict_heatmap = xarray_to_heatmap(updated_xarr)
+            #logging.debug(f"heatmap: {dict_heatmap['heatmap']}")
             #self.heatmap = dict_heatmap['heatmap']
             logging.debug(
                 f"Updating heatmap, num_acquisitions: {self.data_acquirer.num_acquisitions}"
@@ -648,9 +598,12 @@ class VideoModeApp:
     def _find_index(self, x_value, y_value, added_points):
         """ 
          Find index of a selected point (x_value, y_value) in the dict added_points
+         Tolerance is defined as axis.span / axis.pointsL
         """
         for i in range(len(added_points['x'])):
-            if np.isclose(added_points['x'][i], x_value, atol=0.005) and np.isclose(added_points['y'][i], y_value, atol=0.005):
+            if (np.isclose(added_points['x'][i], x_value, atol=self.data_acquirer.x_axis.span/self.data_acquirer.x_axis.points) 
+                and np.isclose(added_points['y'][i], y_value, atol=self.data_acquirer.y_axis.span/self.data_acquirer.y_axis.points)):
+                #logging.debug(f"x tol: {self.data_acquirer.x_axis.span/self.data_acquirer.x_axis.points}")
                 return i  # Return the index if the point is found
         return None  # Return None if no matching point is found
     

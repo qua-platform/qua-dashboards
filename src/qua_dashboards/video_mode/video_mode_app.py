@@ -281,7 +281,7 @@ class VideoModeApp:
             """
             function(value) {
                 document.addEventListener("keydown", function(event) {
-                    if (event.shiftKey) {
+                    if (event.shiftKey) { // Shift key is pressed
                         let key = event.key.toLowerCase();  // Normalize to lowercase
                         let mapping = {"p": "point", "l": "line", "d": "delete"};
 

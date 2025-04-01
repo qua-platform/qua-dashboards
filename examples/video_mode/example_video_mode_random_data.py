@@ -18,6 +18,6 @@ if __name__ == "__main__":
         acquire_time=0.1,
     )
 
-    live_plotter = VideoModeApp(data_acquirer=data_acquirer, update_interval=3)
+    live_plotter = VideoModeApp(data_acquirer=data_acquirer, update_interval=0.5)
     live_plotter.run(debug=True)
 

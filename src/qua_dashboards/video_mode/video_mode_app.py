@@ -1,6 +1,7 @@
 from datetime import datetime
 import time
 import numpy as np
+import os
 from pathlib import Path
 from typing import Optional, Union
 import warnings
@@ -52,6 +53,7 @@ class VideoModeApp:
         self.data_acquirer = data_acquirer
         self.save_path = Path(save_path)
         self.paused = False
+        self.annotation = False
         self._last_update_clicks = 0
         self._last_save_clicks = 0
         self.update_interval = update_interval
@@ -95,13 +97,13 @@ class VideoModeApp:
         #logging.debug(f"figure: {self.figure}")
         #logging.debug(f"added points: {added_points}")
         self.radio_options = [
-            {"label": "Adding and moving points", "value": "add"},
-            {"label": "Deleting points", "value": "delete"},
-            {"label": "Adding lines", "value": "line"},
+            {"label": "Adding and moving points (SHIFT+P)", "value": "point"},
+            {"label": "Adding lines (SHIFT+L)", "value": "line"},
+            {"label": "Marking and deleting points and lines (SHIFT+D)", "value": "delete"},
         ]
 
         self.app.layout = dbc.Container(
-            [
+            [                     # Store to hold key press events
                 dbc.Row(
                     [
                         dbc.Col(  # Settings
@@ -160,13 +162,27 @@ class VideoModeApp:
                                 dbc.Row(
                                     [
                                         dbc.Col(
+                                            dbc.Button(
+                                                "Annotation (off)",
+                                                id="annotation-button",
+                                                n_clicks=0,
+                                                className="mt-3 mr-2",
+                                            ),
+                                            width="auto",
+                                        ),
+                                    ],
+                                    className="mb-1",
+                                ),
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
                                             dbc.Card(
                                                 dbc.CardBody([
                                                     html.H5("Points and lines", className="card-title"),
                                                     dbc.RadioItems(
                                                         id='mode-selector',
                                                         options=self.radio_options,
-                                                        value="add",
+                                                        value="point",
                                                         #['Adding and moving points', 'Adding lines', 'Deleting points'], 
                                                         #'Adding and moving points',
                                                     ),
@@ -198,6 +214,7 @@ class VideoModeApp:
                     n_intervals=0,
                     #max_intervals=10,
                 ),
+                #dcc.Input(id="key-input", type="text", style={"opacity":0, "position": "absolute"}), # Hidden input for key events --> key events have to be ended with pressing ENTER - not what we want
                 dcc.Store( # Store heatmap that it can be used as an input in a callback
                     id="heatmap-data-store",
                     #data=self.heatmap, # initial assignment, NOT automatically updated
@@ -211,7 +228,8 @@ class VideoModeApp:
                     id="added_lines-data-store",
                     data=dict_lines,
                 ),
-                dcc.Store(id="timestamp-store-heatmap"),  # Hidden store for timing
+                #dcc.Store(id="timestamp-store-heatmap"),    # Hidden store for timing
+                #html.Script(src="/assets/keypress.js"),    # JavaScript to detect key presses (Added in assets folder) --> no ENTER needed
             ],
             fluid=True,
             style={"height": "100vh"},
@@ -219,37 +237,70 @@ class VideoModeApp:
         logging.debug(
             f"Dash layout created, update interval: {self.update_interval * 1000} ms"
         )
+        #logging.debug(f"App layout: {self.app.layout}")
         self.add_callbacks()
 
     def add_callbacks(self):
+
         @self.app.callback(
-            [Output("pause-button", "children"),
-             Output("interval-component","disabled")],
+            Output("pause-button", "children"),
             [Input("pause-button", "n_clicks")],
         )
         def toggle_pause(n_clicks):
-            if n_clicks % 2 == 1:
-                self.paused = True
+            if n_clicks>0: # Button is initiated with n_clicks=0, only toggle if button was clicked!
+                self.paused = not self.paused
                 logging.debug(f"Paused: {self.paused}")
-                return "Resume", True
+            return "Resume" if self.paused else "Pause"
+        
+        @self.app.callback(
+            [Output("annotation-button", "children"),
+             Output("interval-component","disabled")],
+            [Input("annotation-button", "n_clicks")],
+        )
+        def toggle_annotation(n_clicks):
+            if n_clicks % 2 == 1:
+                self.annotation = True
+                logging.debug(f"Annotation mode: {self.annotation}")
+                return "Annotation (on)", True
             else:
-                self.paused = False
-                return "Pause", False
-            # if n_clicks>0: # Button is initiated with n_clicks=0, only toggle if button was clicked!
-            #     self.paused = not self.paused
-            #     logging.debug(f"Paused: {self.paused}")
-            # return "Resume" if self.paused else "Pause"
+                self.annotation = False
+                return "Annotation (off)", False
 
         @self.app.callback(
             Output("added_lines-data-store","data", allow_duplicate=True),
             Input("mode-selector","value"),
             State("added_lines-data-store","data"),
         )
-        def update_when_mode_change(mode,dict_lines):
+        def update_mode_change(mode,dict_lines):
             if mode!='line':
                 dict_lines['selected_indices'] = []  # reset selected indices for line in case of mode change
             return dict_lines
+        
+        # Use keyboard shortcuts to switch between radio items (modes)
+        self.app.clientside_callback(
+            """
+            function(value) {
+                document.addEventListener("keydown", function(event) {
+                    if (event.shiftKey) { // Shift key is pressed
+                        let key = event.key.toLowerCase();  // Normalize to lowercase
+                        let mapping = {"p": "point", "l": "line", "d": "delete"};
 
+                        if (mapping.hasOwnProperty(key)) {
+                            event.preventDefault();  // Prevent default browser actions
+                            //console.log("Shortcut selected:", mapping[key]);
+                            
+                            // Update the RadioItems value
+                            dash_clientside.set_props("mode-selector", {value: mapping[key]})                         
+                        }
+                    }
+                });
+                
+                return window.dash_clientside.no_update;
+            }
+            """,
+            Output("mode-selector", "value"),
+            Input("mode-selector", "value")
+        )
 
         # @self.app.callback(
         #     Output("timestamp-store-heatmap", "data"),
@@ -290,6 +341,7 @@ class VideoModeApp:
             #ts1 = time.time()
             updated_xarr = self.data_acquirer.update_data()
             dict_heatmap = xarray_to_heatmap(updated_xarr)
+            #logging.debug(f"heatmap: {dict_heatmap['heatmap']}")
             #self.heatmap = dict_heatmap['heatmap']
             logging.debug(
                 f"Updating heatmap, num_acquisitions: {self.data_acquirer.num_acquisitions}"
@@ -371,7 +423,7 @@ class VideoModeApp:
                 selected_points_for_line = dict_lines['selected_indices']
                 
                 # MODE: Adding and moving points
-                if selected_mode=="add":
+                if selected_mode=="point":
                     # Select point: Already added point since 'z' is missing & first click --> MARK THIS POINT
                     if 'z' not in point and selected_point_to_move['move']==False:
                         selected_point_to_move['move'] = True
@@ -458,7 +510,7 @@ class VideoModeApp:
         )
         def handle_hovering(hoverData,dict_points,selected_mode):
             #logging.debug(f"hovering: {dict_points}")
-            if selected_mode=="add":
+            if selected_mode=="point":
                 if hoverData and 'points' in hoverData and hoverData['points']:
                     added_points = dict_points['added_points']
                     selected_point_to_move = dict_points['selected_point']
@@ -546,9 +598,12 @@ class VideoModeApp:
     def _find_index(self, x_value, y_value, added_points):
         """ 
          Find index of a selected point (x_value, y_value) in the dict added_points
+         Tolerance is defined as axis.span / axis.pointsL
         """
         for i in range(len(added_points['x'])):
-            if np.isclose(added_points['x'][i], x_value, atol=0.005) and np.isclose(added_points['y'][i], y_value, atol=0.005):
+            if (np.isclose(added_points['x'][i], x_value, atol=self.data_acquirer.x_axis.span/self.data_acquirer.x_axis.points) 
+                and np.isclose(added_points['y'][i], y_value, atol=self.data_acquirer.y_axis.span/self.data_acquirer.y_axis.points)):
+                #logging.debug(f"x tol: {self.data_acquirer.x_axis.span/self.data_acquirer.x_axis.points}")
                 return i  # Return the index if the point is found
         return None  # Return None if no matching point is found
     

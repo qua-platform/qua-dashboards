@@ -448,7 +448,7 @@ class VideoModeApp:
             
                     return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}
                 
-                # MODE: Deleting points
+                # MODE: Deleting points / lines
                 elif selected_mode=="delete":
                     # If click on point
                     if 'z' not in point:
@@ -479,6 +479,22 @@ class VideoModeApp:
                         added_lines['start_index'] = [value if value<index else value-1 for i, value in enumerate(added_lines['start_index'])]
                         added_lines['end_index'] = [value if value<index else value-1 for i, value in enumerate(added_lines['end_index'])]
                         #logging.debug(f"lines: {added_lines}")
+
+                    else: # click on not existing point
+                        # compute distances of the selected coordinates to all lines
+                        distances = self._distance_to_lines(x_value, y_value, added_points, added_lines)
+                        #logging.debug(f"distances: {distances}")
+                        #logging.debug(f"added_lines: {added_lines}")
+                        # if distances not empty
+                        if distances:
+                            min_index = np.argmin(distances) # index of smallest distance
+                            # if min distance smaller than the minimal axis span divided axis points (my tolerance criterium)
+                            if distances[min_index] < 2*min(self.data_acquirer.x_axis.span/self.data_acquirer.x_axis.points, self.data_acquirer.y_axis.span/self.data_acquirer.y_axis.points):
+                                del added_lines['start_index'][min_index]
+                                del added_lines['end_index'][min_index]
+                                #logging.debug(f"distances: {distances}")
+                                #logging.debug(f"added_lines: {added_lines}")
+
                     return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines} # return points even if no point was deleted -> no problems with ordering of traces in figure
                 
                 elif selected_mode=='line': 
@@ -537,19 +553,13 @@ class VideoModeApp:
             #blocking = True, # Not needed as heatmap data comes from dcc.Store
         )
         def update_figure(dict_heatmap,dict_points,dict_lines):
-            ts1 = time.time()
-            # OUTCOMMENT THIS PART, SUCH THAT POINTS CAN BE ADDED WHEN PAUSED
-            # if self.paused or self._is_updating:
-            #     logging.debug(
-            #         f"Updates paused at iteration {self.data_acquirer.num_acquisitions}"
-            #     )
-            #     return self.figure
+            #ts1 = time.time()
             added_points = dict_points['added_points']
             added_lines = dict_lines['added_lines']
 
             self.figure = self._generate_figure(dict_heatmap,added_points,added_lines)
-            ts2 = time.time()
-            logging.debug(f"Time to update figure: {ts2-ts1}s")
+            #ts2 = time.time()
+            #logging.debug(f"Time to update figure: {ts2-ts1}s")
             #logging.debug(f"figure: {figure}")
             #logging.debug(f"type figure: {type(figure)}")
             return self.figure
@@ -614,6 +624,40 @@ class VideoModeApp:
                     (index1 == index_end and index2 == index_start) for 
                     index_start, index_end in zip(added_lines["start_index"], added_lines["end_index"]))
         return found
+    
+    def _distance_to_lines(self, x, y, added_points, added_lines):
+        #logging.debug(f"lines: {added_lines}")
+        
+        distances = []
+        if added_lines['start_index']: # added lines not empty!
+            for start_index, end_index in zip(added_lines['start_index'], added_lines['end_index']): # loop through lines
+                # Line start point (x1,y1) and end point (x2,y2)
+                x1, y1 = added_points['x'][start_index], added_points['y'][start_index]
+                x2, y2 = added_points['x'][end_index], added_points['y'][end_index]
+                
+                # Direction vector from start to end point
+                dx, dy = x2-x1, y2-y1
+                d_squared = dx**2 + dy**2 # squared segment/line length
+
+                # Compute the projection of (x,y) onto the (infinite) line
+                t = ((x-x1)*dx + (y-y1)*dy)/d_squared
+
+                #logging.debug(f"x1: {x1}, y1: {y1}, x2: {x2}, y2: {y2}, dx: {dx}, dy: {dy}, d**2: {d_squared}")
+                #logging.debug(f"lambda: {t}")            
+                
+                # Check whether projection is between start and end point
+                if 0<=t<=1: # On the segment: Use perpendicular distance
+                    x_proj, y_proj = x1 + t*dx, y1 + t*dy
+                    distances.append(np.sqrt((x-x_proj)**2 + (y-y_proj)**2))
+                    #logging.debug(f"x_proj: {x_proj}, y_proj: {y_proj}")
+                else: # Outside segment: Use distance to closest end point
+                    dist_start = np.sqrt((x-x1)**2 + (y-y1)**2)
+                    dist_end   = np.sqrt((x-x2)**2 + (y-y2)**2)
+                    distances.append(min(dist_start,dist_end))
+                    #logging.debug(f"dist_start: {dist_start}, dist_end: {dist_end}")
+
+        return distances
+
 
     def run(self, debug: bool = True, use_reloader: bool = False):
         logging.debug("Starting Dash server")

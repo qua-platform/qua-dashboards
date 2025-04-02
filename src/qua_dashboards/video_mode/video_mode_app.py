@@ -90,16 +90,17 @@ class VideoModeApp:
         
         added_points = {'x': [], 'y': [], 'index': []}   # added points
         selected_point_to_move = {'move': False, 'index': None}        # selected point to move
+        dict_points = {'added_points': added_points, 'selected_point': selected_point_to_move}
         dict_lines = {'selected_indices': [], 'added_lines': {'start_index':[], 'end_index':[]}}  # selected points for drawing a line
         dict_heatmap = xarray_to_heatmap(self.data_acquirer.data_array)
         #self.heatmap = dict_heatmap['heatmap']
-        self.figure = self._generate_figure(dict_heatmap,added_points,dict_lines["added_lines"])
+        self.figure = self._generate_figure(dict_heatmap,dict_points,dict_lines)
         #logging.debug(f"figure: {self.figure}")
         #logging.debug(f"added points: {added_points}")
         self.radio_options = [
             {"label": "Adding and moving points (SHIFT+P)", "value": "point"},
             {"label": "Adding lines (SHIFT+L)", "value": "line"},
-            {"label": "Marking and deleting points and lines (SHIFT+D)", "value": "delete"},
+            {"label": "Deleting points and lines (SHIFT+D)", "value": "delete"},
         ]
 
         self.app.layout = dbc.Container(
@@ -247,6 +248,7 @@ class VideoModeApp:
             [Input("pause-button", "n_clicks")],
         )
         def toggle_pause(n_clicks):
+            logging.debug(f"Callback toggle_pause triggered!")
             if n_clicks>0: # Button is initiated with n_clicks=0, only toggle if button was clicked!
                 self.paused = not self.paused
                 logging.debug(f"Paused: {self.paused}")
@@ -258,6 +260,7 @@ class VideoModeApp:
             [Input("annotation-button", "n_clicks")],
         )
         def toggle_annotation(n_clicks):
+            logging.debug(f"Callback toggle_annotation triggered!")
             if n_clicks % 2 == 1:
                 self.annotation = True
                 logging.debug(f"Annotation mode: {self.annotation}")
@@ -324,6 +327,7 @@ class VideoModeApp:
             blocking=True,
         )
         def update_heatmap(n_intervals,state_heatmap):#,start_time):
+            logging.debug(f"Callback update_heatmap triggered!")
             #logging.debug(f"data: {self.figure.data}")
             # logging.debug(
             #     f"*** Dash callback {n_intervals} called at {datetime.now().strftime('%H:%M:%S.%f')[:-3]}"
@@ -373,6 +377,7 @@ class VideoModeApp:
             blocking=True,
         )
         def update_params(n_update_clicks, *component_inputs):
+            logging.debug(f"Callback update_params triggered!")
             if n_update_clicks <= self._last_update_clicks:
                 return
 
@@ -394,6 +399,7 @@ class VideoModeApp:
             [Input("save-button", "n_clicks")],
         )
         def save(n_clicks):
+            logging.debug(f"Callback save triggered!")
             if n_clicks > self._last_save_clicks:
                 self._last_save_clicks = n_clicks
                 self.save()
@@ -402,13 +408,16 @@ class VideoModeApp:
         
         @self.app.callback(
             [Output("added_points-data-store","data",allow_duplicate=True),
-             Output("added_lines-data-store","data",allow_duplicate=True)],
+             Output("added_lines-data-store","data",allow_duplicate=True),
+             Output('live-heatmap','clickData')], # Reset to None, otherwise repeated clicks at the same coordinates in the graph are not possible!
             [Input('live-heatmap','clickData')],
             [State("added_points-data-store","data"),
             State("mode-selector","value"),
             State("added_lines-data-store","data")],
         )
-        def handle_clicks(clickData,dict_points,selected_mode,dict_lines):
+        def handle_clicks(clickData,dict_points,selected_mode,dict_lines):#,marked_points):
+            #logging.debug("Callback handle_clicks triggered!")
+            #logging.debug(f"Received clickData: {clickData}")
             #logging.debug(f"added_points: {self.added_points}")
             #logging.debug(f"clickData: {clickData}")  # to check whether clickData is received
 
@@ -427,7 +436,8 @@ class VideoModeApp:
                     # Select point: Already added point since 'z' is missing & first click --> MARK THIS POINT
                     if 'z' not in point and selected_point_to_move['move']==False:
                         selected_point_to_move['move'] = True
-                        selected_point_to_move['index'] = self._find_index(x_value, y_value, added_points)
+                        index = self._find_index(x_value, y_value, added_points)
+                        selected_point_to_move['index'] = index
 
                     # Second click, i.e. last click was on an existing point --> MOVE selected point to clicked coordinates
                     elif selected_point_to_move['move']==True:
@@ -446,7 +456,7 @@ class VideoModeApp:
                         added_points['y'].append(y_value)
                         added_points['index'].append(point_index)
             
-                    return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}
+                    return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}, None
                 
                 # MODE: Deleting points / lines
                 elif selected_mode=="delete":
@@ -495,15 +505,19 @@ class VideoModeApp:
                                 #logging.debug(f"distances: {distances}")
                                 #logging.debug(f"added_lines: {added_lines}")
 
-                    return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines} # return points even if no point was deleted -> no problems with ordering of traces in figure
+                    return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}, None # return points even if no point was deleted -> no problems with ordering of traces in figure,
                 
                 elif selected_mode=='line': 
                     if 'z' not in point:
                         # Find index of clicked point
                         index = self._find_index(x_value, y_value, added_points)
+                        logging.debug(f"Clicked at ({x_value}, {y_value}), found index: {index}")
                         # If point not yet selected: append index
                         if index not in selected_points_for_line:
                             selected_points_for_line.append(index)
+                            #highlight_point = {index: 'green'}
+                        else:
+                            selected_points_for_line.remove(index) # unselect point
                         # If two indices selected: Save line and delete selected points
                         if len(selected_points_for_line)==2:
                             if not self._duplicate_line(selected_points_for_line,added_lines): # Do not add duplicated line
@@ -511,12 +525,16 @@ class VideoModeApp:
                                 added_lines['end_index'].append(selected_points_for_line[1])
                             #else:
                             #    logging.debug(f"Duplicated line!")
-                            selected_points_for_line = []
+                            selected_points_for_line.clear()
+                            #logging.debug(f"selected_points_for_line after reset: {selected_points_for_line}")
                         #logging.debug(f"selected_points: {selected_points_for_line}")
                         #logging.debug(f"lines: {added_lines}")
-                    return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}
+                    # else:
+                    #     logging.debug(f"point (x,y,z)!")
+                    return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}, None
             else:
                 return dash.no_update
+                #return dict_points, dict_lines
         
         @self.app.callback(
             [Output("added_points-data-store","data",allow_duplicate=True)],
@@ -525,6 +543,7 @@ class VideoModeApp:
              State("mode-selector","value")],
         )
         def handle_hovering(hoverData,dict_points,selected_mode):
+            #logging.debug(f"Callback handle_hovering triggered!")
             #logging.debug(f"hovering: {dict_points}")
             if selected_mode=="point":
                 if hoverData and 'points' in hoverData and hoverData['points']:
@@ -553,11 +572,12 @@ class VideoModeApp:
             #blocking = True, # Not needed as heatmap data comes from dcc.Store
         )
         def update_figure(dict_heatmap,dict_points,dict_lines):
+            logging.debug(f"Callback update_figure triggered!")
             #ts1 = time.time()
-            added_points = dict_points['added_points']
-            added_lines = dict_lines['added_lines']
+            #added_points = dict_points['added_points']
+            #added_lines = dict_lines['added_lines']
 
-            self.figure = self._generate_figure(dict_heatmap,added_points,added_lines)
+            self.figure = self._generate_figure(dict_heatmap,dict_points,dict_lines)
             #ts2 = time.time()
             #logging.debug(f"Time to update figure: {ts2-ts1}s")
             #logging.debug(f"figure: {figure}")
@@ -565,7 +585,12 @@ class VideoModeApp:
             return self.figure
     
 
-    def _generate_figure(self, dict_heatmap, points, lines):
+    def _generate_figure(self, dict_heatmap, dict_points, dict_lines):
+        points = dict_points['added_points']
+        lines = dict_lines['added_lines']
+        selected_point_to_move = dict_points['selected_point']
+        selected_points_for_line = set(dict_lines['selected_indices'])
+
         # Prepare line_x and line_y lists for a single trace
         line_x = []
         line_y = []
@@ -575,6 +600,10 @@ class VideoModeApp:
             line_y.extend([points["y"][start], points["y"][end], None])
         #logging.debug(f"line_x: {line_x}")
         #logging.debug(f"line_y: {line_y}")
+
+        # Generate size list: Points selected to move or for lines appear larger
+        marked_index = selected_point_to_move.get('index') 
+        sizes = [13 if i==marked_index or i in selected_points_for_line else 10 for i in range(len(points['x']))]
 
         # Create Figure
         figure = go.Figure()
@@ -586,7 +615,7 @@ class VideoModeApp:
             y=points['y'], 
             zorder=2,
             mode='markers + text', 
-            marker=dict(color='white', size=10, line=dict(color='black', width=1)),
+            marker=dict(color="white", size=list(sizes), line=dict(color='black', width=1), opacity=1.0),
             text=[str(int(i) + 1) for i in points['index']], # Use indices to label the points
             textposition='top center',#'middle center', 
             textfont=dict(color='white'), #,shadow='1px 1px 10px white'), # offset-x | offset-y | blur-radius | color

@@ -90,16 +90,17 @@ class VideoModeApp:
         
         added_points = {'x': [], 'y': [], 'index': []}   # added points
         selected_point_to_move = {'move': False, 'index': None}        # selected point to move
+        dict_points = {'added_points': added_points, 'selected_point': selected_point_to_move}
         dict_lines = {'selected_indices': [], 'added_lines': {'start_index':[], 'end_index':[]}}  # selected points for drawing a line
         dict_heatmap = xarray_to_heatmap(self.data_acquirer.data_array)
         #self.heatmap = dict_heatmap['heatmap']
-        self.figure = self._generate_figure(dict_heatmap,added_points,dict_lines["added_lines"])
+        self.figure = self._generate_figure(dict_heatmap,dict_points,dict_lines)
         #logging.debug(f"figure: {self.figure}")
         #logging.debug(f"added points: {added_points}")
         self.radio_options = [
             {"label": "Adding and moving points (SHIFT+P)", "value": "point"},
             {"label": "Adding lines (SHIFT+L)", "value": "line"},
-            {"label": "Marking and deleting points and lines (SHIFT+D)", "value": "delete"},
+            {"label": "Deleting points and lines (SHIFT+D)", "value": "delete"},
         ]
 
         self.app.layout = dbc.Container(
@@ -227,6 +228,10 @@ class VideoModeApp:
                 dcc.Store( # Store added lines
                     id="added_lines-data-store",
                     data=dict_lines,
+                ),
+                dcc.Store( # Store points that should be marked in the Graph
+                    id="marked-points-data-store",
+                    data={},
                 ),
                 #dcc.Store(id="timestamp-store-heatmap"),    # Hidden store for timing
                 #html.Script(src="/assets/keypress.js"),    # JavaScript to detect key presses (Added in assets folder) --> no ENTER needed
@@ -403,12 +408,14 @@ class VideoModeApp:
         @self.app.callback(
             [Output("added_points-data-store","data",allow_duplicate=True),
              Output("added_lines-data-store","data",allow_duplicate=True)],
+             #Output("marked-points-data-store","data")],
             [Input('live-heatmap','clickData')],
             [State("added_points-data-store","data"),
             State("mode-selector","value"),
             State("added_lines-data-store","data")],
+            #State("marked-points-data-store","data")],
         )
-        def handle_clicks(clickData,dict_points,selected_mode,dict_lines):
+        def handle_clicks(clickData,dict_points,selected_mode,dict_lines):#,marked_points):
             #logging.debug(f"added_points: {self.added_points}")
             #logging.debug(f"clickData: {clickData}")  # to check whether clickData is received
 
@@ -427,7 +434,9 @@ class VideoModeApp:
                     # Select point: Already added point since 'z' is missing & first click --> MARK THIS POINT
                     if 'z' not in point and selected_point_to_move['move']==False:
                         selected_point_to_move['move'] = True
-                        selected_point_to_move['index'] = self._find_index(x_value, y_value, added_points)
+                        index = self._find_index(x_value, y_value, added_points)
+                        selected_point_to_move['index'] = index
+                        #marked_points[index] = "green"
 
                     # Second click, i.e. last click was on an existing point --> MOVE selected point to clicked coordinates
                     elif selected_point_to_move['move']==True:
@@ -504,6 +513,9 @@ class VideoModeApp:
                         # If point not yet selected: append index
                         if index not in selected_points_for_line:
                             selected_points_for_line.append(index)
+                            #highlight_point = {index: 'green'}
+                        #else:  # NECESSARY?
+                        #    return dash.no_update
                         # If two indices selected: Save line and delete selected points
                         if len(selected_points_for_line)==2:
                             if not self._duplicate_line(selected_points_for_line,added_lines): # Do not add duplicated line
@@ -554,10 +566,10 @@ class VideoModeApp:
         )
         def update_figure(dict_heatmap,dict_points,dict_lines):
             #ts1 = time.time()
-            added_points = dict_points['added_points']
-            added_lines = dict_lines['added_lines']
+            #added_points = dict_points['added_points']
+            #added_lines = dict_lines['added_lines']
 
-            self.figure = self._generate_figure(dict_heatmap,added_points,added_lines)
+            self.figure = self._generate_figure(dict_heatmap,dict_points,dict_lines)
             #ts2 = time.time()
             #logging.debug(f"Time to update figure: {ts2-ts1}s")
             #logging.debug(f"figure: {figure}")
@@ -565,7 +577,12 @@ class VideoModeApp:
             return self.figure
     
 
-    def _generate_figure(self, dict_heatmap, points, lines):
+    def _generate_figure(self, dict_heatmap, dict_points, dict_lines, highlight_points=None):
+        points = dict_points['added_points']
+        lines = dict_lines['added_lines']
+        selected_point_to_move = dict_points['selected_point']
+        selected_points_for_line = dict_lines['selected_indices']
+
         # Prepare line_x and line_y lists for a single trace
         line_x = []
         line_y = []
@@ -575,6 +592,15 @@ class VideoModeApp:
             line_y.extend([points["y"][start], points["y"][end], None])
         #logging.debug(f"line_x: {line_x}")
         #logging.debug(f"line_y: {line_y}")
+
+        # Generate color list
+        color = 'white' # default color
+        highlight_points = highlight_points or {} # ensure a dictionary
+        colors = [highlight_points.get(i,color) for i in range(len(points['x']))] # use highlight color if specified, else default
+
+        # Generate size list
+        marked_index = selected_point_to_move.get('index') 
+        sizes = [13 if i==marked_index else 10 for i in range(len(points['x']))]
 
         # Create Figure
         figure = go.Figure()
@@ -586,7 +612,9 @@ class VideoModeApp:
             y=points['y'], 
             zorder=2,
             mode='markers + text', 
-            marker=dict(color='white', size=10, line=dict(color='black', width=1)),
+            #marker=dict(color='white', size=10, line=dict(color='black', width=1)),
+            #marker=dict(color=colors, size=10, line=dict(color='black', width=1)),
+            marker=dict(color="white", size=list(sizes), line=dict(color='black', width=1), opacity=1.0),
             text=[str(int(i) + 1) for i in points['index']], # Use indices to label the points
             textposition='top center',#'middle center', 
             textfont=dict(color='white'), #,shadow='1px 1px 10px white'), # offset-x | offset-y | blur-radius | color

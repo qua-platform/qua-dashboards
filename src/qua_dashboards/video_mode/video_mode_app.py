@@ -14,9 +14,11 @@ from dash_extensions.enrich import (
     State,
     BlockingCallbackTransform,
 )
+import kaleido
 import plotly.graph_objects as go
 import dash_bootstrap_components as dbc
 from dash.exceptions import PreventUpdate
+import json
 
 import logging
 
@@ -157,6 +159,15 @@ class VideoModeApp:
                                             ),
                                             width="auto",
                                         ),
+                                        dbc.Col(
+                                            dbc.Button(
+                                                "Load",
+                                                id="load-button",
+                                                n_clicks=0,
+                                                className="mt-3",
+                                            ),
+                                            width="auto",
+                                        ),
                                     ],
                                     className="mb-4",
                                 ),
@@ -248,7 +259,7 @@ class VideoModeApp:
             [Input("pause-button", "n_clicks")],
         )
         def toggle_pause(n_clicks):
-            logging.debug(f"Callback toggle_pause triggered!")
+            #logging.debug(f"Callback toggle_pause triggered!")
             if n_clicks>0: # Button is initiated with n_clicks=0, only toggle if button was clicked!
                 self.paused = not self.paused
                 logging.debug(f"Paused: {self.paused}")
@@ -260,7 +271,7 @@ class VideoModeApp:
             [Input("annotation-button", "n_clicks")],
         )
         def toggle_annotation(n_clicks):
-            logging.debug(f"Callback toggle_annotation triggered!")
+            #logging.debug(f"Callback toggle_annotation triggered!")
             if n_clicks % 2 == 1:
                 self.annotation = True
                 logging.debug(f"Annotation mode: {self.annotation}")
@@ -327,7 +338,7 @@ class VideoModeApp:
             blocking=True,
         )
         def update_heatmap(n_intervals,state_heatmap):#,start_time):
-            logging.debug(f"Callback update_heatmap triggered!")
+            #logging.debug(f"Callback update_heatmap triggered!")
             #logging.debug(f"data: {self.figure.data}")
             # logging.debug(
             #     f"*** Dash callback {n_intervals} called at {datetime.now().strftime('%H:%M:%S.%f')[:-3]}"
@@ -377,7 +388,7 @@ class VideoModeApp:
             blocking=True,
         )
         def update_params(n_update_clicks, *component_inputs):
-            logging.debug(f"Callback update_params triggered!")
+            #logging.debug(f"Callback update_params triggered!")
             if n_update_clicks <= self._last_update_clicks:
                 return
 
@@ -397,12 +408,17 @@ class VideoModeApp:
         @self.app.callback(
             Output("save-button", "children"),
             [Input("save-button", "n_clicks")],
+            [State("added_points-data-store","data"),
+            State("added_lines-data-store","data")],
         )
-        def save(n_clicks):
-            logging.debug(f"Callback save triggered!")
+        def save(n_clicks,dict_points,dict_lines):
+            #logging.debug(f"Callback save triggered!")
             if n_clicks > self._last_save_clicks:
+                points = dict_points['added_points']
+                lines  = dict_lines['added_lines']
+                
                 self._last_save_clicks = n_clicks
-                self.save()
+                self.save(points,lines)
                 return "Saved!"
             return "Save"
         
@@ -572,7 +588,7 @@ class VideoModeApp:
             #blocking = True, # Not needed as heatmap data comes from dcc.Store
         )
         def update_figure(dict_heatmap,dict_points,dict_lines):
-            logging.debug(f"Callback update_figure triggered!")
+            #logging.debug(f"Callback update_figure triggered!")
             #ts1 = time.time()
             #added_points = dict_points['added_points']
             #added_lines = dict_lines['added_lines']
@@ -771,7 +787,12 @@ class VideoModeApp:
         if idx <= 9999:
             filename = f"data_image_{idx}.png"
             filepath = image_save_path / filename
-            self.fig.write_image(filepath)
+            logging.debug(f"About to save image")
+            logging.debug(f"Figure type: {type(self.figure)}")
+            logging.debug(f"filepath: {filepath}")
+            #logging.debug(f"figure: {self.figure}")
+            #self.figure.write_image("test.png")
+            print(self.figure.write_image(filepath))  # Does not work since self.figure is a Heatmap, not a figure
             logging.info(f"Image saved successfully: {filepath}")
         else:
             raise ValueError(
@@ -780,8 +801,68 @@ class VideoModeApp:
         logging.info("Image save operation completed.")
 
         return idx
+    
+    def save_points_lines(self,points,lines,idx: Optional[int] = None):
+        """
+        Save the current point and line data to a json file.
 
-    def save(self):
+        This method saves the current point and line data drawn in the graph to a json file in the specified data save path.
+        It automatically generates a unique filename by incrementing an index if not provided.
+
+        Args:
+            idx (Optional[int]): The index to use for the filename. If None, an available index is automatically determined.
+
+        Returns:
+            int: The index of the saved data file.
+
+        Raises:
+            ValueError: If the maximum number of data files (9999) has been reached.
+            FileExistsError: If a file with the generated name already exists.
+
+        Note:
+            - The data save path is created if it doesn't exist.
+            - The filename format is 'points-lines_XXXX.json', where XXXX is a four-digit index.
+            - The point and line data is not saved if there are no points and lines.
+        """        
+        data_save_path = self.save_path / "points_lines"
+        logging.info(f"Attempting to save point and line data to folder: {data_save_path}")
+
+        if not data_save_path.exists():
+            data_save_path.mkdir(parents=True)
+            logging.info(f"Created directory: {data_save_path}")
+
+        if idx is None:
+            idx = 1
+            while idx <= 9999 and (data_save_path / f"points-lines_{idx}.json").exists():
+                idx += 1
+
+        if idx > 9999:
+            raise ValueError(
+                "Maximum number of data files (9999) reached. Cannot save more."
+            )
+
+        filename = f"points-lines_{idx}.json"
+        filepath = data_save_path / filename    
+
+        if filepath.exists():
+            raise FileExistsError(f"File {filepath} already exists.")
+        
+        if (not points.get("x")) and (not lines.get("start_index")):
+            logging.info("There are no point and line data to save.")
+        else:            
+            data = {
+                "points": {k: points[k] for k in ["x", "y"]},
+                "lines": lines,
+            }
+            with open(filepath, "w") as f:
+                json.dump(data, f, indent=4)
+
+            logging.info(f"Point and line data saved successfully: {filepath}")
+        logging.info("Point and line data save operation completed.")
+        return idx
+           
+
+    def save(self,points,lines):
         """
         Save both the current image and data.
 
@@ -811,6 +892,14 @@ class VideoModeApp:
         except FileExistsError:
             logging.warning(
                 f"Data file with index {idx} already exists. Image saved, but data was not overwritten."
+            )
+        
+        # Attempt to save points and lines with the same index
+        try:
+            self.save_points_lines(points,lines,idx)
+        except FileExistsError:
+            logging.warning(
+                f"Point and line data file with index {idx} already exists. Image saved, but line and point data was not overwritten."
             )
 
         logging.info(f"Save operation completed with index: {idx}")

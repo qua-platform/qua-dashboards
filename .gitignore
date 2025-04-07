@@ -178,4 +178,8 @@ tmp_file.py
 .venv
 uv.lock
 
+# VS Code
 .vscode
+
+# Saved data
+video_mode_output

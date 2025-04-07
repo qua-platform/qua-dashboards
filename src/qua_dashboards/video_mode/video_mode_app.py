@@ -161,7 +161,7 @@ class VideoModeApp:
                                         ),
                                         dbc.Col(
                                             dbc.Button(
-                                                "Load",
+                                                "Load annotation",
                                                 id="load-button",
                                                 n_clicks=0,
                                                 className="mt-3",
@@ -703,10 +703,68 @@ class VideoModeApp:
 
         return distances
 
-
     def run(self, debug: bool = True, use_reloader: bool = False):
         logging.debug("Starting Dash server")
         self.app.server.run(debug=debug, use_reloader=use_reloader)
+
+    def save_annotation(self,points,lines,idx: Optional[int] = None):
+        """
+        Save the current annotation data (points and lines) to a json file.
+
+        This method saves the current annotation data drawn in the graph to a json file in the specified data save path.
+        It automatically generates a unique filename by incrementing an index if not provided.
+
+        Args:
+            idx (Optional[int]): The index to use for the filename. If None, an available index is automatically determined.
+
+        Returns:
+            int: The index of the saved data file.
+
+        Raises:
+            ValueError: If the maximum number of data files (9999) has been reached.
+            FileExistsError: If a file with the generated name already exists.
+
+        Note:
+            - The data save path is created if it doesn't exist.
+            - The filename format is 'annotation_XXXX.json', where XXXX is a four-digit index.
+            - The annotation data is not saved if there are no points and lines.
+        """        
+        data_save_path = self.save_path / "annotations"
+        logging.info(f"Attempting to save annotation data to folder: {data_save_path}")
+
+        if not data_save_path.exists():
+            data_save_path.mkdir(parents=True)
+            logging.info(f"Created directory: {data_save_path}")
+
+        if idx is None:
+            idx = 1
+            while idx <= 9999 and (data_save_path / f"annotation_{idx}.json").exists():
+                idx += 1
+
+        if idx > 9999:
+            raise ValueError(
+                "Maximum number of data files (9999) reached. Cannot save more."
+            )
+
+        filename = f"annotation_{idx}.json"
+        filepath = data_save_path / filename    
+
+        if filepath.exists():
+            raise FileExistsError(f"File {filepath} already exists.")
+        
+        if (not points.get("x")) and (not lines.get("start_index")):
+            logging.info("There is no annotation data to save.")
+        else:            
+            data = {
+                "points": {k: points[k] for k in ["x", "y"]},
+                "lines": lines,
+            }
+            with open(filepath, "w") as f:
+                json.dump(data, f, indent=4)
+
+            logging.info(f"Annotation data saved successfully: {filepath}")
+        logging.info("Annotation data save operation completed.")
+        return idx
 
     def save_data(self, idx: Optional[int] = None):
         """
@@ -800,74 +858,15 @@ class VideoModeApp:
             )
         logging.info("Image save operation completed.")
 
-        return idx
-    
-    def save_points_lines(self,points,lines,idx: Optional[int] = None):
-        """
-        Save the current point and line data to a json file.
-
-        This method saves the current point and line data drawn in the graph to a json file in the specified data save path.
-        It automatically generates a unique filename by incrementing an index if not provided.
-
-        Args:
-            idx (Optional[int]): The index to use for the filename. If None, an available index is automatically determined.
-
-        Returns:
-            int: The index of the saved data file.
-
-        Raises:
-            ValueError: If the maximum number of data files (9999) has been reached.
-            FileExistsError: If a file with the generated name already exists.
-
-        Note:
-            - The data save path is created if it doesn't exist.
-            - The filename format is 'points-lines_XXXX.json', where XXXX is a four-digit index.
-            - The point and line data is not saved if there are no points and lines.
-        """        
-        data_save_path = self.save_path / "points_lines"
-        logging.info(f"Attempting to save point and line data to folder: {data_save_path}")
-
-        if not data_save_path.exists():
-            data_save_path.mkdir(parents=True)
-            logging.info(f"Created directory: {data_save_path}")
-
-        if idx is None:
-            idx = 1
-            while idx <= 9999 and (data_save_path / f"points-lines_{idx}.json").exists():
-                idx += 1
-
-        if idx > 9999:
-            raise ValueError(
-                "Maximum number of data files (9999) reached. Cannot save more."
-            )
-
-        filename = f"points-lines_{idx}.json"
-        filepath = data_save_path / filename    
-
-        if filepath.exists():
-            raise FileExistsError(f"File {filepath} already exists.")
-        
-        if (not points.get("x")) and (not lines.get("start_index")):
-            logging.info("There are no point and line data to save.")
-        else:            
-            data = {
-                "points": {k: points[k] for k in ["x", "y"]},
-                "lines": lines,
-            }
-            with open(filepath, "w") as f:
-                json.dump(data, f, indent=4)
-
-            logging.info(f"Point and line data saved successfully: {filepath}")
-        logging.info("Point and line data save operation completed.")
-        return idx
-           
+        return idx           
 
     def save(self,points,lines):
         """
-        Save both the current image and data.
+        Save the current image, data as well as the annotation data.
 
-        This method saves the current figure as a PNG image and the current data as an HDF5 file.
-        It uses the same index for both files to maintain consistency.
+        This method saves the current figure as a PNG image, the current data as an HDF5 file and the 
+        current annotation data (points and lines) as a json file.
+        It uses the same index for all files to maintain consistency.
 
         Returns:
             int: The index of the saved files.
@@ -876,7 +875,7 @@ class VideoModeApp:
             ValueError: If the maximum number of files (9999) has been reached.
 
         Note:
-            - The image is saved first, followed by the data.
+            - The image is saved first, followed by the data. Finally, the annotation data is saved.
             - If data saving fails due to a FileExistsError, a warning is logged instead of raising an exception.
         """
         if not self.save_path.exists():
@@ -894,12 +893,12 @@ class VideoModeApp:
                 f"Data file with index {idx} already exists. Image saved, but data was not overwritten."
             )
         
-        # Attempt to save points and lines with the same index
+        # Attempt to save points and lines (annotation data) with the same index
         try:
-            self.save_points_lines(points,lines,idx)
+            self.save_annotation(points,lines,idx)
         except FileExistsError:
             logging.warning(
-                f"Point and line data file with index {idx} already exists. Image saved, but line and point data was not overwritten."
+                f"Annotation data file with index {idx} already exists. Image saved, but line and point data was not overwritten."
             )
 
         logging.info(f"Save operation completed with index: {idx}")

@@ -182,6 +182,15 @@ class VideoModeApp:
                                             ),
                                             width="auto",
                                         ),
+                                        dbc.Col(
+                                            dbc.Button(
+                                                "Clear all",
+                                                id="clear-button",
+                                                n_clicks=0,
+                                                className="mt-3",
+                                            ),
+                                            width="auto",
+                                        ),                                        
                                     ],
                                     className="mb-1",
                                 ),
@@ -281,18 +290,19 @@ class VideoModeApp:
                 self.annotation = False
                 return "Annotation (off)", False
             
-        # @self.app.callback(
-        #         [Output('interval-component','disabled'),
-        #         Output('interval-component','max_intervals')],
-        #         Input("trigger-update-once",'data'),
-        #         State('annotation-button','n_clicks'),
-        #         prevent_initial_call=True,
-        # )
-        # def reenable_interval_once(trigger_data,n_clicks):
-        #     if trigger_data and (n_clicks % 2 == 1):  # parameters were updated AND annotation mode is on
-        #         return False, 1  # enable interval for 1 tick
-        #     else:
-        #         return dash.no_update, dash.no_update
+        @self.app.callback(
+            [Output("added_lines-data-store","data"),
+            Output("added_points-data-store","data")],
+            [Input("clear-button", "n_clicks")],
+        )
+        def clear_annotation_data(n_clicks):
+            logging.debug(f"Callback clear_annotation_data triggered!")
+            if n_clicks>0: # Button is initiated with n_clicks=0, only clear data if button was clicked!
+                dict_points = {'added_points': {'x': [], 'y': [], 'index': []}, 'selected_point':  {'move': False, 'index': None}}
+                dict_lines = {'selected_indices': [], 'added_lines': {'start_index':[], 'end_index':[]}}  # selected points for drawing a line
+                return dict_lines, dict_points
+            else:
+                return dash.no_update, dash.no_update
 
         @self.app.callback(
             Output("added_lines-data-store","data", allow_duplicate=True),

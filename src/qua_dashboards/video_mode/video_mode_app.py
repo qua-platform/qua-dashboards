@@ -240,6 +240,7 @@ class VideoModeApp:
                     id="added_lines-data-store",
                     data=dict_lines,
                 ),
+                dcc.Store(id="trigger-update-once",data=False),  # trigger for updating the heatmap!
                 #dcc.Store(id="timestamp-store-heatmap"),    # Hidden store for timing
                 #html.Script(src="/assets/keypress.js"),    # JavaScript to detect key presses (Added in assets folder) --> no ENTER needed
             ],
@@ -279,6 +280,19 @@ class VideoModeApp:
             else:
                 self.annotation = False
                 return "Annotation (off)", False
+            
+        # @self.app.callback(
+        #         [Output('interval-component','disabled'),
+        #         Output('interval-component','max_intervals')],
+        #         Input("trigger-update-once",'data'),
+        #         State('annotation-button','n_clicks'),
+        #         prevent_initial_call=True,
+        # )
+        # def reenable_interval_once(trigger_data,n_clicks):
+        #     if trigger_data and (n_clicks % 2 == 1):  # parameters were updated AND annotation mode is on
+        #         return False, 1  # enable interval for 1 tick
+        #     else:
+        #         return dash.no_update, dash.no_update
 
         @self.app.callback(
             Output("added_lines-data-store","data", allow_duplicate=True),
@@ -332,12 +346,14 @@ class VideoModeApp:
             ],
             [
                 Input("interval-component", "n_intervals"),
+                Input("trigger-update-once","data"),  # Parameters changed 
             ],
             [State("heatmap-data-store", "data")], # new
             #State("timestamp-store-heatmap", "data")],
             blocking=True,
         )
-        def update_heatmap(n_intervals,state_heatmap):#,start_time):
+        def update_heatmap(n_intervals,trigger_data,state_heatmap):#,start_time):
+            logging.debug(f"Trigger data: {trigger_data}")
             #logging.debug(f"Callback update_heatmap triggered!")
             #logging.debug(f"data: {self.figure.data}")
             # logging.debug(
@@ -382,15 +398,16 @@ class VideoModeApp:
             ]
 
         @self.app.callback(
-            [],
+            [Output("trigger-update-once",'data')],
             [Input("update-button", "n_clicks")],
+            State("trigger-update-once",'data'),
             component_states,
             blocking=True,
         )
-        def update_params(n_update_clicks, *component_inputs):
-            #logging.debug(f"Callback update_params triggered!")
+        def update_params(n_update_clicks, trigger_data, *component_inputs):
+            logging.debug(f"Callback update_params triggered!")
             if n_update_clicks <= self._last_update_clicks:
-                return
+                return dash.no_update
 
             params = {}
             component_inputs_iterator = iter(component_inputs)
@@ -404,6 +421,7 @@ class VideoModeApp:
 
             logging.debug(f"Updating params: {params}")
             self.data_acquirer.update_parameters(params)
+            return not trigger_data  # Trigger for updating the figure (flip False -> True -> False etc.)
 
         @self.app.callback(
             Output("save-button", "children"),
@@ -421,6 +439,13 @@ class VideoModeApp:
                 self.save(points,lines)
                 return "Saved!"
             return "Save"
+        
+        @self.app.callback(
+            Input("load-button", "n_clicks")   
+        )
+        def load_annotation(n_clicks):
+            if n_clicks > 0:
+                logging.debug(f"TO DO: Load data")
         
         @self.app.callback(
             [Output("added_points-data-store","data",allow_duplicate=True),
@@ -584,7 +609,7 @@ class VideoModeApp:
             [Output('live-heatmap','figure')],
             [Input("heatmap-data-store", "data"),
              Input("added_points-data-store","data"),
-             Input("added_lines-data-store","data")],
+             Input("added_lines-data-store","data"), ]
             #blocking = True, # Not needed as heatmap data comes from dcc.Store
         )
         def update_figure(dict_heatmap,dict_points,dict_lines):
@@ -592,7 +617,6 @@ class VideoModeApp:
             #ts1 = time.time()
             #added_points = dict_points['added_points']
             #added_lines = dict_lines['added_lines']
-
             self.figure = self._generate_figure(dict_heatmap,dict_points,dict_lines)
             #ts2 = time.time()
             #logging.debug(f"Time to update figure: {ts2-ts1}s")

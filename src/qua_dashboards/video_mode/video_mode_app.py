@@ -50,10 +50,12 @@ class VideoModeApp:
         self,
         data_acquirer: BaseDataAcquirer,
         save_path: Union[str, Path] = "./video_mode_output",
+        load_path: Union[str, Path] = "./video_mode_output/annotations",
         update_interval: float = 0.1,
     ):
         self.data_acquirer = data_acquirer
         self.save_path = Path(save_path)
+        self.load_path = Path(load_path)
         self.paused = False
         self.annotation = False
         self._last_update_clicks = 0
@@ -159,15 +161,6 @@ class VideoModeApp:
                                             ),
                                             width="auto",
                                         ),
-                                        dbc.Col(
-                                            dbc.Button(
-                                                "Load annotation",
-                                                id="load-button",
-                                                n_clicks=0,
-                                                className="mt-3",
-                                            ),
-                                            width="auto",
-                                        ),
                                     ],
                                     className="mb-4",
                                 ),
@@ -213,7 +206,35 @@ class VideoModeApp:
                                         ),
                                         
                                     ],
-                                    className="mr-2"
+                                    className="mr-2 mb-4"
+                                ),
+                                 dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            dbc.Button(
+                                                "Load annotation",
+                                                id="load-button",
+                                                n_clicks=0,
+                                                className="mt-3",
+                                            ),
+                                            width="auto",
+                                        ),
+                                    ],
+                                    className="mb-1",
+                                ),                               
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            dcc.Dropdown(
+                                                id="annotation-file-dropdown",
+                                                options=[{"label": f, "value": f} for f in self.list_json_files()],
+                                                placeholder="Choose a file...",
+                                                #style={"width": "50%"}
+                                            ),
+                                            width=12,
+                                        ),
+                                    ],
+                                    className="mb-4",
                                 ),
                             ],
                             width=5,
@@ -450,12 +471,57 @@ class VideoModeApp:
                 return "Saved!"
             return "Save"
         
+# @app.callback(
+#     Output("file-contents", "children"),
+#     Input("load-button", "n_clicks"),
+#     State("file-dropdown", "value"),
+# )
+# def load_json_file(n_clicks, selected_file):
+#     if not selected_file:
+#         return "No file selected."
+
+#     file_path = os.path.join(DATA_FOLDER, selected_file)
+#     try:
+#         with open(file_path, "r") as f:
+#             data = json.load(f)
+#         return f"Contents of {selected_file}:\n\n{json.dumps(data, indent=2)}"
+#     except Exception as e:
+#         return f"Error loading file: {e}"
+        
+        ### TO DO: INDEX MISSING IN DICT_POINTS (ADDED_POINTS?)
         @self.app.callback(
-            Input("load-button", "n_clicks")   
+            [Output("added_points-data-store","data",allow_duplicate=True),
+            Output("added_lines-data-store","data",allow_duplicate=True)],
+            Input("load-button", "n_clicks"),
+            [State("annotation-file-dropdown", "value"),
+            State("added_points-data-store","data"),
+            State("added_lines-data-store","data")],   
         )
-        def load_annotation(n_clicks):
+        def load_and_validate_annotation(n_clicks, selected_file, dict_points, dict_lines):
             if n_clicks > 0:
-                logging.debug(f"TO DO: Load data")
+                #logging.debug(f"selected file: {selected_file}")
+                #logging.debug(f"Loading annotation data")
+                if not selected_file:
+                    logging.info("No annotation file selected.")
+                    return dash.no_update, dash.no_update
+                file_path = os.path.join(self.load_path, selected_file)
+                try:
+                    data = self.load_and_validate_json(file_path)
+                    #logging.debug(f"annotation data: {data}")
+                    dict_points['added_points'] = data['points']
+                    dict_points['added_points']['index'] = list(range(1, len(data['points']['x'])+1))
+                    dict_points['selected_point'] = {'move': False, 'index': None}
+                    dict_lines['added_lines'] = data['lines']
+                    dict_lines['selected_indices'] = []
+                    #logging.debug(f"points: {dict_points}")
+                    #logging.debug(f"lines: {dict_lines}")
+                    logging.info(f"JSON is valid and loaded!")
+                    return dict_points, dict_lines
+                except ValueError as e:
+                    logging.info(f"JSON error: {e}")
+                    return dash.no_update, dash.no_update
+            else:
+                return dash.no_update, dash.no_update
         
         @self.app.callback(
             [Output("added_points-data-store","data",allow_duplicate=True),
@@ -634,6 +700,64 @@ class VideoModeApp:
             #logging.debug(f"type figure: {type(figure)}")
             return self.figure
     
+
+    def list_json_files(self):
+        """List all JSON files in the annotations data folder."""
+        return [f for f in os.listdir(self.load_path) if f.endswith(".json")]
+    
+    def load_and_validate_json(self, file_path):
+        try:
+            with open(file_path,"r") as f:
+                data = json.load(f)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON format: {e}")
+        except Exception as e:
+            raise ValueError(f"Failed to open or read the file: {e}")
+        
+        # Top-level check
+        if not isinstance(data, dict):
+            raise ValueError("Top-level JSON structure must be a dictionary.")
+
+        required_top_keys = {"points", "lines"}
+        if not required_top_keys.issubset(data):
+            raise ValueError(f"Missing top-level keys: {required_top_keys - data.keys()}")
+
+        # Validate 'points'
+        points = data["points"]
+        if not isinstance(points, dict):
+            raise ValueError("'points' must be a dictionary.")
+
+        if "x" not in points or "y" not in points:
+            raise ValueError("Missing 'x' or 'y' in 'points'.")
+
+        if not isinstance(points["x"], list) or not isinstance(points["y"], list):
+            raise ValueError("'x' and 'y' must be lists.")
+
+        if len(points["x"]) != len(points["y"]):
+            raise ValueError("Length of 'x' and 'y' must be equal.")
+
+        if not all(isinstance(num, (int, float)) for num in points["x"] + points["y"]):
+            raise ValueError("All elements in 'x' and 'y' must be numbers.")
+
+        # Validate 'lines'
+        lines = data["lines"]
+        if not isinstance(lines, dict):
+            raise ValueError("'lines' must be a dictionary.")
+
+        if "start_index" not in lines or "end_index" not in lines:
+            raise ValueError("Missing 'start_index' or 'end_index' in 'lines'.")
+
+        if not isinstance(lines["start_index"], list) or not isinstance(lines["end_index"], list):
+            raise ValueError("'start_index' and 'end_index' must be lists.")
+
+        if len(lines["start_index"]) != len(lines["end_index"]):
+            raise ValueError("Length of 'start_index' and 'end_index' must be equal.")
+
+        if not all(isinstance(i, int) for i in lines["start_index"] + lines["end_index"]):
+            raise ValueError("All elements in 'start_index' and 'end_index' must be integers.")
+
+        return data  # Or return specific parts if needed
+
 
     def _generate_figure(self, dict_heatmap, dict_points, dict_lines):
         points = dict_points['added_points']

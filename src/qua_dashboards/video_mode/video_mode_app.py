@@ -471,24 +471,6 @@ class VideoModeApp:
                 return "Saved!"
             return "Save"
         
-# @app.callback(
-#     Output("file-contents", "children"),
-#     Input("load-button", "n_clicks"),
-#     State("file-dropdown", "value"),
-# )
-# def load_json_file(n_clicks, selected_file):
-#     if not selected_file:
-#         return "No file selected."
-
-#     file_path = os.path.join(DATA_FOLDER, selected_file)
-#     try:
-#         with open(file_path, "r") as f:
-#             data = json.load(f)
-#         return f"Contents of {selected_file}:\n\n{json.dumps(data, indent=2)}"
-#     except Exception as e:
-#         return f"Error loading file: {e}"
-        
-        ### TO DO: INDEX MISSING IN DICT_POINTS (ADDED_POINTS?)
         @self.app.callback(
             [Output("added_points-data-store","data",allow_duplicate=True),
             Output("added_lines-data-store","data",allow_duplicate=True)],

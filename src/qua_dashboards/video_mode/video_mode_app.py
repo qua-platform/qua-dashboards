@@ -14,9 +14,11 @@ from dash_extensions.enrich import (
     State,
     BlockingCallbackTransform,
 )
+import kaleido
 import plotly.graph_objects as go
 import dash_bootstrap_components as dbc
 from dash.exceptions import PreventUpdate
+import json
 
 import logging
 
@@ -48,10 +50,12 @@ class VideoModeApp:
         self,
         data_acquirer: BaseDataAcquirer,
         save_path: Union[str, Path] = "./video_mode_output",
+        load_path: Union[str, Path] = "./video_mode_output/annotations",
         update_interval: float = 0.1,
     ):
         self.data_acquirer = data_acquirer
         self.save_path = Path(save_path)
+        self.load_path = Path(load_path)
         self.paused = False
         self.annotation = False
         self._last_update_clicks = 0
@@ -171,6 +175,15 @@ class VideoModeApp:
                                             ),
                                             width="auto",
                                         ),
+                                        dbc.Col(
+                                            dbc.Button(
+                                                "Clear all",
+                                                id="clear-button",
+                                                n_clicks=0,
+                                                className="mt-3",
+                                            ),
+                                            width="auto",
+                                        ),                                        
                                     ],
                                     className="mb-1",
                                 ),
@@ -193,7 +206,35 @@ class VideoModeApp:
                                         ),
                                         
                                     ],
-                                    className="mr-2"
+                                    className="mr-2 mb-4"
+                                ),
+                                 dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            dbc.Button(
+                                                "Load annotation",
+                                                id="load-button",
+                                                n_clicks=0,
+                                                className="mt-3",
+                                            ),
+                                            width="auto",
+                                        ),
+                                    ],
+                                    className="mb-1",
+                                ),                               
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            dcc.Dropdown(
+                                                id="annotation-file-dropdown",
+                                                options=[{"label": f, "value": f} for f in self.list_json_files()],
+                                                placeholder="Choose a file...",
+                                                #style={"width": "50%"}
+                                            ),
+                                            width=12,
+                                        ),
+                                    ],
+                                    className="mb-4",
                                 ),
                             ],
                             width=5,
@@ -229,6 +270,7 @@ class VideoModeApp:
                     id="added_lines-data-store",
                     data=dict_lines,
                 ),
+                dcc.Store(id="trigger-update-once",data=False),  # trigger for updating the heatmap!
                 #dcc.Store(id="timestamp-store-heatmap"),    # Hidden store for timing
                 #html.Script(src="/assets/keypress.js"),    # JavaScript to detect key presses (Added in assets folder) --> no ENTER needed
             ],
@@ -248,7 +290,7 @@ class VideoModeApp:
             [Input("pause-button", "n_clicks")],
         )
         def toggle_pause(n_clicks):
-            logging.debug(f"Callback toggle_pause triggered!")
+            #logging.debug(f"Callback toggle_pause triggered!")
             if n_clicks>0: # Button is initiated with n_clicks=0, only toggle if button was clicked!
                 self.paused = not self.paused
                 logging.debug(f"Paused: {self.paused}")
@@ -260,7 +302,7 @@ class VideoModeApp:
             [Input("annotation-button", "n_clicks")],
         )
         def toggle_annotation(n_clicks):
-            logging.debug(f"Callback toggle_annotation triggered!")
+            #logging.debug(f"Callback toggle_annotation triggered!")
             if n_clicks % 2 == 1:
                 self.annotation = True
                 logging.debug(f"Annotation mode: {self.annotation}")
@@ -268,6 +310,20 @@ class VideoModeApp:
             else:
                 self.annotation = False
                 return "Annotation (off)", False
+            
+        @self.app.callback(
+            [Output("added_lines-data-store","data"),
+            Output("added_points-data-store","data")],
+            [Input("clear-button", "n_clicks")],
+        )
+        def clear_annotation_data(n_clicks):
+            logging.debug(f"Callback clear_annotation_data triggered!")
+            if n_clicks>0: # Button is initiated with n_clicks=0, only clear data if button was clicked!
+                dict_points = {'added_points': {'x': [], 'y': [], 'index': []}, 'selected_point':  {'move': False, 'index': None}}
+                dict_lines = {'selected_indices': [], 'added_lines': {'start_index':[], 'end_index':[]}}  # selected points for drawing a line
+                return dict_lines, dict_points
+            else:
+                return dash.no_update, dash.no_update
 
         @self.app.callback(
             Output("added_lines-data-store","data", allow_duplicate=True),
@@ -321,13 +377,15 @@ class VideoModeApp:
             ],
             [
                 Input("interval-component", "n_intervals"),
+                Input("trigger-update-once","data"),  # Parameters changed 
             ],
             [State("heatmap-data-store", "data")], # new
             #State("timestamp-store-heatmap", "data")],
             blocking=True,
         )
-        def update_heatmap(n_intervals,state_heatmap):#,start_time):
-            logging.debug(f"Callback update_heatmap triggered!")
+        def update_heatmap(n_intervals,trigger_data,state_heatmap):#,start_time):
+            logging.debug(f"Trigger data: {trigger_data}")
+            #logging.debug(f"Callback update_heatmap triggered!")
             #logging.debug(f"data: {self.figure.data}")
             # logging.debug(
             #     f"*** Dash callback {n_intervals} called at {datetime.now().strftime('%H:%M:%S.%f')[:-3]}"
@@ -371,15 +429,16 @@ class VideoModeApp:
             ]
 
         @self.app.callback(
-            [],
+            [Output("trigger-update-once",'data')],
             [Input("update-button", "n_clicks")],
+            State("trigger-update-once",'data'),
             component_states,
             blocking=True,
         )
-        def update_params(n_update_clicks, *component_inputs):
+        def update_params(n_update_clicks, trigger_data, *component_inputs):
             logging.debug(f"Callback update_params triggered!")
             if n_update_clicks <= self._last_update_clicks:
-                return
+                return dash.no_update
 
             params = {}
             component_inputs_iterator = iter(component_inputs)
@@ -393,18 +452,58 @@ class VideoModeApp:
 
             logging.debug(f"Updating params: {params}")
             self.data_acquirer.update_parameters(params)
+            return not trigger_data  # Trigger for updating the figure (flip False -> True -> False etc.)
 
         @self.app.callback(
             Output("save-button", "children"),
             [Input("save-button", "n_clicks")],
+            [State("added_points-data-store","data"),
+            State("added_lines-data-store","data")],
         )
-        def save(n_clicks):
-            logging.debug(f"Callback save triggered!")
+        def save(n_clicks,dict_points,dict_lines):
+            #logging.debug(f"Callback save triggered!")
             if n_clicks > self._last_save_clicks:
+                points = dict_points['added_points']
+                lines  = dict_lines['added_lines']
+                
                 self._last_save_clicks = n_clicks
-                self.save()
+                self.save(points,lines)
                 return "Saved!"
             return "Save"
+        
+        @self.app.callback(
+            [Output("added_points-data-store","data",allow_duplicate=True),
+            Output("added_lines-data-store","data",allow_duplicate=True)],
+            Input("load-button", "n_clicks"),
+            [State("annotation-file-dropdown", "value"),
+            State("added_points-data-store","data"),
+            State("added_lines-data-store","data")],   
+        )
+        def load_and_validate_annotation(n_clicks, selected_file, dict_points, dict_lines):
+            if n_clicks > 0:
+                #logging.debug(f"selected file: {selected_file}")
+                #logging.debug(f"Loading annotation data")
+                if not selected_file:
+                    logging.info("No annotation file selected.")
+                    return dash.no_update, dash.no_update
+                file_path = os.path.join(self.load_path, selected_file)
+                try:
+                    data = self.load_and_validate_json(file_path)
+                    #logging.debug(f"annotation data: {data}")
+                    dict_points['added_points'] = data['points']
+                    dict_points['added_points']['index'] = list(range(1, len(data['points']['x'])+1))
+                    dict_points['selected_point'] = {'move': False, 'index': None}
+                    dict_lines['added_lines'] = data['lines']
+                    dict_lines['selected_indices'] = []
+                    #logging.debug(f"points: {dict_points}")
+                    #logging.debug(f"lines: {dict_lines}")
+                    logging.info(f"JSON is valid and loaded!")
+                    return dict_points, dict_lines
+                except ValueError as e:
+                    logging.info(f"JSON error: {e}")
+                    return dash.no_update, dash.no_update
+            else:
+                return dash.no_update, dash.no_update
         
         @self.app.callback(
             [Output("added_points-data-store","data",allow_duplicate=True),
@@ -568,15 +667,14 @@ class VideoModeApp:
             [Output('live-heatmap','figure')],
             [Input("heatmap-data-store", "data"),
              Input("added_points-data-store","data"),
-             Input("added_lines-data-store","data")],
+             Input("added_lines-data-store","data"), ]
             #blocking = True, # Not needed as heatmap data comes from dcc.Store
         )
         def update_figure(dict_heatmap,dict_points,dict_lines):
-            logging.debug(f"Callback update_figure triggered!")
+            #logging.debug(f"Callback update_figure triggered!")
             #ts1 = time.time()
             #added_points = dict_points['added_points']
             #added_lines = dict_lines['added_lines']
-
             self.figure = self._generate_figure(dict_heatmap,dict_points,dict_lines)
             #ts2 = time.time()
             #logging.debug(f"Time to update figure: {ts2-ts1}s")
@@ -584,6 +682,64 @@ class VideoModeApp:
             #logging.debug(f"type figure: {type(figure)}")
             return self.figure
     
+
+    def list_json_files(self):
+        """List all JSON files in the annotations data folder."""
+        return [f for f in os.listdir(self.load_path) if f.endswith(".json")]
+    
+    def load_and_validate_json(self, file_path):
+        try:
+            with open(file_path,"r") as f:
+                data = json.load(f)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON format: {e}")
+        except Exception as e:
+            raise ValueError(f"Failed to open or read the file: {e}")
+        
+        # Top-level check
+        if not isinstance(data, dict):
+            raise ValueError("Top-level JSON structure must be a dictionary.")
+
+        required_top_keys = {"points", "lines"}
+        if not required_top_keys.issubset(data):
+            raise ValueError(f"Missing top-level keys: {required_top_keys - data.keys()}")
+
+        # Validate 'points'
+        points = data["points"]
+        if not isinstance(points, dict):
+            raise ValueError("'points' must be a dictionary.")
+
+        if "x" not in points or "y" not in points:
+            raise ValueError("Missing 'x' or 'y' in 'points'.")
+
+        if not isinstance(points["x"], list) or not isinstance(points["y"], list):
+            raise ValueError("'x' and 'y' must be lists.")
+
+        if len(points["x"]) != len(points["y"]):
+            raise ValueError("Length of 'x' and 'y' must be equal.")
+
+        if not all(isinstance(num, (int, float)) for num in points["x"] + points["y"]):
+            raise ValueError("All elements in 'x' and 'y' must be numbers.")
+
+        # Validate 'lines'
+        lines = data["lines"]
+        if not isinstance(lines, dict):
+            raise ValueError("'lines' must be a dictionary.")
+
+        if "start_index" not in lines or "end_index" not in lines:
+            raise ValueError("Missing 'start_index' or 'end_index' in 'lines'.")
+
+        if not isinstance(lines["start_index"], list) or not isinstance(lines["end_index"], list):
+            raise ValueError("'start_index' and 'end_index' must be lists.")
+
+        if len(lines["start_index"]) != len(lines["end_index"]):
+            raise ValueError("Length of 'start_index' and 'end_index' must be equal.")
+
+        if not all(isinstance(i, int) for i in lines["start_index"] + lines["end_index"]):
+            raise ValueError("All elements in 'start_index' and 'end_index' must be integers.")
+
+        return data  # Or return specific parts if needed
+
 
     def _generate_figure(self, dict_heatmap, dict_points, dict_lines):
         points = dict_points['added_points']
@@ -687,10 +843,68 @@ class VideoModeApp:
 
         return distances
 
-
     def run(self, debug: bool = True, use_reloader: bool = False):
         logging.debug("Starting Dash server")
         self.app.server.run(debug=debug, use_reloader=use_reloader)
+
+    def save_annotation(self,points,lines,idx: Optional[int] = None):
+        """
+        Save the current annotation data (points and lines) to a json file.
+
+        This method saves the current annotation data drawn in the graph to a json file in the specified data save path.
+        It automatically generates a unique filename by incrementing an index if not provided.
+
+        Args:
+            idx (Optional[int]): The index to use for the filename. If None, an available index is automatically determined.
+
+        Returns:
+            int: The index of the saved data file.
+
+        Raises:
+            ValueError: If the maximum number of data files (9999) has been reached.
+            FileExistsError: If a file with the generated name already exists.
+
+        Note:
+            - The data save path is created if it doesn't exist.
+            - The filename format is 'annotation_XXXX.json', where XXXX is a four-digit index.
+            - The annotation data is not saved if there are no points and lines.
+        """        
+        data_save_path = self.save_path / "annotations"
+        logging.info(f"Attempting to save annotation data to folder: {data_save_path}")
+
+        if not data_save_path.exists():
+            data_save_path.mkdir(parents=True)
+            logging.info(f"Created directory: {data_save_path}")
+
+        if idx is None:
+            idx = 1
+            while idx <= 9999 and (data_save_path / f"annotation_{idx}.json").exists():
+                idx += 1
+
+        if idx > 9999:
+            raise ValueError(
+                "Maximum number of data files (9999) reached. Cannot save more."
+            )
+
+        filename = f"annotation_{idx}.json"
+        filepath = data_save_path / filename    
+
+        if filepath.exists():
+            raise FileExistsError(f"File {filepath} already exists.")
+        
+        if (not points.get("x")) and (not lines.get("start_index")):
+            logging.info("There is no annotation data to save.")
+        else:            
+            data = {
+                "points": {k: points[k] for k in ["x", "y"]},
+                "lines": lines,
+            }
+            with open(filepath, "w") as f:
+                json.dump(data, f, indent=4)
+
+            logging.info(f"Annotation data saved successfully: {filepath}")
+        logging.info("Annotation data save operation completed.")
+        return idx
 
     def save_data(self, idx: Optional[int] = None):
         """
@@ -771,7 +985,12 @@ class VideoModeApp:
         if idx <= 9999:
             filename = f"data_image_{idx}.png"
             filepath = image_save_path / filename
-            self.fig.write_image(filepath)
+            logging.debug(f"About to save image")
+            logging.debug(f"Figure type: {type(self.figure)}")
+            logging.debug(f"filepath: {filepath}")
+            #logging.debug(f"figure: {self.figure}")
+            #self.figure.write_image("test.png")
+            print(self.figure.write_image(filepath))  # Does not work since self.figure is a Heatmap, not a figure
             logging.info(f"Image saved successfully: {filepath}")
         else:
             raise ValueError(
@@ -779,14 +998,15 @@ class VideoModeApp:
             )
         logging.info("Image save operation completed.")
 
-        return idx
+        return idx           
 
-    def save(self):
+    def save(self,points,lines):
         """
-        Save both the current image and data.
+        Save the current image, data as well as the annotation data.
 
-        This method saves the current figure as a PNG image and the current data as an HDF5 file.
-        It uses the same index for both files to maintain consistency.
+        This method saves the current figure as a PNG image, the current data as an HDF5 file and the 
+        current annotation data (points and lines) as a json file.
+        It uses the same index for all files to maintain consistency.
 
         Returns:
             int: The index of the saved files.
@@ -795,7 +1015,7 @@ class VideoModeApp:
             ValueError: If the maximum number of files (9999) has been reached.
 
         Note:
-            - The image is saved first, followed by the data.
+            - The image is saved first, followed by the data. Finally, the annotation data is saved.
             - If data saving fails due to a FileExistsError, a warning is logged instead of raising an exception.
         """
         if not self.save_path.exists():
@@ -811,6 +1031,14 @@ class VideoModeApp:
         except FileExistsError:
             logging.warning(
                 f"Data file with index {idx} already exists. Image saved, but data was not overwritten."
+            )
+        
+        # Attempt to save points and lines (annotation data) with the same index
+        try:
+            self.save_annotation(points,lines,idx)
+        except FileExistsError:
+            logging.warning(
+                f"Annotation data file with index {idx} already exists. Image saved, but line and point data was not overwritten."
             )
 
         logging.info(f"Save operation completed with index: {idx}")

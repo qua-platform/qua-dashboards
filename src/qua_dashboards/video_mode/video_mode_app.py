@@ -236,6 +236,33 @@ class VideoModeApp:
                                     ],
                                     className="mb-4",
                                 ),
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            dbc.Button(
+                                                "Compute compensation",
+                                                id="compensation-button",
+                                                n_clicks=0,
+                                                className="mt-3",
+                                            ),
+                                            width="auto",
+                                        ),
+                                    ],
+                                    className="mb-1",
+                                ), 
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            html.Pre(
+                                                id="compensation-data",
+                                                className="bg-light p-3 rounded border",
+                                                style={'overflowX': 'scroll'},
+                                            ),
+                                            width=12,
+                                        ),
+                                    ],
+                                    className="mb-4",
+                                ),                                                                                              
                             ],
                             width=5,
                         ),
@@ -681,7 +708,66 @@ class VideoModeApp:
             #logging.debug(f"figure: {figure}")
             #logging.debug(f"type figure: {type(figure)}")
             return self.figure
-    
+
+        @self.app.callback(
+            Output("compensation-data","children"),
+            Input("compensation-button","n_clicks"),
+            [State("added_points-data-store","data"),
+             State("added_lines-data-store","data"),]
+        )
+        def compute_compensation(n_clicks,dict_points,dict_lines):
+            if n_clicks>0:
+                logging.debug(f"Callback compute_compensation entered!")
+                direction,slope,A_inv,Transformation = self.compensation(dict_points['added_points'],dict_lines['added_lines'])
+                logging.debug(f"direction: {direction}")
+                logging.debug(f"slopes: {slope}")
+                logging.debug(f"Inverse of transformation matrix: {A_inv}")
+                logging.debug(f"Test (A*A_inv): {np.dot(A_inv, Transformation)}")
+                #logging.debug(f"slopes: {direction['dy'][0]/direction['dx'][0]} and {direction['dy'][1]/direction['dx'][1]}")
+                return json.dumps(Transformation.tolist(), indent=2)#dash.no_update  # TO DO: output matrix A
+            else:
+                return dash.no_update
+
+
+
+    def compensation(self,added_points,added_lines):
+        # TO DO: ensure added_lines has exactly two lines added
+        # Compute direction for each line
+        direction = {'dx' : [], 'dy' : []}
+        for start_index, end_index in zip(added_lines['start_index'], added_lines['end_index']): # loop through lines
+            # Line start point (x1,y1) and end point (x2,y2)
+            x1, y1 = added_points['x'][start_index], added_points['y'][start_index]
+            x2, y2 = added_points['x'][end_index], added_points['y'][end_index]
+            
+            # Direction vector from start to end point
+            direction["dx"].append(x2-x1)
+            direction["dy"].append(y2-y1)
+
+        # Compute slope for each line
+        slope = [dy / dx if dx != 0 else None for dx, dy in zip(direction['dx'], direction['dy'])]
+
+        # Compute transformation matrix A
+        A_inv = np.zeros((2,2))
+        if abs(slope[0]) < abs(slope[1]):  # First line more aligned with x-axis, second line more aligned with y-axis
+            A_inv[0,0] = - direction['dy'][0]
+            A_inv[0,1] =   direction["dx"][0]
+            A_inv[1,0] = - direction['dy'][1]
+            A_inv[1,1] =   direction["dx"][1]
+        else: # First line more aligned with y-axis, second line more aligned with x-axis
+            A_inv[0,0] = - direction['dy'][1]
+            A_inv[0,1] =   direction["dx"][1]
+            A_inv[1,0] = - direction['dy'][0]
+            A_inv[1,1] =   direction["dx"][0]
+
+        Transformation = np.linalg.inv(A_inv)            
+
+        return direction,slope,A_inv,Transformation
+        # TO DO: Figure out whether first or second line has larger slope dy/dx. 
+        #        Flatter line has parameters a, steeper line has parameters b
+        # TO DO: Compute A
+
+
+   
 
     def list_json_files(self):
         """List all JSON files in the annotations data folder."""
@@ -842,6 +928,7 @@ class VideoModeApp:
                     #logging.debug(f"dist_start: {dist_start}, dist_end: {dist_end}")
 
         return distances
+
 
     def run(self, debug: bool = True, use_reloader: bool = False):
         logging.debug("Starting Dash server")

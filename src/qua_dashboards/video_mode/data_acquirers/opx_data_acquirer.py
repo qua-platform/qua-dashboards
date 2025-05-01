@@ -8,7 +8,14 @@ import dash_bootstrap_components as dbc
 
 from qm import QuantumMachinesManager, Program
 from qm.jobs.running_qm_job import RunningQmJob
-from qm.qua import program, declare_stream, infinite_loop_, save, stream_processing, wait
+from qm.qua import (
+    program,
+    declare_stream,
+    infinite_loop_,
+    save,
+    stream_processing,
+    wait,
+)
 
 from qua_dashboards.video_mode.dash_tools import ModifiedFlags
 from qua_dashboards.video_mode.data_acquirers.base_data_aqcuirer import BaseDataAcquirer
@@ -94,8 +101,12 @@ class OPXDataAcquirer(BaseDataAcquirer):
 
             with stream_processing():
                 streams = {
-                    "I": IQ_streams["I"].buffer(self.x_axis.points * self.y_axis.points),
-                    "Q": IQ_streams["Q"].buffer(self.x_axis.points * self.y_axis.points),
+                    "I": IQ_streams["I"].buffer(
+                        self.x_axis.points * self.y_axis.points
+                    ),
+                    "Q": IQ_streams["Q"].buffer(
+                        self.x_axis.points * self.y_axis.points
+                    ),
                 }
                 combined_stream = None
                 for var in self.stream_vars:
@@ -122,7 +133,9 @@ class OPXDataAcquirer(BaseDataAcquirer):
         else:
             raise ValueError(f"Invalid result type: {self.result_type}")
 
-        x_idxs, y_idxs = self.scan_mode.get_idxs(x_points=self.x_axis.points, y_points=self.y_axis.points)
+        x_idxs, y_idxs = self.scan_mode.get_idxs(
+            x_points=self.x_axis.points, y_points=self.y_axis.points
+        )
         results_2D = np.zeros((self.y_axis.points, self.x_axis.points), dtype=float)
         results_2D[y_idxs, x_idxs] = result
 
@@ -172,7 +185,9 @@ class OPXDataAcquirer(BaseDataAcquirer):
                     dbc.Label("Result Type", style={"max-width": "150px"}),
                     dbc.Select(
                         id={"type": self.component_id, "index": "result-type"},
-                        options=[{"label": rt, "value": rt} for rt in self.result_types],
+                        options=[
+                            {"label": rt, "value": rt} for rt in self.result_types
+                        ],
                         value=self.result_type,
                         style={"max-width": "150px"},
                     ),

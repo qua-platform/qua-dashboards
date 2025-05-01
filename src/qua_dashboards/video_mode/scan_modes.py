@@ -4,10 +4,11 @@ import numpy as np
 from matplotlib import figure, axes, pyplot as plt
 from matplotlib.ticker import MultipleLocator
 
-from qm.qua import declare, fixed, if_, assign, for_, for_each_, QuaVariableType
+from qm.qua import declare, fixed, if_, assign, for_, for_each_
 
 from qualang_tools.loops import from_array
 from qua_dashboards.video_mode.dash_tools import BaseDashComponent
+from qua_dashboards.utils.qua_types import QuaVariableFloat
 
 
 class ScanMode(BaseDashComponent, ABC):
@@ -49,7 +50,7 @@ class ScanMode(BaseDashComponent, ABC):
     @abstractmethod
     def scan(
         self, x_vals: Sequence[float], y_vals: Sequence[float]
-    ) -> Generator[Tuple[QuaVariableType, QuaVariableType], None, None]:
+    ) -> Generator[Tuple[QuaVariableFloat, QuaVariableFloat], None, None]:
         pass
 
 
@@ -66,7 +67,7 @@ class RasterScan(ScanMode):
 
     def scan(
         self, x_vals: Sequence[float], y_vals: Sequence[float]
-    ) -> Generator[Tuple[QuaVariableType, QuaVariableType], None, None]:
+    ) -> Generator[Tuple[QuaVariableFloat, QuaVariableFloat], None, None]:
         voltages = {"x": declare(fixed), "y": declare(fixed)}
 
         with for_(*from_array(voltages["y"], y_vals)):  # type: ignore
@@ -119,7 +120,7 @@ class SwitchRasterScan(ScanMode):
 
     def scan(
         self, x_vals: Sequence[float], y_vals: Sequence[float]
-    ) -> Generator[Tuple[QuaVariableType, QuaVariableType], None, None]:
+    ) -> Generator[Tuple[QuaVariableFloat, QuaVariableFloat], None, None]:
         voltages = {"x": declare(fixed), "y": declare(fixed)}
 
         with for_each_(voltages["y"], self.interleave_arr(y_vals, start_from_middle=self.start_from_middle)):  # type: ignore
@@ -167,7 +168,7 @@ class SpiralScan(ScanMode):
 
     def scan(
         self, x_vals: Sequence[float], y_vals: Sequence[float]
-    ) -> Generator[Tuple[QuaVariableType, QuaVariableType], None, None]:
+    ) -> Generator[Tuple[QuaVariableFloat, QuaVariableFloat], None, None]:
         movement_direction = declare(fixed)
         half_spiral_idx = declare(int)
         k = declare(int)

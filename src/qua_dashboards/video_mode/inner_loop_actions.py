@@ -11,7 +11,6 @@ from qm.qua import (
     align,
     wait,
     measure,
-    QuaVariableType,
     play,
     ramp,
     assign,
@@ -19,6 +18,7 @@ from qm.qua import (
     if_,
     ramp_to_zero,
 )
+from qua_dashboards.utils.qua_types import QuaVariableFloat
 from qua_dashboards.utils.dash_utils import create_input_field
 from qua_dashboards.video_mode.dash_tools import (
     BaseDashComponent,
@@ -34,8 +34,8 @@ class InnerLoopAction(BaseDashComponent, ABC):
 
     @abstractmethod
     def __call__(
-        self, x: QuaVariableType, y: QuaVariableType
-    ) -> Tuple[QuaVariableType, QuaVariableType]:
+        self, x: QuaVariableFloat, y: QuaVariableFloat
+    ) -> Tuple[QuaVariableFloat, QuaVariableFloat]:
         pass
 
     def initial_action(self):
@@ -74,13 +74,13 @@ class BasicInnerLoopAction(InnerLoopAction):
         self.readout_pulse = readout_pulse
         self.pre_measurement_delay = pre_measurement_delay
 
-    def set_dc_offsets(self, x: QuaVariableType, y: QuaVariableType):
+    def set_dc_offsets(self, x: QuaVariableFloat, y: QuaVariableFloat):
         set_dc_offset(self.x_elem, "single", x)
         set_dc_offset(self.y_elem, "single", y)
 
     def __call__(
-        self, x: QuaVariableType, y: QuaVariableType
-    ) -> Tuple[QuaVariableType, QuaVariableType]:
+        self, x: QuaVariableFloat, y: QuaVariableFloat
+    ) -> Tuple[QuaVariableFloat, QuaVariableFloat]:
         outputs = {"I": declare(fixed), "Q": declare(fixed)}
 
         self.set_dc_offsets(x, y)
@@ -167,7 +167,7 @@ class BasicInnerLoopActionQuam(InnerLoopAction):
             # element.play("step", amplitude_scale=dV << 2)
             assign(self.reached_voltage, new_voltage)
 
-    def set_dc_offsets(self, x: QuaVariableType, y: QuaVariableType):
+    def set_dc_offsets(self, x: QuaVariableFloat, y: QuaVariableFloat):
         if self.ramp_rate > 0:
             if getattr(self.x_elem, "sticky", None) is None:
                 raise RuntimeError("Ramp rate is not supported for non-sticky elements")
@@ -186,8 +186,8 @@ class BasicInnerLoopActionQuam(InnerLoopAction):
             assign(self._last_y_voltage, y)
 
     def __call__(
-        self, x: QuaVariableType, y: QuaVariableType
-    ) -> Tuple[QuaVariableType, QuaVariableType]:
+        self, x: QuaVariableFloat, y: QuaVariableFloat
+    ) -> Tuple[QuaVariableFloat, QuaVariableFloat]:
         self.set_dc_offsets(x, y)
         align()
 

@@ -1040,12 +1040,6 @@ class VideoModeApp:
         if idx <= 9999:
             filename = f"data_image_{idx}.png"
             filepath = image_save_path / filename
-            logging.debug(f"About to save image")
-            logging.debug(f"Figure type: {type(self.figure)}")
-            logging.debug(f"filepath: {filepath}")
-            #logging.debug(f"figure: {self.figure}")
-            #self.figure.write_image("test.png")
-            print(self.figure.write_image(filepath))  # Does not work since self.figure is a Heatmap, not a figure
             logging.info(f"Image saved successfully: {filepath}")
         else:
             raise ValueError(

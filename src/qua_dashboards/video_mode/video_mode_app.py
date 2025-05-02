@@ -1,5 +1,4 @@
 from datetime import datetime
-import time
 import numpy as np
 import os
 from pathlib import Path
@@ -14,7 +13,6 @@ from dash_extensions.enrich import (
     State,
     BlockingCallbackTransform,
 )
-import kaleido
 import plotly.graph_objects as go
 import dash_bootstrap_components as dbc
 from dash.exceptions import PreventUpdate
@@ -79,9 +77,16 @@ class VideoModeApp:
         This method sets up the Dash layout for the video mode control panel. It includes:
         - A graph to display the heatmap of acquired data
         - Controls for X and Y parameters (offset, span, points)
-        - Buttons for pausing/resuming data acquisition and saving data
+        - Buttons for pausing/resuming data acquisition and saving data (images, data, annotations)
         - Display for the current iteration count
         - Input for setting the number of averages
+        - Button for changing to the annotation mode (pauses data acquisition)
+        - Radio buttons for choosing the annotation mode:
+            -- Adding/moving points
+            -- Adding lines
+            -- Deleting points/lines
+        - A button to clear all the annotations
+        - A dropdown to select a previously saved annotation file, and a button for loading this file
 
         The layout is designed to be responsive and user-friendly, with aligned input fields
         and clear labeling. It uses a combination of Dash core components and HTML elements
@@ -91,21 +96,16 @@ class VideoModeApp:
         Returns:
             None: The method sets up the `self.app.layout` attribute but doesn't return anything.
         """
-        
-        added_points = {'x': [], 'y': [], 'index': []}   # added points
-        selected_point_to_move = {'move': False, 'index': None}        # selected point to move
-        dict_points = {'added_points': added_points, 'selected_point': selected_point_to_move}
+
+        dict_points = {'added_points': {'x': [], 'y': [], 'index': []}, 'selected_point': {'move': False, 'index': None}}
         dict_lines = {'selected_indices': [], 'added_lines': {'start_index':[], 'end_index':[]}}  # selected points for drawing a line
         dict_heatmap = xarray_to_heatmap(self.data_acquirer.data_array)
-        #self.heatmap = dict_heatmap['heatmap']
-        self.figure = self._generate_figure(dict_heatmap,dict_points,dict_lines)
-        #logging.debug(f"figure: {self.figure}")
-        #logging.debug(f"added points: {added_points}")
-        self.radio_options = [
+        radio_options = [
             {"label": "Adding and moving points (SHIFT+P)", "value": "point"},
             {"label": "Adding lines (SHIFT+L)", "value": "line"},
             {"label": "Deleting points and lines (SHIFT+D)", "value": "delete"},
         ]
+        self.figure = self.generate_figure(dict_heatmap,dict_points,dict_lines)
 
         self.app.layout = dbc.Container(
             [                     # Store to hold key press events
@@ -195,10 +195,8 @@ class VideoModeApp:
                                                     html.H5("Points and lines", className="card-title"),
                                                     dbc.RadioItems(
                                                         id='mode-selector',
-                                                        options=self.radio_options,
+                                                        options=radio_options,
                                                         value="point",
-                                                        #['Adding and moving points', 'Adding lines', 'Deleting points'], 
-                                                        #'Adding and moving points',
                                                     ),
                                                 ]),
                                             ),
@@ -229,13 +227,39 @@ class VideoModeApp:
                                                 id="annotation-file-dropdown",
                                                 options=[{"label": f, "value": f} for f in self.list_json_files()],
                                                 placeholder="Choose a file...",
-                                                #style={"width": "50%"}
                                             ),
                                             width=12,
                                         ),
                                     ],
                                     className="mb-4",
                                 ),
+                                # dbc.Row(
+                                #     [
+                                #         dbc.Col(
+                                #             dbc.Button(
+                                #                 "Compute compensation",
+                                #                 id="compensation-button",
+                                #                 n_clicks=0,
+                                #                 className="mt-3",
+                                #             ),
+                                #             width="auto",
+                                #         ),
+                                #     ],
+                                #     className="mb-1",
+                                # ), 
+                                # dbc.Row(
+                                #     [
+                                #         dbc.Col(
+                                #             html.Pre(
+                                #                 id="compensation-data",
+                                #                 className="bg-light p-3 rounded border",
+                                #                 style={'overflowX': 'scroll'},
+                                #             ),
+                                #             width=12,
+                                #         ),
+                                #     ],
+                                #     className="mb-4",
+                                # ),
                             ],
                             width=5,
                         ),
@@ -254,25 +278,20 @@ class VideoModeApp:
                     id="interval-component",
                     interval=self.update_interval * 1000,
                     n_intervals=0,
-                    #max_intervals=10,
                 ),
-                #dcc.Input(id="key-input", type="text", style={"opacity":0, "position": "absolute"}), # Hidden input for key events --> key events have to be ended with pressing ENTER - not what we want
                 dcc.Store( # Store heatmap that it can be used as an input in a callback
                     id="heatmap-data-store",
-                    #data=self.heatmap, # initial assignment, NOT automatically updated
-                    data=dict_heatmap['heatmap'], # initial assignment, NOT automatically updated
+                    data=dict_heatmap, # initial assignment, NOT automatically updated
                 ),
                 dcc.Store( # Store added points that they can be used as an input in a callback
                     id="added_points-data-store",
-                    data={'added_points': added_points, 'selected_point': selected_point_to_move},  # initial assignment, NOT automatically updated
+                    data=dict_points,
                 ),
                 dcc.Store( # Store added lines
                     id="added_lines-data-store",
                     data=dict_lines,
                 ),
                 dcc.Store(id="trigger-update-once",data=False),  # trigger for updating the heatmap!
-                #dcc.Store(id="timestamp-store-heatmap"),    # Hidden store for timing
-                #html.Script(src="/assets/keypress.js"),    # JavaScript to detect key presses (Added in assets folder) --> no ENTER needed
             ],
             fluid=True,
             style={"height": "100vh"},
@@ -280,7 +299,6 @@ class VideoModeApp:
         logging.debug(
             f"Dash layout created, update interval: {self.update_interval * 1000} ms"
         )
-        #logging.debug(f"App layout: {self.app.layout}")
         self.add_callbacks()
 
     def add_callbacks(self):
@@ -302,6 +320,10 @@ class VideoModeApp:
             [Input("annotation-button", "n_clicks")],
         )
         def toggle_annotation(n_clicks):
+            '''
+            Change between annotation mode (pausing the measurements), where points and lines 
+            can be added to the figure, and the measurement mode.
+            '''
             #logging.debug(f"Callback toggle_annotation triggered!")
             if n_clicks % 2 == 1:
                 self.annotation = True
@@ -317,7 +339,10 @@ class VideoModeApp:
             [Input("clear-button", "n_clicks")],
         )
         def clear_annotation_data(n_clicks):
-            logging.debug(f"Callback clear_annotation_data triggered!")
+            '''
+            Clear all annotation data, i.e. all points and lines
+            '''
+            #logging.debug(f"Callback clear_annotation_data triggered!")
             if n_clicks>0: # Button is initiated with n_clicks=0, only clear data if button was clicked!
                 dict_points = {'added_points': {'x': [], 'y': [], 'index': []}, 'selected_point':  {'move': False, 'index': None}}
                 dict_lines = {'selected_indices': [], 'added_lines': {'start_index':[], 'end_index':[]}}  # selected points for drawing a line
@@ -331,11 +356,21 @@ class VideoModeApp:
             State("added_lines-data-store","data"),
         )
         def update_mode_change(mode,dict_lines):
+            '''
+            Reset selected indices for a line to None when changing between points and lines (radiobuttons)
+            e.g. changing from "Adding lines" to "Deleting points and lines".
+            This is to prevent that there is already a first point of a new line selected, when changing
+            back to the "Adding lines" mode.
+            '''
             if mode!='line':
                 dict_lines['selected_indices'] = []  # reset selected indices for line in case of mode change
             return dict_lines
         
         # Use keyboard shortcuts to switch between radio items (modes)
+        '''
+        Introduce keyboard shortcuts for the point and lines modes (radiobuttons). 
+        This is done via Javascript.
+        '''
         self.app.clientside_callback(
             """
             function(value) {
@@ -361,15 +396,6 @@ class VideoModeApp:
             Input("mode-selector", "value")
         )
 
-        # @self.app.callback(
-        #     Output("timestamp-store-heatmap", "data"),
-        #     Input("interval-component", "n_intervals"),
-        #     prevent_initial_call=True
-        #     )
-        # def store_timestamp(n_intervals):
-        #     return time.perf_counter()  # Store the timestamp before callback execution
-
-
         @self.app.callback(
             [
                 Output("heatmap-data-store", "data"),  # Change heatmap data -> can use this to fire another callback for updating the figure!
@@ -380,18 +406,13 @@ class VideoModeApp:
                 Input("trigger-update-once","data"),  # Parameters changed 
             ],
             [State("heatmap-data-store", "data")], # new
-            #State("timestamp-store-heatmap", "data")],
             blocking=True,
         )
-        def update_heatmap(n_intervals,trigger_data,state_heatmap):#,start_time):
-            logging.debug(f"Trigger data: {trigger_data}")
+        def update_heatmap(n_intervals,trigger_data,state_heatmap):
             #logging.debug(f"Callback update_heatmap triggered!")
-            #logging.debug(f"data: {self.figure.data}")
             # logging.debug(
             #     f"*** Dash callback {n_intervals} called at {datetime.now().strftime('%H:%M:%S.%f')[:-3]}"
             # )
-            #logging.debug(f"start_time: {start_time}")
-            #processing_start = time.perf_counter()  # Start measuring execution time
 
             if self.paused or self._is_updating:
                 logging.debug(
@@ -399,25 +420,12 @@ class VideoModeApp:
                 )
                 return state_heatmap, f"Iteration: {self.data_acquirer.num_acquisitions}"
 
-            # Increment iteration counter and update frontend
-            #ts1 = time.time()
             updated_xarr = self.data_acquirer.update_data()
             dict_heatmap = xarray_to_heatmap(updated_xarr)
-            #logging.debug(f"heatmap: {dict_heatmap['heatmap']}")
-            #self.heatmap = dict_heatmap['heatmap']
+
             logging.debug(
                 f"Updating heatmap, num_acquisitions: {self.data_acquirer.num_acquisitions}"
             )
-            #ts2 = time.time()
-            #logging.debug(f"Time to update heatmap: {ts2-ts1}s")
-
-            #processing_end = time.perf_counter()  # End measuring execution time
-
-            #execution_time = processing_end - processing_start  # Callback execution time
-            #total_delay = processing_end - start_time  # Full delay from triggering event
-            #logging.debug(f"(UPDATE HEATMAP) execution_time (Python processing): {execution_time}s")
-            #logging.debug(f"(UPDATE HEATMAP) total_delay (full UI update time): {total_delay}s")
-
             return dict_heatmap, [f"Iteration: {self.data_acquirer.num_acquisitions}"]
 
         # Create states for all input components
@@ -429,14 +437,14 @@ class VideoModeApp:
             ]
 
         @self.app.callback(
-            [Output("trigger-update-once",'data')],
+            [Output("trigger-update-once",'data')], # Ensure that the figure is updated also in annotation mode!
             [Input("update-button", "n_clicks")],
             State("trigger-update-once",'data'),
             component_states,
             blocking=True,
         )
         def update_params(n_update_clicks, trigger_data, *component_inputs):
-            logging.debug(f"Callback update_params triggered!")
+            #logging.debug(f"Callback update_params triggered!")
             if n_update_clicks <= self._last_update_clicks:
                 return dash.no_update
 
@@ -461,6 +469,9 @@ class VideoModeApp:
             State("added_lines-data-store","data")],
         )
         def save(n_clicks,dict_points,dict_lines):
+            '''
+            Save the current image, data and annotation
+            '''
             #logging.debug(f"Callback save triggered!")
             if n_clicks > self._last_save_clicks:
                 points = dict_points['added_points']
@@ -480,23 +491,23 @@ class VideoModeApp:
             State("added_lines-data-store","data")],   
         )
         def load_and_validate_annotation(n_clicks, selected_file, dict_points, dict_lines):
+            '''
+            Load a previously saved annotation file, which is selected in the dropdown.
+            A ValueError is raised if the annotation file is not valid.
+            '''
+            # logging.debug(f"Callback load_and_validate_annotation triggered!")
             if n_clicks > 0:
-                #logging.debug(f"selected file: {selected_file}")
-                #logging.debug(f"Loading annotation data")
                 if not selected_file:
                     logging.info("No annotation file selected.")
                     return dash.no_update, dash.no_update
                 file_path = os.path.join(self.load_path, selected_file)
                 try:
                     data = self.load_and_validate_json(file_path)
-                    #logging.debug(f"annotation data: {data}")
                     dict_points['added_points'] = data['points']
-                    dict_points['added_points']['index'] = list(range(1, len(data['points']['x'])+1))
+                    dict_points['added_points']['index'] = list(range(0, len(data['points']['x'])))
                     dict_points['selected_point'] = {'move': False, 'index': None}
                     dict_lines['added_lines'] = data['lines']
                     dict_lines['selected_indices'] = []
-                    #logging.debug(f"points: {dict_points}")
-                    #logging.debug(f"lines: {dict_lines}")
                     logging.info(f"JSON is valid and loaded!")
                     return dict_points, dict_lines
                 except ValueError as e:
@@ -508,17 +519,17 @@ class VideoModeApp:
         @self.app.callback(
             [Output("added_points-data-store","data",allow_duplicate=True),
              Output("added_lines-data-store","data",allow_duplicate=True),
-             Output('live-heatmap','clickData')], # Reset to None, otherwise repeated clicks at the same coordinates in the graph are not possible!
+             Output('live-heatmap','clickData')], # Reset to None, otherwise repeated clicks at the same coordinates in the graph are not possible in Dash!
             [Input('live-heatmap','clickData')],
             [State("added_points-data-store","data"),
             State("mode-selector","value"),
             State("added_lines-data-store","data")],
         )
-        def handle_clicks(clickData,dict_points,selected_mode,dict_lines):#,marked_points):
+        def handle_clicks(clickData,dict_points,selected_mode,dict_lines):
+            '''
+            Handle clicks on the figure dependent on the different points and lines modes
+            '''
             #logging.debug("Callback handle_clicks triggered!")
-            #logging.debug(f"Received clickData: {clickData}")
-            #logging.debug(f"added_points: {self.added_points}")
-            #logging.debug(f"clickData: {clickData}")  # to check whether clickData is received
 
             # clickData is not None AND 'points' is not missing AND 'points' is not an empty list
             if clickData and 'points' in clickData and clickData['points']:
@@ -530,12 +541,12 @@ class VideoModeApp:
                 added_lines = dict_lines['added_lines']
                 selected_points_for_line = dict_lines['selected_indices']
                 
-                # MODE: Adding and moving points
+                # MODE: Adding and moving points (SHIFT + P)
                 if selected_mode=="point":
                     # Select point: Already added point since 'z' is missing & first click --> MARK THIS POINT
                     if 'z' not in point and selected_point_to_move['move']==False:
                         selected_point_to_move['move'] = True
-                        index = self._find_index(x_value, y_value, added_points)
+                        index = self.find_index(x_value, y_value, added_points)
                         selected_point_to_move['index'] = index
 
                     # Second click, i.e. last click was on an existing point --> MOVE selected point to clicked coordinates
@@ -557,25 +568,19 @@ class VideoModeApp:
             
                     return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}, None
                 
-                # MODE: Deleting points / lines
+                # MODE: Deleting points / lines (SHIFT + D)
                 elif selected_mode=="delete":
                     # If click on point
                     if 'z' not in point:
                         # Find index of clicked point
-                        index = self._find_index(x_value, y_value, added_points)
+                        index = self.find_index(x_value, y_value, added_points)
 
                         # Delete lines that have clicked point as start or end point
-                        #logging.debug(f"lines: {added_lines}")
                         i_start = [i for i, value in enumerate(added_lines['start_index']) if value==index]
                         i_end = [i for i, value in enumerate(added_lines['end_index']) if value==index]
                         i_to_remove = list(set(i_start) | set(i_end)) # combined list of line indices without duplicates
                         added_lines['start_index'] = [value for i, value in enumerate(added_lines['start_index']) if i not in i_to_remove] # delete lines
                         added_lines['end_index'] = [value for i, value in enumerate(added_lines['end_index']) if i not in i_to_remove]     # delete lines
-                        #logging.debug(f"index of point to delete: {index}")
-                        #logging.debug(f"i_start: {i_start}")
-                        #logging.debug(f"i_end: {i_end}")
-                        #logging.debug(f"indices to remove from list: {i_to_remove}")
-                        #logging.debug(f"lines: {added_lines}")
 
                         # Delete point in added_points
                         del added_points['x'][index]
@@ -587,13 +592,10 @@ class VideoModeApp:
                         # Recompute the line indices
                         added_lines['start_index'] = [value if value<index else value-1 for i, value in enumerate(added_lines['start_index'])]
                         added_lines['end_index'] = [value if value<index else value-1 for i, value in enumerate(added_lines['end_index'])]
-                        #logging.debug(f"lines: {added_lines}")
 
                     else: # click on not existing point
                         # compute distances of the selected coordinates to all lines
-                        distances = self._distance_to_lines(x_value, y_value, added_points, added_lines)
-                        #logging.debug(f"distances: {distances}")
-                        #logging.debug(f"added_lines: {added_lines}")
+                        distances = self.distance_to_lines(x_value, y_value, added_points, added_lines)
                         # if distances not empty
                         if distances:
                             min_index = np.argmin(distances) # index of smallest distance
@@ -601,39 +603,29 @@ class VideoModeApp:
                             if distances[min_index] < 2*min(self.data_acquirer.x_axis.span/self.data_acquirer.x_axis.points, self.data_acquirer.y_axis.span/self.data_acquirer.y_axis.points):
                                 del added_lines['start_index'][min_index]
                                 del added_lines['end_index'][min_index]
-                                #logging.debug(f"distances: {distances}")
-                                #logging.debug(f"added_lines: {added_lines}")
 
                     return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}, None # return points even if no point was deleted -> no problems with ordering of traces in figure,
                 
+                # MODE: Adding lines (SHIFT + L)
                 elif selected_mode=='line': 
                     if 'z' not in point:
                         # Find index of clicked point
-                        index = self._find_index(x_value, y_value, added_points)
-                        logging.debug(f"Clicked at ({x_value}, {y_value}), found index: {index}")
+                        index = self.find_index(x_value, y_value, added_points)
+                        #logging.debug(f"Clicked at ({x_value}, {y_value}), found index: {index}")
                         # If point not yet selected: append index
                         if index not in selected_points_for_line:
                             selected_points_for_line.append(index)
-                            #highlight_point = {index: 'green'}
                         else:
                             selected_points_for_line.remove(index) # unselect point
                         # If two indices selected: Save line and delete selected points
                         if len(selected_points_for_line)==2:
-                            if not self._duplicate_line(selected_points_for_line,added_lines): # Do not add duplicated line
+                            if not self.duplicate_line(selected_points_for_line,added_lines): # Do not add duplicated line
                                 added_lines['start_index'].append(selected_points_for_line[0])
                                 added_lines['end_index'].append(selected_points_for_line[1])
-                            #else:
-                            #    logging.debug(f"Duplicated line!")
                             selected_points_for_line.clear()
-                            #logging.debug(f"selected_points_for_line after reset: {selected_points_for_line}")
-                        #logging.debug(f"selected_points: {selected_points_for_line}")
-                        #logging.debug(f"lines: {added_lines}")
-                    # else:
-                    #     logging.debug(f"point (x,y,z)!")
                     return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}, None
             else:
                 return dash.no_update
-                #return dict_points, dict_lines
         
         @self.app.callback(
             [Output("added_points-data-store","data",allow_duplicate=True)],
@@ -642,8 +634,11 @@ class VideoModeApp:
              State("mode-selector","value")],
         )
         def handle_hovering(hoverData,dict_points,selected_mode):
+            '''
+            Handle hovering over the figure. 
+            So far only needed in the mode "Adding and moving points (SHIFT + P)" in order to move a selected point
+            '''
             #logging.debug(f"Callback handle_hovering triggered!")
-            #logging.debug(f"hovering: {dict_points}")
             if selected_mode=="point":
                 if hoverData and 'points' in hoverData and hoverData['points']:
                     added_points = dict_points['added_points']
@@ -668,26 +663,202 @@ class VideoModeApp:
             [Input("heatmap-data-store", "data"),
              Input("added_points-data-store","data"),
              Input("added_lines-data-store","data"), ]
-            #blocking = True, # Not needed as heatmap data comes from dcc.Store
         )
         def update_figure(dict_heatmap,dict_points,dict_lines):
+            '''
+            Update the figure whenever the heatmap or annotation data changes
+            '''
             #logging.debug(f"Callback update_figure triggered!")
-            #ts1 = time.time()
-            #added_points = dict_points['added_points']
-            #added_lines = dict_lines['added_lines']
-            self.figure = self._generate_figure(dict_heatmap,dict_points,dict_lines)
-            #ts2 = time.time()
-            #logging.debug(f"Time to update figure: {ts2-ts1}s")
-            #logging.debug(f"figure: {figure}")
-            #logging.debug(f"type figure: {type(figure)}")
+            self.figure = self.generate_figure(dict_heatmap,dict_points,dict_lines)
             return self.figure
-    
+
+        """
+        @self.app.callback(
+            Output("compensation-data","children"),
+            Input("compensation-button","n_clicks"),
+            [State("added_points-data-store","data"),
+             State("added_lines-data-store","data"),]
+        )
+        def compute_compensation(n_clicks,dict_points,dict_lines):
+            if n_clicks>0:
+                logging.debug(f"Callback compute_compensation triggered!")
+                direction,slope,A_inv,Transformation = self.compensation(dict_points['added_points'],dict_lines['added_lines'])
+                logging.debug(f"direction: {direction}")
+                logging.debug(f"slopes: {slope}")
+                logging.debug(f"Inverse of transformation matrix: {A_inv}")
+                logging.debug(f"Test (A*A_inv): {np.dot(A_inv, Transformation)}")
+                #logging.debug(f"slopes: {direction['dy'][0]/direction['dx'][0]} and {direction['dy'][1]/direction['dx'][1]}")
+                return json.dumps(Transformation.tolist(), indent=2)#dash.no_update  # TO DO: output matrix A
+            else:
+                return dash.no_update 
+        """
+
+    """ 
+    def compensation(self,added_points,added_lines):
+        # TO DO: ensure added_lines has exactly two lines added
+        # Compute direction for each line
+        direction = {'dx' : [], 'dy' : []}
+        for start_index, end_index in zip(added_lines['start_index'], added_lines['end_index']): # loop through lines
+            # Line start point (x1,y1) and end point (x2,y2)
+            x1, y1 = added_points['x'][start_index], added_points['y'][start_index]
+            x2, y2 = added_points['x'][end_index], added_points['y'][end_index]
+            
+            # Direction vector from start to end point
+            direction["dx"].append(x2-x1)
+            direction["dy"].append(y2-y1)
+
+        # Compute slope for each line
+        slope = [dy / dx if dx != 0 else None for dx, dy in zip(direction['dx'], direction['dy'])]
+
+        # Compute transformation matrix A
+        A_inv = np.zeros((2,2))
+        if abs(slope[0]) < abs(slope[1]):  # First line more aligned with x-axis, second line more aligned with y-axis
+            A_inv[0,0] = - direction['dy'][0]
+            A_inv[0,1] =   direction["dx"][0]
+            A_inv[1,0] = - direction['dy'][1]
+            A_inv[1,1] =   direction["dx"][1]
+        else: # First line more aligned with y-axis, second line more aligned with x-axis
+            A_inv[0,0] = - direction['dy'][1]
+            A_inv[0,1] =   direction["dx"][1]
+            A_inv[1,0] = - direction['dy'][0]
+            A_inv[1,1] =   direction["dx"][0]
+
+        Transformation = np.linalg.inv(A_inv)            
+
+        return direction,slope,A_inv,Transformation
+        # TO DO: Figure out whether first or second line has larger slope dy/dx. 
+        #        Flatter line has parameters a, steeper line has parameters b
+        # TO DO: Compute A """
+
+    def distance_to_lines(self, x, y, added_points, added_lines):
+        '''
+        Compute the distance of a clicked point to all added lines. The distance is defined as the Euclidean distance
+        of the clicked point to the closest point on a given line - this is either the perpendicular distance to the
+        line segment or the distance to the start/end point of a given line.
+        Input: Clicked point with coordinates (x,y), all added points and all added lines
+        Output: List of distances
+        '''
+        distances = []
+        if added_lines['start_index']: # added lines not empty!
+            for start_index, end_index in zip(added_lines['start_index'], added_lines['end_index']): # loop through lines
+                # Line start point (x1,y1) and end point (x2,y2)
+                x1, y1 = added_points['x'][start_index], added_points['y'][start_index]
+                x2, y2 = added_points['x'][end_index], added_points['y'][end_index]
+                
+                # Direction vector from start to end point
+                dx, dy = x2-x1, y2-y1
+                d_squared = dx**2 + dy**2 # squared segment/line length
+
+                # Compute the projection of (x,y) onto the (infinite) line
+                t = ((x-x1)*dx + (y-y1)*dy)/d_squared        
+                
+                # Check whether projection is between start and end point
+                if 0<=t<=1: # On the segment: Use perpendicular distance
+                    x_proj, y_proj = x1 + t*dx, y1 + t*dy
+                    distances.append(np.sqrt((x-x_proj)**2 + (y-y_proj)**2))
+                else: # Outside segment: Use distance to closest end point
+                    dist_start = np.sqrt((x-x1)**2 + (y-y1)**2)
+                    dist_end   = np.sqrt((x-x2)**2 + (y-y2)**2)
+                    distances.append(min(dist_start,dist_end))
+        return distances
+
+    def duplicate_line(self,selected_points_for_line, added_lines):
+        '''
+        Check whether a line was added before.
+        Input: selected points to form a line, already added lines
+        Output: True (line already added), False (otherwise)
+        '''
+        index1 = selected_points_for_line[0]
+        index2 = selected_points_for_line[1]
+        found = any((index1 == index_start and index2 == index_end) or 
+                    (index1 == index_end and index2 == index_start) for 
+                    index_start, index_end in zip(added_lines["start_index"], added_lines["end_index"]))
+        return found
+
+    def find_index(self, x_value, y_value, added_points):
+        """ 
+         Find the index of a selected point (x_value, y_value) from the figure in the dict added_points.
+         An index can only be found if the selected point is "close enough" (measure by some tolerance) 
+         to a previously added point. The tolerance is defined as axis.span / axis.points.
+        """
+        for i in range(len(added_points['x'])):
+            if (np.isclose(added_points['x'][i], x_value, atol=self.data_acquirer.x_axis.span/self.data_acquirer.x_axis.points) 
+                and np.isclose(added_points['y'][i], y_value, atol=self.data_acquirer.y_axis.span/self.data_acquirer.y_axis.points)):
+                return i  # Return the index if the point is found
+        return None  # Return None if no matching point is found
+
+    def generate_figure(self, dict_heatmap, dict_points, dict_lines):
+        points = dict_points['added_points']
+        lines = dict_lines['added_lines']
+        selected_point_to_move = dict_points['selected_point']
+        selected_points_for_line = set(dict_lines['selected_indices'])
+
+        # Prepare line_x and line_y lists for a single trace
+        line_x = []
+        line_y = []
+
+        for start, end in zip(lines["start_index"], lines["end_index"]):
+            line_x.extend([points["x"][start], points["x"][end], None])  # None separates line segments
+            line_y.extend([points["y"][start], points["y"][end], None])
+
+        # Generate size list: Points selected to move or for lines appear larger
+        marked_index = selected_point_to_move.get('index') 
+        sizes = [13 if i==marked_index or i in selected_points_for_line else 10 for i in range(len(points['x']))]
+
+        # Create Figure
+        figure = go.Figure()
+        heatmap = dict_heatmap['heatmap']
+        figure_titles = dict_heatmap['xy-titles']
+        figure.add_trace(heatmap)
+        figure.add_trace(go.Scatter(
+            x=points['x'], 
+            y=points['y'], 
+            zorder=2, # top layer, heatmap has zorder=0 (background)
+            mode='markers + text', 
+            marker=dict(color="white", size=list(sizes), line=dict(color='black', width=1), opacity=1.0),
+            text=[str(int(i) + 1) for i in points['index']], # Use indices to label the points
+            textposition='top center',
+            textfont=dict(color='white'),
+            showlegend=False,
+            name='',
+        ))
+        figure.add_trace(go.Scatter(
+            x=line_x,
+            y=line_y,
+            zorder=1,
+            mode="lines",
+            line=dict(color="white"),
+            name=""
+        ))
+        figure.update_layout(xaxis_title=figure_titles['xaxis_title'], 
+                             yaxis_title=figure_titles['yaxis_title'], clickmode='event + select')
+        return figure    
 
     def list_json_files(self):
-        """List all JSON files in the annotations data folder."""
+        """ 
+        List all JSON files in the annotations data folder 
+        """
         return [f for f in os.listdir(self.load_path) if f.endswith(".json")]
     
     def load_and_validate_json(self, file_path):
+        '''
+        Open a json-file and validate it. ValueErrors are raised if
+        - the file has in invalid json format
+        - the file cannot be open or read
+        - the data is not a dictionary
+        - the data does not contain the required keys
+        The points are validated. ValueErrors are raised if
+        - the point data is not a dictionary
+        - the point data does not contain the required keys 'x' and 'y' (coordinates), and these are not lists
+        - the point data coordinates are not of the same length or are not numbers
+        The lines are validated. ValueErrors are raised if
+        - the line data is not a dictionary
+        - the line data does not contain the required keys 'start_index' and 'end_index' (coordinates), and these are not lists
+        - the line data indices are not of the same length or are not integers
+
+        Input: file_path
+        Output: dictionary, which contains the points and the lines of a previously saved annotation file
+        '''
         try:
             with open(file_path,"r") as f:
                 data = json.load(f)
@@ -738,114 +909,55 @@ class VideoModeApp:
         if not all(isinstance(i, int) for i in lines["start_index"] + lines["end_index"]):
             raise ValueError("All elements in 'start_index' and 'end_index' must be integers.")
 
-        return data  # Or return specific parts if needed
-
-
-    def _generate_figure(self, dict_heatmap, dict_points, dict_lines):
-        points = dict_points['added_points']
-        lines = dict_lines['added_lines']
-        selected_point_to_move = dict_points['selected_point']
-        selected_points_for_line = set(dict_lines['selected_indices'])
-
-        # Prepare line_x and line_y lists for a single trace
-        line_x = []
-        line_y = []
-
-        for start, end in zip(lines["start_index"], lines["end_index"]):
-            line_x.extend([points["x"][start], points["x"][end], None])  # None separates line segments
-            line_y.extend([points["y"][start], points["y"][end], None])
-        #logging.debug(f"line_x: {line_x}")
-        #logging.debug(f"line_y: {line_y}")
-
-        # Generate size list: Points selected to move or for lines appear larger
-        marked_index = selected_point_to_move.get('index') 
-        sizes = [13 if i==marked_index or i in selected_points_for_line else 10 for i in range(len(points['x']))]
-
-        # Create Figure
-        figure = go.Figure()
-        heatmap = dict_heatmap['heatmap']
-        figure_titles = dict_heatmap['xy-titles']
-        figure.add_trace(heatmap)
-        figure.add_trace(go.Scatter(
-            x=points['x'], 
-            y=points['y'], 
-            zorder=2,
-            mode='markers + text', 
-            marker=dict(color="white", size=list(sizes), line=dict(color='black', width=1), opacity=1.0),
-            text=[str(int(i) + 1) for i in points['index']], # Use indices to label the points
-            textposition='top center',#'middle center', 
-            textfont=dict(color='white'), #,shadow='1px 1px 10px white'), # offset-x | offset-y | blur-radius | color
-            showlegend=False,
-            name='',
-        ))
-        figure.add_trace(go.Scatter(
-            x=line_x,
-            y=line_y,
-            zorder=1,
-            mode="lines",
-            line=dict(color="white"),
-            name=""
-        ))
-        figure.update_layout(xaxis_title=figure_titles['xaxis_title'], 
-                             yaxis_title=figure_titles['yaxis_title'], clickmode='event + select')
-        return figure
-
-    def _find_index(self, x_value, y_value, added_points):
-        """ 
-         Find index of a selected point (x_value, y_value) in the dict added_points
-         Tolerance is defined as axis.span / axis.pointsL
-        """
-        for i in range(len(added_points['x'])):
-            if (np.isclose(added_points['x'][i], x_value, atol=self.data_acquirer.x_axis.span/self.data_acquirer.x_axis.points) 
-                and np.isclose(added_points['y'][i], y_value, atol=self.data_acquirer.y_axis.span/self.data_acquirer.y_axis.points)):
-                #logging.debug(f"x tol: {self.data_acquirer.x_axis.span/self.data_acquirer.x_axis.points}")
-                return i  # Return the index if the point is found
-        return None  # Return None if no matching point is found
-    
-    def _duplicate_line(self,selected_points_for_line, added_lines):
-        index1 = selected_points_for_line[0]
-        index2 = selected_points_for_line[1]
-        found = any((index1 == index_start and index2 == index_end) or 
-                    (index1 == index_end and index2 == index_start) for 
-                    index_start, index_end in zip(added_lines["start_index"], added_lines["end_index"]))
-        return found
-    
-    def _distance_to_lines(self, x, y, added_points, added_lines):
-        #logging.debug(f"lines: {added_lines}")
-        
-        distances = []
-        if added_lines['start_index']: # added lines not empty!
-            for start_index, end_index in zip(added_lines['start_index'], added_lines['end_index']): # loop through lines
-                # Line start point (x1,y1) and end point (x2,y2)
-                x1, y1 = added_points['x'][start_index], added_points['y'][start_index]
-                x2, y2 = added_points['x'][end_index], added_points['y'][end_index]
-                
-                # Direction vector from start to end point
-                dx, dy = x2-x1, y2-y1
-                d_squared = dx**2 + dy**2 # squared segment/line length
-
-                # Compute the projection of (x,y) onto the (infinite) line
-                t = ((x-x1)*dx + (y-y1)*dy)/d_squared
-
-                #logging.debug(f"x1: {x1}, y1: {y1}, x2: {x2}, y2: {y2}, dx: {dx}, dy: {dy}, d**2: {d_squared}")
-                #logging.debug(f"lambda: {t}")            
-                
-                # Check whether projection is between start and end point
-                if 0<=t<=1: # On the segment: Use perpendicular distance
-                    x_proj, y_proj = x1 + t*dx, y1 + t*dy
-                    distances.append(np.sqrt((x-x_proj)**2 + (y-y_proj)**2))
-                    #logging.debug(f"x_proj: {x_proj}, y_proj: {y_proj}")
-                else: # Outside segment: Use distance to closest end point
-                    dist_start = np.sqrt((x-x1)**2 + (y-y1)**2)
-                    dist_end   = np.sqrt((x-x2)**2 + (y-y2)**2)
-                    distances.append(min(dist_start,dist_end))
-                    #logging.debug(f"dist_start: {dist_start}, dist_end: {dist_end}")
-
-        return distances
+        return data
 
     def run(self, debug: bool = True, use_reloader: bool = False):
         logging.debug("Starting Dash server")
         self.app.server.run(debug=debug, use_reloader=use_reloader)
+
+    def save(self,points,lines):
+        """
+        Save the current image, data as well as the annotation data.
+
+        This method saves the current figure as a PNG image, the current data as an HDF5 file and the 
+        current annotation data (points and lines) as a json file.
+        It uses the same index for all files to maintain consistency.
+
+        Returns:
+            int: The index of the saved files.
+
+        Raises:
+            ValueError: If the maximum number of files (9999) has been reached.
+
+        Note:
+            - The image is saved first, followed by the data. Finally, the annotation data is saved.
+            - If data saving fails due to a FileExistsError, a warning is logged instead of raising an exception.
+        """
+        if not self.save_path.exists():
+            self.save_path.mkdir(parents=True)
+            logging.info(f"Created directory: {self.save_path}")
+
+        # Save image first
+        idx = self.save_image()
+
+        # Attempt to save data with the same index
+        try:
+            self.save_data(idx)
+        except FileExistsError:
+            logging.warning(
+                f"Data file with index {idx} already exists. Image saved, but data was not overwritten."
+            )
+        
+        # Attempt to save points and lines (annotation data) with the same index
+        try:
+            self.save_annotation(points,lines,idx)
+        except FileExistsError:
+            logging.warning(
+                f"Annotation data file with index {idx} already exists. Image saved, but line and point data was not overwritten."
+            )
+
+        logging.info(f"Save operation completed with index: {idx}")
+        return idx        
 
     def save_annotation(self,points,lines,idx: Optional[int] = None):
         """
@@ -997,52 +1109,7 @@ class VideoModeApp:
                 "Maximum number of screenshots (9999) reached. Cannot save more."
             )
         logging.info("Image save operation completed.")
-
         return idx           
-
-    def save(self,points,lines):
-        """
-        Save the current image, data as well as the annotation data.
-
-        This method saves the current figure as a PNG image, the current data as an HDF5 file and the 
-        current annotation data (points and lines) as a json file.
-        It uses the same index for all files to maintain consistency.
-
-        Returns:
-            int: The index of the saved files.
-
-        Raises:
-            ValueError: If the maximum number of files (9999) has been reached.
-
-        Note:
-            - The image is saved first, followed by the data. Finally, the annotation data is saved.
-            - If data saving fails due to a FileExistsError, a warning is logged instead of raising an exception.
-        """
-        if not self.save_path.exists():
-            self.save_path.mkdir(parents=True)
-            logging.info(f"Created directory: {self.save_path}")
-
-        # Save image first
-        idx = self.save_image()
-
-        # Attempt to save data with the same index
-        try:
-            self.save_data(idx)
-        except FileExistsError:
-            logging.warning(
-                f"Data file with index {idx} already exists. Image saved, but data was not overwritten."
-            )
-        
-        # Attempt to save points and lines (annotation data) with the same index
-        try:
-            self.save_annotation(points,lines,idx)
-        except FileExistsError:
-            logging.warning(
-                f"Annotation data file with index {idx} already exists. Image saved, but line and point data was not overwritten."
-            )
-
-        logging.info(f"Save operation completed with index: {idx}")
-        return idx
 
 
 class VideoMode(VideoModeApp):

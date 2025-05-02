@@ -46,7 +46,7 @@ class VideoModeComponent(BaseComponent):
                 component and its data acquisition strategy. Expected keys
                 depend on 'data_acquirer_type' but generally include:
                 'data_acquirer_type' (str: 'random', 'opx', 'opx_quam'),
-                'x_axis' (SweepAxis), 'y_axis' (SweepAxis),
+                'axis_params' (dict): 'x_axis' (SweepAxis), 'y_axis' (SweepAxis),
                 'scan_mode' (ScanMode),
                 'data_acquirer_params' (dict),
                 'inner_loop_action' (InnerLoopAction, optional),
@@ -72,9 +72,9 @@ class VideoModeComponent(BaseComponent):
         # --- Instantiate Core Logic Components ---
         # Assuming these are passed as instantiated objects in params for now
         # Adapt this if they need to be constructed from descriptions in params
-        x_axis: SweepAxis = params["x_axis"]
-        y_axis: SweepAxis = params["y_axis"]
-        scan_mode: ScanMode = params["scan_mode"]
+        x_axis: SweepAxis = params["axis_params"]["x_axis"]
+        y_axis: SweepAxis = params["axis_params"]["y_axis"]
+        scan_mode: Optional[ScanMode] = params.get("scan_mode")
 
         inner_loop_action: Optional[InnerLoopAction] = params.get("inner_loop_action")
 

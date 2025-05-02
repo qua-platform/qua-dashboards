@@ -1,27 +1,9 @@
 import logging
-from typing import List, Protocol
+from typing import Sequence
 
 from dash import Dash, html
 import dash_bootstrap_components as dbc
-
-# --- Component Protocol ---
-
-
-class DashboardComponent(Protocol):
-    """
-    Protocol defining the expected interface for components passed to builder.
-    
-    Components should have methods to get their layout and register callbacks.
-    """
-
-    def get_layout(self) -> html.Div:
-        """Returns the Dash layout (typically `html.Div`) for this component."""
-        ...
-
-    def register_callbacks(self, app: Dash) -> None:
-        """Registers all necessary callbacks for component with the Dash app."""
-        ...
-
+from qua_dashboards.components.base_component import BaseComponent
 
 # --- Logger Setup ---
 
@@ -30,8 +12,9 @@ logger = logging.getLogger(__name__)
 
 # --- Dashboard Builder Function ---
 
+
 def build_dashboard(
-    components: List[DashboardComponent], title: str = "Dashboard"
+    components: Sequence[BaseComponent], title: str = "Dashboard"
 ) -> Dash:
     """
     Builds a Dash application instance from a list of component objects using
@@ -63,15 +46,13 @@ def build_dashboard(
         app.layout = components[0].get_layout()
     else:
         # Multiple components: arrange them in columns within a row
-        logger.info(
-            f"Arranging {len(components)} components using Bootstrap Row/Col."
-        )
+        logger.info(f"Arranging {len(components)} components using Bootstrap Row/Col.")
         num_comps = len(components)
         # Basic equal width distribution, ensuring at least width 1
         col_width = max(1, 12 // num_comps)
-        
+
         component_layouts = [comp.get_layout() for comp in components]
-        
+
         app.layout = dbc.Container(
             [
                 dbc.Row(
@@ -87,7 +68,7 @@ def build_dashboard(
             ],
             fluid=True,  # Use full width of the viewport
             # Add margin/padding to the container if desired
-            style={"padding": "15px"}
+            style={"padding": "15px"},
         )
 
     # --- Register Callbacks ---

@@ -18,12 +18,12 @@ from qua_dashboards.video_mode.sweep_axis import SweepAxis
 from qua_dashboards.video_mode.scan_modes import ScanMode
 from qua_dashboards.video_mode.inner_loop_actions import InnerLoopAction
 from qua_dashboards.video_mode.dash_tools import xarray_to_plotly
-
+from qua_dashboards.components.base_component import BaseComponent
 
 logger = logging.getLogger(__name__)
 
 
-class VideoModeComponent:
+class VideoModeComponent(BaseComponent):
     """
     A dashboard component for visualizing and controlling data acquisition
     in video mode.

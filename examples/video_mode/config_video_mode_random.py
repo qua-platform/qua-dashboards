@@ -30,7 +30,7 @@ if __name__ == "__main__":
 
     # Setup basic logging for direct execution
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
     logger = logging.getLogger(__name__ + ".main")
@@ -53,11 +53,7 @@ if __name__ == "__main__":
 
         logger.info("Starting Dash server (Direct Run)...")
         # Use default port or specify one; debug=True is common for direct runs
-        app.run(debug=True, port=8052, use_reloader=False)
+        app.run(debug=True, use_reloader=False)
 
-    except ImportError as e:
-        logger.error(
-            f"ImportError in main block: {e}. Cannot launch directly. Is qua_dashboards installed?"
-        )
     except Exception:
         logger.exception("Failed to configure or launch the dashboard directly.")

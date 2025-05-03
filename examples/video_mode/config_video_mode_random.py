@@ -17,7 +17,7 @@ def get_components():
         "data_acquirer_type": "random",
         "axis_params": axis_params,
         "data_acquirer_params": data_acquirer_specific_params,
-        "update_interval": 0.1,
+        "update_interval": 0.2,
     }
     shared_objects = {}
 

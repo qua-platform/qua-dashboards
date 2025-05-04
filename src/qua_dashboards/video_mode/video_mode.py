@@ -15,7 +15,7 @@ import xarray as xr  # Assuming xarray is used by data_acquirer
 # Assuming these exist in the specified locations
 from qua_dashboards.video_mode.data_acquirers import BaseDataAcquirer
 from qua_dashboards.video_mode.dash_tools import xarray_to_plotly  # Renamed/adapted
-from qua_dashboards.components.base_component import BaseComponent
+from qua_dashboards.core.base_component import BaseComponent
 
 logger = logging.getLogger(__name__)
 

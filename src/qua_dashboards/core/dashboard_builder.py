@@ -3,7 +3,7 @@ from typing import Sequence
 
 from dash import Dash, html
 import dash_bootstrap_components as dbc
-from qua_dashboards.components.base_component import BaseComponent
+from qua_dashboards.core.base_component import BaseComponent
 
 # --- Logger Setup ---
 

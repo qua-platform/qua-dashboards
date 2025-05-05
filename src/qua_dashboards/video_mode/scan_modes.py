@@ -179,9 +179,9 @@ class SpiralScan(ScanMode):
         y = declare(fixed)
         voltages = {"x": x, "y": y}
 
-        assert len(x_vals) == len(y_vals), (
-            f"x_vals and y_vals must have the same length ({len(x_vals)} != {len(y_vals)})"
-        )
+        assert len(x_vals) == len(
+            y_vals
+        ), f"x_vals and y_vals must have the same length ({len(x_vals)} != {len(y_vals)})"
         num_half_spirals = len(x_vals)
         x_step = x_vals[1] - x_vals[0]
         y_step = y_vals[1] - y_vals[0]

@@ -39,9 +39,7 @@ machine.channels["ch2"] = SingleChannel(
     sticky=StickyChannelAddon(duration=1_000, digital=False),
     operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
 )
-readout_pulse = pulses.SquareReadoutPulse(
-    id="readout", length=1000, amplitude=0.1
-)
+readout_pulse = pulses.SquareReadoutPulse(id="readout", length=1000, amplitude=0.1)
 machine.channels["ch1_readout"] = InOutSingleChannel(
     opx_output=("con1", 3),
     opx_input=("con1", 1),

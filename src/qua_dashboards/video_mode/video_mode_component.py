@@ -391,6 +391,7 @@ class VideoModeComponent(BaseComponent):
                     )
                     # Do not trigger update if parameters failed
                     raise PreventUpdate
+
         elif self.include_update_button:
             logger.warning(
                 f"Update button included for {self.component_id}, but no parameter states found."

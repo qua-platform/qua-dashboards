@@ -21,12 +21,12 @@ class ModifiedFlags(Flag):
 
 class BaseUpdatableComponent(BaseComponent, ABC):
     def __init__(self, *args, component_id: str, **kwargs):
-        assert not args, (
-            "BaseUpdatableComponent does not accept any positional arguments"
-        )
-        assert not kwargs, (
-            "BaseUpdatableComponent does not accept any keyword arguments"
-        )
+        assert (
+            not args
+        ), "BaseUpdatableComponent does not accept any positional arguments"
+        assert (
+            not kwargs
+        ), "BaseUpdatableComponent does not accept any keyword arguments"
 
         self.component_id = component_id
 

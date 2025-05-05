@@ -104,7 +104,9 @@ class VideoModeApp:
             {"label": "Adding and moving points (SHIFT+P)", "value": "point"},
             {"label": "Adding lines (SHIFT+L)", "value": "line"},
             {"label": "Deleting points and lines (SHIFT+D)", "value": "delete"},
+            {"label": "Translate all points and lines (SHIFT+T)", "value": "translate-all"},
         ]
+        dict_translation = {'translate': False, 'clicked_point': None}
         self.figure = self.generate_figure(dict_heatmap,dict_points,dict_lines)
 
         self.app.layout = dbc.Container(
@@ -233,33 +235,33 @@ class VideoModeApp:
                                     ],
                                     className="mb-4",
                                 ),
-                                # dbc.Row(
-                                #     [
-                                #         dbc.Col(
-                                #             dbc.Button(
-                                #                 "Compute compensation",
-                                #                 id="compensation-button",
-                                #                 n_clicks=0,
-                                #                 className="mt-3",
-                                #             ),
-                                #             width="auto",
-                                #         ),
-                                #     ],
-                                #     className="mb-1",
-                                # ), 
-                                # dbc.Row(
-                                #     [
-                                #         dbc.Col(
-                                #             html.Pre(
-                                #                 id="compensation-data",
-                                #                 className="bg-light p-3 rounded border",
-                                #                 style={'overflowX': 'scroll'},
-                                #             ),
-                                #             width=12,
-                                #         ),
-                                #     ],
-                                #     className="mb-4",
-                                # ),
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            dbc.Button(
+                                                "Compute compensation",
+                                                id="compensation-button",
+                                                n_clicks=0,
+                                                className="mt-3",
+                                            ),
+                                            width="auto",
+                                        ),
+                                    ],
+                                    className="mb-1",
+                                ), 
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            html.Pre(
+                                                id="compensation-data",
+                                                className="bg-light p-3 rounded border",
+                                                style={'overflowX': 'scroll'},
+                                            ),
+                                            width=12,
+                                        ),
+                                    ],
+                                    className="mb-4",
+                                ),
                             ],
                             width=5,
                         ),
@@ -291,7 +293,14 @@ class VideoModeApp:
                     id="added_lines-data-store",
                     data=dict_lines,
                 ),
-                dcc.Store(id="trigger-update-once",data=False),  # trigger for updating the heatmap!
+                dcc.Store( # Trigger for updating the heatmap!
+                    id="trigger-update-once",
+                    data=False,
+                ),  
+                dcc.Store( # Store the data that is needed to translate all points and lines
+                    id="translation-data-store",
+                    data=dict_translation,
+                )
             ],
             fluid=True,
             style={"height": "100vh"},
@@ -377,7 +386,7 @@ class VideoModeApp:
                 document.addEventListener("keydown", function(event) {
                     if (event.shiftKey) { // Shift key is pressed
                         let key = event.key.toLowerCase();  // Normalize to lowercase
-                        let mapping = {"p": "point", "l": "line", "d": "delete"};
+                        let mapping = {"p": "point", "l": "line", "d": "delete", "t": "translate-all"};
 
                         if (mapping.hasOwnProperty(key)) {
                             event.preventDefault();  // Prevent default browser actions
@@ -519,13 +528,15 @@ class VideoModeApp:
         @self.app.callback(
             [Output("added_points-data-store","data",allow_duplicate=True),
              Output("added_lines-data-store","data",allow_duplicate=True),
-             Output('live-heatmap','clickData')], # Reset to None, otherwise repeated clicks at the same coordinates in the graph are not possible in Dash!
+             Output('live-heatmap','clickData'), # Reset to None, otherwise repeated clicks at the same coordinates in the graph are not possible in Dash!
+             Output("translation-data-store","data",allow_duplicate=True)],
             [Input('live-heatmap','clickData')],
             [State("added_points-data-store","data"),
             State("mode-selector","value"),
-            State("added_lines-data-store","data")],
+            State("added_lines-data-store","data"),
+            State("translation-data-store","data")],
         )
-        def handle_clicks(clickData,dict_points,selected_mode,dict_lines):
+        def handle_clicks(clickData,dict_points,selected_mode,dict_lines,dict_translation):
             '''
             Handle clicks on the figure dependent on the different points and lines modes
             '''
@@ -566,7 +577,7 @@ class VideoModeApp:
                         added_points['y'].append(y_value)
                         added_points['index'].append(point_index)
             
-                    return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}, None
+                    return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}, None, dash.no_update
                 
                 # MODE: Deleting points / lines (SHIFT + D)
                 elif selected_mode=="delete":
@@ -604,7 +615,7 @@ class VideoModeApp:
                                 del added_lines['start_index'][min_index]
                                 del added_lines['end_index'][min_index]
 
-                    return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}, None # return points even if no point was deleted -> no problems with ordering of traces in figure,
+                    return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}, None, dash.no_update # return points even if no point was deleted -> no problems with ordering of traces in figure,
                 
                 # MODE: Adding lines (SHIFT + L)
                 elif selected_mode=='line': 
@@ -623,22 +634,35 @@ class VideoModeApp:
                                 added_lines['start_index'].append(selected_points_for_line[0])
                                 added_lines['end_index'].append(selected_points_for_line[1])
                             selected_points_for_line.clear()
-                    return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}, None
+                    return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}, None, dash.no_update
+                
+                # MODE: Translate all points and lines (SHIFT + T)
+                elif selected_mode=="translate-all":
+                    dict_translation['translate'] = not dict_translation['translate'] 
+                    logging.debug(f"translate: {dict_translation['translate']}")
+                    if dict_translation['translate'] == True:
+                        dict_translation["clicked_point"] = clickData['points'][0]
+                    else:
+                        dict_translation["clicked_point"] = None
+                    logging.debug(f"clicked point: {dict_translation["clicked_point"]}")
+                    return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}, None, dict_translation
             else:
                 return dash.no_update
         
         @self.app.callback(
-            [Output("added_points-data-store","data",allow_duplicate=True)],
+            [Output("added_points-data-store","data",allow_duplicate=True),
+             Output("translation-data-store","data",allow_duplicate=True)],
             [Input('live-heatmap','hoverData')],
-            [State("added_points-data-store","data"), 
-             State("mode-selector","value")],
+            [State("added_points-data-store","data"),
+             State("mode-selector","value"),
+             State("translation-data-store","data")],
         )
-        def handle_hovering(hoverData,dict_points,selected_mode):
+        def handle_hovering(hoverData,dict_points,selected_mode,dict_translate):
             '''
             Handle hovering over the figure. 
-            So far only needed in the mode "Adding and moving points (SHIFT + P)" in order to move a selected point
             '''
             #logging.debug(f"Callback handle_hovering triggered!")
+            # MODE: Adding and moving points (SHIFT + P)
             if selected_mode=="point":
                 if hoverData and 'points' in hoverData and hoverData['points']:
                     added_points = dict_points['added_points']
@@ -650,13 +674,38 @@ class VideoModeApp:
                         added_points['x'][selected_point_to_move['index']] = point['x']
                         added_points['y'][selected_point_to_move['index']] = point['y']
 
-                        return {'added_points': added_points, 'selected_point': selected_point_to_move} 
+                        return {'added_points': added_points, 'selected_point': selected_point_to_move}, dict_translate
                     else:
-                        return dash.no_update
+                        return dash.no_update, dash.no_update
                 else:
-                    return dash.no_update       
+                    return dash.no_update, dash.no_update
+
+            # MODE: Translate all points and lines (SHIFT + T)    
+            elif selected_mode=="translate-all":
+                if dict_translate["translate"]==True:
+                    if hoverData and 'points' in hoverData and hoverData['points']:
+                        ### TO DO: CAN DO THIS WITH A SAVED POINT - DO NOT NEED CLICKED POINT!!!
+                        # Compute the direction vector (hover point - clicked point)
+                        dx = hoverData['points'][0]['x'] - dict_translate['clicked_point']['x']
+                        dy = hoverData['points'][0]['y'] - dict_translate['clicked_point']['y']
+                        # Update the added points: added points + direction vector
+                        added_points = dict_points['added_points']
+                        selected_point_to_move = dict_points['selected_point']
+                        added_points['x'] = [x + dx for x in added_points['x']]
+                        added_points['y'] = [y + dy for y in added_points['y']]
+                        # Update the clicked point
+                        dict_translate['clicked_point']['x'] = dict_translate['clicked_point']['x'] + dx
+                        dict_translate['clicked_point']['y'] = dict_translate['clicked_point']['y'] + dy
+                        logging.debug(f"added points: {added_points}")
+                        logging.debug(f"dx: {dx}")
+                        logging.debug(f"dy: {dy}")
+                        return {'added_points': added_points, 'selected_point': selected_point_to_move}, dict_translate
+                    else:
+                        dash.no_update, dash.no_update
+                else:
+                    return dash.no_update, dash.no_update
             else:
-                return dash.no_update
+                return dash.no_update, dash.no_update
         
         @self.app.callback(
             [Output('live-heatmap','figure')],
@@ -672,7 +721,6 @@ class VideoModeApp:
             self.figure = self.generate_figure(dict_heatmap,dict_points,dict_lines)
             return self.figure
 
-        """
         @self.app.callback(
             Output("compensation-data","children"),
             Input("compensation-button","n_clicks"),
@@ -690,10 +738,8 @@ class VideoModeApp:
                 #logging.debug(f"slopes: {direction['dy'][0]/direction['dx'][0]} and {direction['dy'][1]/direction['dx'][1]}")
                 return json.dumps(Transformation.tolist(), indent=2)#dash.no_update  # TO DO: output matrix A
             else:
-                return dash.no_update 
-        """
+                return dash.no_update
 
-    """ 
     def compensation(self,added_points,added_lines):
         # TO DO: ensure added_lines has exactly two lines added
         # Compute direction for each line
@@ -728,7 +774,7 @@ class VideoModeApp:
         return direction,slope,A_inv,Transformation
         # TO DO: Figure out whether first or second line has larger slope dy/dx. 
         #        Flatter line has parameters a, steeper line has parameters b
-        # TO DO: Compute A """
+        # TO DO: Compute A
 
     def distance_to_lines(self, x, y, added_points, added_lines):
         '''

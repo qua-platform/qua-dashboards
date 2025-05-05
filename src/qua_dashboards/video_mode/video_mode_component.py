@@ -1,23 +1,22 @@
-# File: qua_dashboards/components/video_mode.py
-# (This replaces the previous content of this file)
-
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, List, Union
+from typing import Dict, Union
 
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
-from dash import Dash, Input, Output, State, ALL, MATCH, dcc, html, ctx
+from dash import Dash, Input, Output, State, ALL, dcc, html, ctx
 from dash.exceptions import PreventUpdate
-import xarray as xr  # Assuming xarray is used by data_acquirer
+import xarray as xr
 
-# Assuming these exist in the specified locations
 from qua_dashboards.video_mode.data_acquirers import BaseDataAcquirer
-from qua_dashboards.video_mode.dash_tools import xarray_to_plotly  # Renamed/adapted
+from qua_dashboards.video_mode.dash_tools import xarray_to_plotly
 from qua_dashboards.core.base_component import BaseComponent
 
 logger = logging.getLogger(__name__)
+
+
+__all__ = ["VideoModeComponent"]
 
 
 class VideoModeComponent(BaseComponent):
@@ -37,8 +36,6 @@ class VideoModeComponent(BaseComponent):
         save_path: Union[str, Path] = "./video_mode_output",
         update_interval_sec: float = 0.1,
         include_update_button: bool = True,
-        # enhancers: Optional[List[Any]] = None, # Future enhancement point
-        # shared_objects: Optional[Dict[str, Any]] = None # If needed by VMC itself
     ):
         """
         Initializes the VideoModeComponent.
@@ -50,13 +47,11 @@ class VideoModeComponent(BaseComponent):
             update_interval_sec: Interval for polling new data (in seconds).
             include_update_button: Whether to include the 'Update Params' button.
         """
-        # Note: BaseComponent.__init__ is not called as we handle params differently
+        super().__init__(component_id=component_id)
         self.data_acquirer = data_acquirer
-        self.component_id = component_id
         self.save_path = Path(save_path)
         self.update_interval_ms = int(update_interval_sec * 1000)
         self.include_update_button = include_update_button
-        # self.enhancers = enhancers or [] # For future use
 
         logger.info(f"Initializing VideoModeComponent ({self.component_id=})")
         logger.info(f"Using Data Acquirer: {type(data_acquirer).__name__}")
@@ -427,7 +422,7 @@ class VideoModeComponent(BaseComponent):
                 )
                 return "Save Failed"
 
-    # --- Saving Methods (Adapted from VideoModeApp, removed annotation saving) ---
+    # --- Saving Methods ---
 
     def _find_next_save_index(self) -> int:
         """Determines the next available save index based on data and image files."""

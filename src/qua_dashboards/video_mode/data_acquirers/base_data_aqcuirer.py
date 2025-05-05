@@ -6,19 +6,16 @@ import numpy as np
 from dash import html
 import dash_bootstrap_components as dbc
 
+from qua_dashboards.core.base_updatable_component import ModifiedFlags, BaseUpdatableComponent
 from qua_dashboards.utils.dash_utils import create_input_field
 from qua_dashboards.video_mode.sweep_axis import SweepAxis
-from qua_dashboards.video_mode.dash_tools import (
-    create_axis_layout,
-    BaseDashComponent,
-    ModifiedFlags,
-)
+from qua_dashboards.video_mode.dash_tools import create_axis_layout
 
 
 __all__ = ["BaseDataAcquirer"]
 
 
-class BaseDataAcquirer(BaseDashComponent, ABC):
+class BaseDataAcquirer(BaseUpdatableComponent, ABC):
     """Base class for data acquirers.
 
     This class defines the interface for data acquirers, which are responsible for

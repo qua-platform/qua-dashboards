@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Sequence, Tuple, Generator
+from typing import Sequence, Tuple, Generator
 import numpy as np
 from matplotlib import figure, axes, pyplot as plt
 from matplotlib.ticker import MultipleLocator
@@ -7,11 +7,11 @@ from matplotlib.ticker import MultipleLocator
 from qm.qua import declare, fixed, if_, assign, for_, for_each_
 
 from qualang_tools.loops import from_array
-from qua_dashboards.video_mode.dash_tools import BaseDashComponent
+from qua_dashboards.core import BaseUpdatableComponent
 from qua_dashboards.utils.qua_types import QuaVariableFloat
 
 
-class ScanMode(BaseDashComponent, ABC):
+class ScanMode(BaseUpdatableComponent, ABC):
     """Abstract base class for scan modes, e.g. raster scan, spiral scan, etc.
 
     The scan mode is used to generate the scan pattern for the video mode.
@@ -123,7 +123,10 @@ class SwitchRasterScan(ScanMode):
     ) -> Generator[Tuple[QuaVariableFloat, QuaVariableFloat], None, None]:
         voltages = {"x": declare(fixed), "y": declare(fixed)}
 
-        with for_each_(voltages["y"], self.interleave_arr(y_vals, start_from_middle=self.start_from_middle)):  # type: ignore
+        with for_each_(
+            voltages["y"],
+            self.interleave_arr(y_vals, start_from_middle=self.start_from_middle),
+        ):  # type: ignore
             with for_(*from_array(voltages["x"], x_vals)):  # type: ignore
                 yield voltages["x"], voltages["y"]
 
@@ -176,9 +179,9 @@ class SpiralScan(ScanMode):
         y = declare(fixed)
         voltages = {"x": x, "y": y}
 
-        assert len(x_vals) == len(
-            y_vals
-        ), f"x_vals and y_vals must have the same length ({len(x_vals)} != {len(y_vals)})"
+        assert len(x_vals) == len(y_vals), (
+            f"x_vals and y_vals must have the same length ({len(x_vals)} != {len(y_vals)})"
+        )
         num_half_spirals = len(x_vals)
         x_step = x_vals[1] - x_vals[0]
         y_step = y_vals[1] - y_vals[0]
@@ -188,7 +191,9 @@ class SpiralScan(ScanMode):
         assign(y, 0.0)
         yield voltages["x"], voltages["y"]
 
-        with for_(half_spiral_idx, 0, half_spiral_idx < num_half_spirals, half_spiral_idx + 1):  # type: ignore
+        with for_(
+            half_spiral_idx, 0, half_spiral_idx < num_half_spirals, half_spiral_idx + 1
+        ):  # type: ignore
             # First take one step in the opposite XY direction
             with if_(half_spiral_idx > 0):  # type: ignore
                 assign(x, x - x_step * movement_direction)  # type: ignore

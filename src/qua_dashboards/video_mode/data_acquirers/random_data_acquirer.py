@@ -7,7 +7,7 @@ from dash import html
 from qua_dashboards.utils.dash_utils import create_input_field
 from qua_dashboards.video_mode.sweep_axis import SweepAxis
 from qua_dashboards.video_mode.data_acquirers.base_data_aqcuirer import BaseDataAcquirer
-from qua_dashboards.video_mode.dash_tools import ModifiedFlags
+from qua_dashboards.core.base_updatable_component import ModifiedFlags
 
 
 __all__ = ["RandomDataAcquirer"]

@@ -18,17 +18,15 @@ from qm.qua import (
     if_,
     ramp_to_zero,
 )
+from qua_dashboards.core.base_updatable_component import ModifiedFlags
 from qua_dashboards.utils.qua_types import QuaVariableFloat
 from qua_dashboards.utils.dash_utils import create_input_field
-from qua_dashboards.video_mode.dash_tools import (
-    BaseDashComponent,
-    ModifiedFlags,
-)
+from qua_dashboards.core import BaseUpdatableComponent
 from qualang_tools.units.units import unit
 from qm.qua.lib import Cast, Math
 
 
-class InnerLoopAction(BaseDashComponent, ABC):
+class InnerLoopAction(BaseUpdatableComponent, ABC):
     def __init__(self, component_id: str = "inner-loop"):
         super().__init__(component_id=component_id)
 

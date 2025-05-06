@@ -43,7 +43,7 @@ def get_components() -> list[BaseComponent]:
     video_mode_comp = VideoModeComponent(
         data_acquirer=data_acquirer,
         component_id="video-mode-main",  # Unique ID for this VideoMode instance
-        update_interval_sec=0.2,
+        update_interval_sec=1,
         include_update_button=True,
         save_path="./video_mode_component_output",  # Optional: specify different save path
     )

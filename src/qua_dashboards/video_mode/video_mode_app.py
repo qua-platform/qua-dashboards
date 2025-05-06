@@ -107,7 +107,8 @@ class VideoModeApp:
             {"label": "Translate all points and lines (SHIFT+T)", "value": "translate-all"},
         ]
         dict_translation = {'translate': False, 'clicked_point': None}
-        self.figure = self.generate_figure(dict_heatmap,dict_points,dict_lines)
+        label_value = ['points']
+        self.figure = self.generate_figure(dict_heatmap,dict_points,dict_lines,label_value)
 
         self.app.layout = dbc.Container(
             [                     # Store to hold key press events
@@ -266,12 +267,25 @@ class VideoModeApp:
                             width=5,
                         ),
                         dbc.Col(
-                            dcc.Graph(
-                                id="live-heatmap",
-                                figure=self.figure,
-                                style={"aspect-ratio": "1 / 1"},
-                                #config={'scrollZoom': True},
-                            ),
+                            [   
+                                dbc.Checklist(
+                                    id="plot-labels-checklist",
+                                    options=[
+                                        {"label": "point labels", "value": "points"},  # For point labels
+                                        #{"label": "line labels", "value": "lines"},   # If we also want to introduce line labels
+                                    ],
+                                    value=label_value,  # default selection
+                                    inline=True,
+                                    style={"marginLeft": "5rem"},
+                                    className="mt-5 mb-0"
+                                ),                               
+                                dcc.Graph(
+                                    id="live-heatmap",
+                                    figure=self.figure,
+                                    style={"aspect-ratio": "1 / 1"},
+                                    #config={'scrollZoom': True},
+                                ),
+                            ],
                             width=7,
                         ),
                     ]
@@ -719,14 +733,15 @@ class VideoModeApp:
             [Output('live-heatmap','figure')],
             [Input("heatmap-data-store", "data"),
              Input("added_points-data-store","data"),
-             Input("added_lines-data-store","data"), ]
+             Input("added_lines-data-store","data"), 
+             Input("plot-labels-checklist","value"), ]
         )
-        def update_figure(dict_heatmap,dict_points,dict_lines):
+        def update_figure(dict_heatmap,dict_points,dict_lines,labels_list):
             '''
             Update the figure whenever the heatmap or annotation data changes
             '''
             #logging.debug(f"Callback update_figure triggered!")
-            self.figure = self.generate_figure(dict_heatmap,dict_points,dict_lines)
+            self.figure = self.generate_figure(dict_heatmap,dict_points,dict_lines,labels_list)
             return self.figure
 
         @self.app.callback(
@@ -841,7 +856,7 @@ class VideoModeApp:
                 return i  # Return the index if the point is found
         return None  # Return None if no matching point is found
 
-    def generate_figure(self, dict_heatmap, dict_points, dict_lines):
+    def generate_figure(self, dict_heatmap, dict_points, dict_lines, labels_list):
         points = dict_points['added_points']
         lines = dict_lines['added_lines']
         selected_point_to_move = dict_points['selected_point']
@@ -870,7 +885,7 @@ class VideoModeApp:
             zorder=2, # top layer, heatmap has zorder=0 (background)
             mode='markers + text', 
             marker=dict(color="white", size=list(sizes), line=dict(color='black', width=1), opacity=1.0),
-            text=[str(int(i) + 1) for i in points['index']], # Use indices to label the points
+            text=[str(int(i) + 1) for i in points['index']] if 'points' in labels_list else None, # Use indices to label the points
             textposition='top center',
             textfont=dict(color='white'),
             showlegend=False,
@@ -885,7 +900,10 @@ class VideoModeApp:
             name=""
         ))
         figure.update_layout(xaxis_title=figure_titles['xaxis_title'], 
-                             yaxis_title=figure_titles['yaxis_title'], clickmode='event + select')
+                             yaxis_title=figure_titles['yaxis_title'], 
+                             clickmode='event + select',
+                             margin=dict(t=30,b=20,l=20,r=20) # top margin such that tool bar can be shown, but gap to checklist smaller
+                             )
         return figure    
 
     def list_json_files(self):

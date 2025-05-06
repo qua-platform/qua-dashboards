@@ -5,7 +5,7 @@ from typing import Union
 
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
-from dash import Dash, Input, Output, State, ALL, dcc, html
+from dash import Dash, Input, Output, State, ALL, dcc, html, ctx, no_update
 from dash.exceptions import PreventUpdate
 import xarray as xr
 
@@ -46,17 +46,12 @@ class VideoModeComponent(BaseComponent):
     _UPDATE_PARAMS_BUTTON_ID = "update-button"
     _SAVE_LIVE_BUTTON_ID = "save-live-button"
     _LIVE_GRAPH_CONTAINER_ID = "live-graph-container"
-    _SETTINGS_PANEL_CONTAINER_ID = "settings-panel-container"
     # Elements related to annotation enhancement
-    _SNAPSHOT_BUTTON_ID = "snapshot-button"
     _TABS_ID = "control-tabs"
-    _SETTINGS_TAB_ID = "tab-settings"
-    _ANNOTATION_TAB_ID = "tab-annotation"
+    _LIVE_VIEW_TAB_ID = "tab-live-view"  # Renamed from _SETTINGS_TAB_ID
+    _ANNOTATION_TAB_ID = "tab-annotate"  # Renamed for clarity
     # Shared Stores (managed by VMC when enhancer is present)
     _SNAPSHOT_STORE_ID = "snapshot-store"
-    _MODE_SIGNAL_STORE_ID = (
-        "mode-signal-store"  # Used by AnnotationComponent to signal return
-    )
 
     def __init__(
         self,
@@ -141,7 +136,8 @@ class VideoModeComponent(BaseComponent):
                 )
             else:
                 logger.warning(
-                    f"Data acquirer {type(self.data_acquirer)} does not provide Dash components."
+                    f"Data acquirer {type(self.data_acquirer)} does not provide Dash "
+                    f"components."
                 )
                 acquirer_controls = [html.Div("Data acquirer controls unavailable.")]
         except Exception as e:
@@ -159,19 +155,6 @@ class VideoModeComponent(BaseComponent):
                 width="auto",
             ),
         ]
-        # Add Snapshot button only if enhancer is present
-        if self.annotation_enhancer:
-            action_buttons_list.append(
-                dbc.Col(
-                    dbc.Button(
-                        "Snapshot & Annotate",
-                        id=self._get_id(self._SNAPSHOT_BUTTON_ID),
-                        n_clicks=0,
-                        color="info",
-                    ),
-                    width="auto",
-                )
-            )
         # Conditionally add Update button
         if self.include_update_button:
             action_buttons_list.append(
@@ -188,9 +171,7 @@ class VideoModeComponent(BaseComponent):
 
         settings_panel_elements = vmc_controls + acquirer_controls + [action_buttons]
         # Return wrapped in a container div
-        return html.Div(
-            settings_panel_elements, id=self._get_id(self._SETTINGS_PANEL_CONTAINER_ID)
-        )
+        return html.Div(settings_panel_elements)
 
     def _get_graph_panel_layout(self) -> html.Div:
         """Generates the layout for the live graph display area ONLY."""
@@ -224,48 +205,52 @@ class VideoModeComponent(BaseComponent):
         logger.debug(f"Generating full layout for {self.component_id}")
 
         # --- Create Tabs ---
-        settings_tab = dcc.Tab(
+        live_view_tab = dcc.Tab(
             self._get_settings_panel_layout(),
-            label="Settings",
-            value=self._SETTINGS_TAB_ID,  # Can't use get_id() here
+            label="Live view",  # Renamed
+            value=self._LIVE_VIEW_TAB_ID,
         )
-        tabs_list = [settings_tab]
-        annotation_layout = html.Div()  # Placeholder if no enhancer
+        tabs_list = [live_view_tab]
+        annotation_layout_children = html.Div()  # Placeholder
 
         if self.annotation_enhancer:
             try:
-                # Get controls layout from enhancer
                 enhancer_controls = self.annotation_enhancer.get_controls_layout()
                 annotation_tab = dcc.Tab(
                     enhancer_controls,
-                    label="Annotations & Analysis",
-                    value=self._ANNOTATION_TAB_ID,  # Can't use get_id() here
+                    label="Annotate",  # Renamed
+                    value=self._ANNOTATION_TAB_ID,
                 )
                 tabs_list.append(annotation_tab)
-                # Get the main analysis container layout from enhancer
-                annotation_layout = self.annotation_enhancer.get_layout()
-
+                annotation_layout_children = self.annotation_enhancer.get_layout()
             except AttributeError:
                 logger.error(
                     f"Annotation enhancer {type(self.annotation_enhancer)} "
                     "is missing get_controls_layout() or get_layout() method."
                 )
-                # Add a placeholder tab indicating error
                 tabs_list.append(
-                    dcc.Tab("Error loading annotations", label="Annotations")
+                    dcc.Tab(
+                        "Error loading annotations",
+                        label="Annotations",
+                        value="tab-error-anno",
+                    )
                 )
             except Exception as e:
                 logger.error(
                     f"Error getting layout from annotation enhancer: {e}", exc_info=True
                 )
                 tabs_list.append(
-                    dcc.Tab("Error loading annotations", label="Annotations")
+                    dcc.Tab(
+                        "Error loading annotations",
+                        label="Annotations",
+                        value="tab-error-anno",
+                    )
                 )
 
         # --- Assemble Full Layout ---
         control_panel = dcc.Tabs(
             id=self._get_id(self._TABS_ID),
-            value=self._SETTINGS_TAB_ID,
+            value=self._LIVE_VIEW_TAB_ID,  # Default to live view
             children=tabs_list,
             className="mb-3",
         )
@@ -273,22 +258,16 @@ class VideoModeComponent(BaseComponent):
         display_panel = html.Div(
             [
                 self._get_graph_panel_layout(),
-                annotation_layout,  # Add enhancer's main layout (initially hidden)
+                annotation_layout_children,  # Add enhancer's main layout
             ],
             style={"position": "relative", "height": "100%"},
-        )  # Container for graph panels
+        )
 
-        # Add shared stores if enhancer is present
         shared_stores = []
         if self.annotation_enhancer:
             shared_stores = [
                 dcc.Store(
                     id=self._get_id(self._SNAPSHOT_STORE_ID), storage_type="memory"
-                ),
-                dcc.Store(
-                    id=self._get_id(self._MODE_SIGNAL_STORE_ID),
-                    storage_type="memory",
-                    data=0,
                 ),
             ]
 
@@ -325,20 +304,19 @@ class VideoModeComponent(BaseComponent):
         self._register_heatmap_update_callback(app)
         self._register_parameter_update_callback(app)
         self._register_save_live_callback(app)
+        self._register_tab_navigation_callback(app)
 
         # Register orchestration and enhancer callbacks if enhancer exists
         if self.annotation_enhancer:
-            self._register_orchestration_callbacks(app)
             try:
                 # Pass the actual IDs of the shared stores to the enhancer
                 orchestrator_stores = {
                     "snapshot_store": self._get_id(self._SNAPSHOT_STORE_ID),
-                    "signal_store": self._get_id(self._MODE_SIGNAL_STORE_ID),
-                    # Add other stores if needed (e.g., matrix update store)
                 }
                 self.annotation_enhancer.register_callbacks(app, orchestrator_stores)
                 logger.info(
-                    f"Registered callbacks for enhancer: {type(self.annotation_enhancer).__name__}"
+                    f"Registered callbacks for enhancer: "
+                    f"{type(self.annotation_enhancer).__name__}"
                 )
             except AttributeError:
                 logger.error(
@@ -520,57 +498,14 @@ class VideoModeComponent(BaseComponent):
                 )
                 return "Save Failed"
 
-    # --- Orchestration Callbacks (Only registered if enhancer exists) ---
-
-    def _register_orchestration_callbacks(self, app: Dash):
-        """Registers callbacks to manage mode switching and data passing."""
-
-        # Callback to take snapshot and switch to analysis mode
-        @app.callback(
-            Output(self._get_id(self._SNAPSHOT_STORE_ID), "data"),
+    def _register_tab_navigation_callback(self, app: Dash):
+        """
+        Central callback to manage UI state based on active tab.
+        Handles snapshotting when 'Annotate' tab is selected, and
+        resuming live view when 'Live view' tab is selected.
+        """
+        outputs = [
             Output(self._get_id(self._INTERVAL_ID), "disabled", allow_duplicate=True),
-            Output(self._get_id(self._TABS_ID), "value"),
-            Output(self._get_id(self._LIVE_GRAPH_CONTAINER_ID), "style"),
-            Output(
-                self.annotation_enhancer._get_id("analysis-container"), "style"
-            ),  # Target enhancer's container
-            Input(self._get_id(self._SNAPSHOT_BUTTON_ID), "n_clicks"),
-            State(self._get_id(self._LIVE_HEATMAP_ID), "figure"),
-            prevent_initial_call=True,
-        )
-        def take_snapshot_and_switch_mode(n_clicks, current_figure_dict):
-            if n_clicks is None:
-                raise PreventUpdate
-
-            logger.info(
-                f"Snapshot triggered for {self.component_id}. Switching to Analysis Mode."
-            )
-
-            # Prepare snapshot data (currently just the figure)
-            # TODO: Consider adding self.data_acquirer.data_array if needed by analysis
-            snapshot_data = {"figure": current_figure_dict}
-
-            # Disable live updates, switch tab, switch visible graph container
-            return (
-                snapshot_data,  # Output snapshot data
-                True,  # Output: Disable interval
-                self._ANNOTATION_TAB_ID,  # Output: Set active tab
-                {
-                    "display": "none",
-                    "height": "100%",
-                    "width": "100%",
-                },  # Output: Hide live graph
-                {
-                    "display": "block",
-                    "height": "100%",
-                    "width": "100%",
-                },  # Output: Show analysis graph
-            )
-
-        # Callback to return to live mode
-        @app.callback(
-            Output(self._get_id(self._INTERVAL_ID), "disabled", allow_duplicate=True),
-            Output(self._get_id(self._TABS_ID), "value", allow_duplicate=True),
             Output(
                 self._get_id(self._LIVE_GRAPH_CONTAINER_ID),
                 "style",
@@ -581,32 +516,84 @@ class VideoModeComponent(BaseComponent):
                 "style",
                 allow_duplicate=True,
             ),
-            Input(
-                self._get_id(self._MODE_SIGNAL_STORE_ID), "data"
-            ),  # Triggered by enhancer's return button
-            prevent_initial_call=True,
+        ]
+        if self.annotation_enhancer:
+            outputs.append(
+                Output(
+                    self._get_id(self._SNAPSHOT_STORE_ID), "data", allow_duplicate=True
+                )
+            )
+
+        @app.callback(
+            *outputs,
+            Input(self._get_id(self._TABS_ID), "value"),
+            State(self._get_id(self._LIVE_HEATMAP_ID), "figure"),
+            prevent_initial_call=True,  # Important to avoid issues on load
         )
-        def return_to_live_mode(signal_data):
-            if signal_data is None or signal_data == 0:  # Check if signal is valid
+        def handle_tab_change(active_tab_value, current_live_figure):
+            if not active_tab_value or not ctx.triggered_id:
                 raise PreventUpdate
 
-            logger.info(f"Return to Live Mode triggered for {self.component_id}.")
+            logger.info(f"Tab changed to: {active_tab_value}")
 
-            # Re-enable updates (unless manually paused), switch tab, switch visible graph
-            return (
-                self._manual_paused,  # Respect manual pause state when returning
-                self._SETTINGS_TAB_ID,
-                {
+            # Default outputs (no change)
+            interval_disabled = no_update
+            live_graph_style = no_update
+            analysis_container_style = no_update
+            snapshot_data_out = no_update
+
+            if active_tab_value == self._LIVE_VIEW_TAB_ID:
+                logger.info(f"Switching to Live View mode for {self.component_id}.")
+                interval_disabled = self._manual_paused  # Respect manual pause
+                live_graph_style = {
                     "display": "block",
                     "height": "100%",
                     "width": "100%",
-                },  # Show live graph
-                {
+                }
+                analysis_container_style = {
                     "display": "none",
                     "height": "100%",
                     "width": "100%",
-                },  # Hide analysis graph
-            )
+                }
+                # snapshot_data_out remains no_update
+
+            elif (
+                active_tab_value == self._ANNOTATION_TAB_ID and self.annotation_enhancer
+            ):
+                logger.info(
+                    f"Switching to Annotation mode for {self.component_id}. "
+                    f"Taking snapshot."
+                )
+                if current_live_figure:
+                    snapshot_data_out = {"figure": current_live_figure}
+                else:
+                    logger.warning("No live figure data available to snapshot.")
+                    snapshot_data_out = {"figure": go.Figure()}  # Send empty figure
+
+                interval_disabled = True  # Pause live updates
+                live_graph_style = {
+                    "display": "none",
+                    "height": "100%",
+                    "width": "100%",
+                }
+                analysis_container_style = {
+                    "display": "block",
+                    "height": "100%",
+                    "width": "100%",
+                }
+            else:
+                # Other tabs or initial load state, do nothing specific here for now
+                raise PreventUpdate
+
+            if self.annotation_enhancer:
+                return (
+                    interval_disabled,
+                    live_graph_style,
+                    analysis_container_style,
+                    snapshot_data_out,
+                )
+            else:  # Should not happen if _ANNOTATION_TAB_ID selected without enhancer
+                return interval_disabled, live_graph_style, analysis_container_style
 
     # --- Internal Saving Methods --- (Unchanged from previous version)
 

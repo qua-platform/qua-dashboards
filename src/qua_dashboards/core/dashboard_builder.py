@@ -1,32 +1,21 @@
-import logging
-from typing import Sequence
-
+# qua_dashboards/core/dashboard_builder.py
+import dash_dynamic_grid_layout as dgl
 from dash import Dash, html
 import dash_bootstrap_components as dbc
-from qua_dashboards.core.base_component import BaseComponent
-
-# --- Logger Setup ---
+from qua_dashboards.core import BaseComponent
+from typing import Sequence, List, Dict, Any
+import logging
+from dash import dcc
 
 logger = logging.getLogger(__name__)
 
 
-# --- Dashboard Builder Function ---
-
-
 def build_dashboard(
-    components: Sequence[BaseComponent], title: str = "Dashboard"
+    components: Sequence[BaseComponent],
+    shared_stores: Sequence[dcc.Store] = None,  # Allow passing shared stores
+    initial_grid_layout: List[Dict[str, Any]] = None,  # For defining initial positions
+    title: str = "Dashboard",
 ) -> Dash:
-    """
-    Builds a Dash application instance from a list of component objects using
-    simple Bootstrap layout for multiple components.
-
-    Args:
-        components: List of objects adhering to the DashboardComponent protocol.
-        title: The title for the Dash application.
-
-    Returns:
-        A configured Dash application instance.
-    """
     app = Dash(
         __name__,
         title=title,
@@ -39,42 +28,75 @@ def build_dashboard(
         app.layout = html.Div("No components were provided for this dashboard.")
         return app
 
-    # --- Determine Layout Strategy ---
-    if len(components) == 1:
-        logger.info("Using layout from single provided component.")
-        # If only one component, use its layout directly
-        app.layout = components[0].get_layout()
-    else:
-        # Multiple components: arrange them in columns within a row
-        logger.info(f"Arranging {len(components)} components using Bootstrap Row/Col.")
-        num_comps = len(components)
-        # Basic equal width distribution, ensuring at least width 1
-        col_width = max(1, 12 // num_comps)
-
-        component_layouts = [comp.get_layout() for comp in components]
-
-        app.layout = dbc.Container(
-            [
-                dbc.Row(
-                    [
-                        # Create a column for each component's layout
-                        dbc.Col(layout, width=col_width)
-                        for layout in component_layouts
-                    ],
-                    # Add gutters (spacing) between columns if desired,
-                    # e.g., className="g-3"
-                    className="g-3",
-                )
-            ],
-            fluid=True,  # Use full width of the viewport
-            # Add margin/padding to the container if desired
-            style={"padding": "15px"},
+    draggable_children = []
+    # Default layout if none provided
+    default_item_layout = []
+    for i, comp in enumerate(components):
+        # Each component's layout is wrapped.
+        # Ensure component_id is accessible and unique for DraggableWrapper key.
+        comp_key = (
+            f"draggable-{comp.component_id}-{i}"
+            if hasattr(comp, "component_id")
+            else f"draggable-{i}"
+        )
+        draggable_children.append(
+            dgl.DraggableWrapper(
+                children=[comp.get_layout()],
+                handleText=comp.component_id,
+                id=comp_key,
+            )
         )
 
-    # --- Register Callbacks ---
+        # Determine the width of the component.
+        # If there's only one component, it spans the full width (12 cols for 'lg').
+        # Otherwise, default width is 6 columns.
+        default_width = 12 if len(components) == 1 else 6
+        default_height = 8 if len(components) == 1 else 4
+
+        # Basic stacking layout if no specific initial_grid_layout is given
+        default_item_layout.append(
+            # 'i': item key, 'x','y': position (grid units),
+            # 'w','h': size (grid units), 'minW','minH': min size.
+            {
+                "i": comp_key,
+                "x": 0,
+                "y": i * 4,
+                "w": default_width,
+                "h": default_height,
+                "minW": 2,
+                "minH": 2,
+            }
+        )
+
+    final_item_layout = (
+        initial_grid_layout if initial_grid_layout else default_item_layout
+    )
+
+    grid = dgl.DashGridLayout(
+        id="main-dashboard-dynamic-grid",
+        items=draggable_children,
+        rowHeight=100,  # Adjust as needed
+        # Defines number of columns in the grid for different screen size breakpoints.
+        #  'lg': 12 means on large screens (>=1200px wide), the grid has 12 columns.
+        # 'md': 10 for medium screens (>=996px), 'sm': 6 for small screens (>=768px),
+        # 'xs': 4 for extra-small screens (>=480px), 'xxs': 2  (<480px).
+        cols={"lg": 12, "md": 10, "sm": 6, "xs": 4, "xxs": 2},  # Standard breakpoints
+        itemLayout=final_item_layout,
+    )
+
+    app_children = [grid]
+    if shared_stores:
+        app_children.extend(shared_stores)
+
+    app.layout = html.Div(app_children, style={"padding": "15px"})
+
     logger.debug(f"Registering callbacks for {len(components)} components.")
     for comp in components:
         try:
+            # Callbacks now might need access to other component IDs or store IDs
+            # This part of the component's contract might need to evolve.
+            # For now, assume comp.register_callbacks(app) is self-sufficient
+            # or that components get necessary store IDs during their init.
             comp.register_callbacks(app)
         except Exception as e:
             comp_name = type(comp).__name__
@@ -83,5 +105,5 @@ def build_dashboard(
                 exc_info=True,
             )
 
-    logger.info("Dashboard build complete.")
+    logger.info("Dashboard build complete with top-level dynamic grid.")
     return app

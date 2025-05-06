@@ -14,6 +14,7 @@ dependencies = [
     "dash-extensions>=1.0.19",
     "matplotlib>=3.9.0",
     "qualang-tools>=0.18.2",
+    "dash-dynamic-grid-layout>=0.1.3",
 ]
 
 [project.urls]

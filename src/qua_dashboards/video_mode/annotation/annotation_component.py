@@ -715,7 +715,7 @@ class AnnotationComponent(BaseComponent):
 
                 // Only attach listener once per component instance
                 if (!window[listenerAttachedFlag]) {{
-                     // console.log(`Attaching key listener for ${componentId}`);
+                     // console.log(`Attaching key listener for ${{componentId}}`);
                      const handleKeyDown = function(event) {{
                         // Check if the annotation tab/mode is active - requires knowing active tab state
                         // This logic might be better handled if the listener is attached/detached
@@ -733,13 +733,13 @@ class AnnotationComponent(BaseComponent):
                                 // This is tricky client-side without more state.
                                 // Assume for now if the callback runs, we can try to set props.
                                 event.preventDefault();
-                                // console.log(`Annotation Shortcut for ${componentId}:`, mapping[key]);
+                                // console.log(`Annotation Shortcut for ${{componentId}}:`, mapping[key]);
                                 try {{
                                     // Use the dynamically generated ID string
                                     dash_clientside.set_props(JSON.parse(modeSelectorId), {{value: mapping[key]}});
                                 }} catch (e) {{
                                      // This might fail if the component isn't rendered
-                                     // console.error(`Error setting mode selector props for ${componentId}:`, e);
+                                     // console.error(`Error setting mode selector props for ${{componentId}}:`, e);
                                 }}
                             }}
                         }}

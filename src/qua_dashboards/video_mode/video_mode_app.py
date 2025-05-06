@@ -539,6 +539,14 @@ class VideoModeApp:
         def handle_clicks(clickData,dict_points,selected_mode,dict_lines,dict_translation):
             '''
             Handle clicks on the figure dependent on the different points and lines modes
+            - MODE Adding and moving points:
+              Clicking on the figure adds a new point. An existing point can be moved after having clicked on it.
+            - MODE Adding lines:
+              Clicking subsequentially on two existing points adds a line between the points.
+            - MODE Deleting points and lines:
+              Clicking on an existing point or line deletes this point or line.
+            - MODE Translate all points and lines:
+              After having clicked anywhere on the figure, all points and lines can be translated together.
             '''
             #logging.debug("Callback handle_clicks triggered!")
 
@@ -638,13 +646,16 @@ class VideoModeApp:
                 
                 # MODE: Translate all points and lines (SHIFT + T)
                 elif selected_mode=="translate-all":
-                    dict_translation['translate'] = not dict_translation['translate'] 
-                    logging.debug(f"translate: {dict_translation['translate']}")
-                    if dict_translation['translate'] == True:
-                        dict_translation["clicked_point"] = clickData['points'][0]
+                    # After first click: True (turn translation mode on); after second click: False (turn translation mode off)
+                    dict_translation['translate'] = not dict_translation['translate']
+
+                    # Add the clicked point when translation mode is turned on
+                    if dict_translation['translate'] == True: 
+                        dict_translation["clicked_point"] = clickData['points'][0]  
+                    # Remove the clicked point when translation mode is turned off
                     else:
-                        dict_translation["clicked_point"] = None
-                    logging.debug(f"clicked point: {dict_translation["clicked_point"]}")
+                        dict_translation["clicked_point"] = None  
+
                     return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}, None, dict_translation
             else:
                 return dash.no_update
@@ -684,22 +695,19 @@ class VideoModeApp:
             elif selected_mode=="translate-all":
                 if dict_translate["translate"]==True:
                     if hoverData and 'points' in hoverData and hoverData['points']:
-                        ### TO DO: CAN DO THIS WITH A SAVED POINT - DO NOT NEED CLICKED POINT!!!
                         # Compute the direction vector (hover point - clicked point)
                         dx = hoverData['points'][0]['x'] - dict_translate['clicked_point']['x']
                         dy = hoverData['points'][0]['y'] - dict_translate['clicked_point']['y']
+
                         # Update the added points: added points + direction vector
-                        added_points = dict_points['added_points']
-                        selected_point_to_move = dict_points['selected_point']
-                        added_points['x'] = [x + dx for x in added_points['x']]
-                        added_points['y'] = [y + dy for y in added_points['y']]
+                        dict_points['added_points']['x'] = [x + dx for x in dict_points['added_points']['x']]
+                        dict_points['added_points']['y'] = [y + dy for y in dict_points['added_points']['y']]
+
                         # Update the clicked point
                         dict_translate['clicked_point']['x'] = dict_translate['clicked_point']['x'] + dx
-                        dict_translate['clicked_point']['y'] = dict_translate['clicked_point']['y'] + dy
-                        logging.debug(f"added points: {added_points}")
-                        logging.debug(f"dx: {dx}")
-                        logging.debug(f"dy: {dy}")
-                        return {'added_points': added_points, 'selected_point': selected_point_to_move}, dict_translate
+                        dict_translate['clicked_point']['y'] = dict_translate['clicked_point']['y'] + dy                     
+
+                        return dict_points, dict_translate
                     else:
                         dash.no_update, dash.no_update
                 else:

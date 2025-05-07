@@ -21,6 +21,7 @@ def build_dashboard(
         title=title,
         external_stylesheets=[dbc.themes.BOOTSTRAP],
         suppress_callback_exceptions=True,
+        assets_folder="../assets",
     )
 
     if not components:

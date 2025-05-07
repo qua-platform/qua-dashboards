@@ -7,7 +7,7 @@ import logging
 from typing import Optional
 
 import dash
-from dash import Input, Output, State
+from dash import Input, Output, State, ClientsideFunction, html
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 
@@ -27,6 +27,7 @@ def format_voltage(
 ) -> str:
     """
     Formats a float voltage for display.
+
     Rounds to the specified precision and removes unnecessary trailing zeros.
     Handles None by returning an empty string.
     """
@@ -62,13 +63,18 @@ class VoltageControlRow:
         self,
         input_id_type: str,
         param: VoltageParameterProtocol,
-        # parent_component_id argument removed
     ):
         self.input_id_type = input_id_type
         self.param = param
         self.current_input_text = format_voltage(param.get_latest())
-        self.input_id = {"type": self.input_id_type, "index": self.param.name}
-        # dummy_blur_output_id removed
+        # self.input_id = {"type": self.input_id_type, "index": self.param.name}
+        self.input_id = f"{self.input_id_type}-{self.param.name}"
+
+        # ID for the dummy div that triggers the blur action
+        self.blur_trigger_id = {
+            "type": f"{self.input_id_type}-blur-trigger",
+            "index": self.param.name,
+        }
 
     def get_layout(self) -> dbc.Row:
         """Generates the Dash layout for this single voltage control row."""
@@ -82,26 +88,27 @@ class VoltageControlRow:
                     dbc.Input(
                         id=self.input_id,
                         type="text",
-                        value=format_voltage(
-                            self.param.get_latest()
-                        ),  # Initially blank
+                        value=format_voltage(self.param.get_latest()),
                         n_submit=0,
                         n_blur=0,
-                        debounce=False,  # Keep for responsiveness if needed, or set to True
-                        className=DEFAULT_INPUT_CLASS_NAME,  # Always default
+                        debounce=False,
+                        className=DEFAULT_INPUT_CLASS_NAME,
                         style={"width": "100%"},
                     ),
                     style={"width": INPUT_WIDTH, "flex": f"0 0 {INPUT_WIDTH}"},
                 ),
                 dbc.Col(
-                    dbc.Label(self.param.units, style={"whiteSpace": "nowrap"}),
+                    dbc.Label(
+                        children=self.param.units, style={"whiteSpace": "nowrap"}
+                    ),
                     style={
                         "width": UNITS_WIDTH,
                         "flex": f"0 0 {UNITS_WIDTH}",
                         "textAlign": "left",
                     },
                 ),
-                # html.Div for dummy_blur_output_id removed
+                # Hidden Div to trigger clientside callback for blur
+                html.Div(id=self.blur_trigger_id, style={"display": "none"}),
             ],
             align="center",
             className="mb-2 g-3",
@@ -110,11 +117,8 @@ class VoltageControlRow:
     def register_callbacks(self, app: dash.Dash) -> None:
         """Registers callbacks specific to this row's input field."""
 
-        # Callback for when user types - only to update parent's current_input_text
         @app.callback(
-            Output(
-                self.input_id, "className", allow_duplicate=True
-            ),  # Still output className to satisfy Dash if it's also an output elsewhere
+            Output(self.input_id, "className", allow_duplicate=True),
             Input(self.input_id, "value"),
             prevent_initial_call=True,
         )
@@ -124,10 +128,11 @@ class VoltageControlRow:
             self.current_input_text = text_value
             return DEFAULT_INPUT_CLASS_NAME
 
-        # Callback for when user presses Enter (n_submit)
         @app.callback(
             Output(self.input_id, "value", allow_duplicate=True),
-            # className output removed, periodic_update will handle it.
+            Output(
+                self.blur_trigger_id, "children", allow_duplicate=True
+            ),  # Output to trigger blur
             Input(self.input_id, "n_submit"),
             State(self.input_id, "value"),
             prevent_initial_call=True,
@@ -137,32 +142,40 @@ class VoltageControlRow:
                 raise PreventUpdate
             try:
                 float_value = float(submitted_text_value)
-
                 self.param.set(float_value)
                 self.current_input_text = format_voltage(float_value)
-                return self.current_input_text
-
+                # Return formatted value and trigger for blur
+                return self.current_input_text, _n_submit
             except ValueError:
                 logger.warning(
                     f"Invalid float: '{submitted_text_value}' for {self.param.name}"
                 )
-                return dash.no_update  # Keep invalid text for user to see/correct
+                # Keep invalid text, no blur trigger update
+                return dash.no_update, dash.no_update
             except Exception as e:
                 logger.error(
                     f"Error during set for {self.param.name}: {e}", exc_info=True
                 )
-                return dash.no_update
+                return dash.no_update, dash.no_update
 
-        # Callback for when an input field loses focus (n_blur)
         @app.callback(
             Output(self.input_id, "value", allow_duplicate=True),
-            # className output removed
             Input(self.input_id, "n_blur"),
             prevent_initial_call=True,
         )
         def handle_input_blur(_n_blur: int):
             if not _n_blur:
                 raise PreventUpdate
-
             self.current_input_text = format_voltage(self.param.get_latest())
             return self.current_input_text
+
+        # Clientside callback to blur the input
+        app.clientside_callback(
+            ClientsideFunction(namespace="custom", function_name="blurInput"),
+            Output(
+                self.blur_trigger_id, "data-last-blurred", allow_duplicate=True
+            ),  # Dummy output
+            Input(self.blur_trigger_id, "children"),
+            State(self.input_id, "id"),  # Pass the dict ID of the input
+            prevent_initial_call=True,
+        )

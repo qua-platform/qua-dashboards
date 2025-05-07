@@ -16,9 +16,9 @@ from .voltage_parameter_protocol import VoltageParameterProtocol
 logger = logging.getLogger(__name__)
 
 DEFAULT_INPUT_CLASS_NAME = ""  # Standard class for inputs
-LABEL_WIDTH = "200px"
-INPUT_WIDTH = "150px"
-UNITS_WIDTH = "80px"
+LABEL_WIDTH = "140px"
+INPUT_WIDTH = "120px"
+UNITS_WIDTH = "45px"
 DEFAULT_VOLTAGE_PRECISION = 6
 
 
@@ -35,7 +35,8 @@ def format_voltage(
         return ""
     try:
         # Round to ensure correct number of decimal places if it's close
-        # Add a small epsilon for floating point inaccuracies before rounding for numbers like x.999999...
+        # Add a small epsilon for floating point inaccuracies before rounding
+        # for numbers like x.999999...
         rounded_value = round(float(value) + 1e-12, precision)
 
         # Convert to string. If it became an integer, str() handles it.
@@ -67,8 +68,7 @@ class VoltageControlRow:
         self.input_id_type = input_id_type
         self.param = param
         self.current_input_text = format_voltage(param.get_latest())
-        # self.input_id = {"type": self.input_id_type, "index": self.param.name}
-        self.input_id = f"{self.input_id_type}-{self.param.name}"
+        self.input_id = {"type": self.input_id_type, "index": self.param.name}
 
         # ID for the dummy div that triggers the blur action
         self.blur_trigger_id = {
@@ -95,7 +95,11 @@ class VoltageControlRow:
                         className=DEFAULT_INPUT_CLASS_NAME,
                         style={"width": "100%"},
                     ),
-                    style={"width": INPUT_WIDTH, "flex": f"0 0 {INPUT_WIDTH}"},
+                    style={
+                        "width": INPUT_WIDTH,
+                        "flex": f"0 0 {INPUT_WIDTH}",
+                        "paddingRight": "0px",
+                    },
                 ),
                 dbc.Col(
                     dbc.Label(
@@ -111,7 +115,7 @@ class VoltageControlRow:
                 html.Div(id=self.blur_trigger_id, style={"display": "none"}),
             ],
             align="center",
-            className="mb-2 g-3",
+            className="mb-2 g-3 flex-nowrap",
         )
 
     def register_callbacks(self, app: dash.Dash) -> None:

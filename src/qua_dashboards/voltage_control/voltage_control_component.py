@@ -21,7 +21,7 @@ from .voltage_control_row import VoltageControlRow, format_voltage
 logger = logging.getLogger(__name__)
 
 DEFAULT_INPUT_CLASS_NAME = ""  # Input fields will always have this class
-COMPONENT_MAX_WIDTH = "500px"
+COMPONENT_MAX_WIDTH = "450px"
 
 
 class VoltageControlComponent(BaseComponent):
@@ -36,6 +36,7 @@ class VoltageControlComponent(BaseComponent):
         component_id: str,
         voltage_parameters: Sequence[VoltageParameterProtocol],
         update_interval_ms: int = 1000,
+        layout_columns: int = 3,
     ):
         super().__init__(component_id=component_id)
         self.voltage_parameters = voltage_parameters
@@ -48,6 +49,8 @@ class VoltageControlComponent(BaseComponent):
         for param in self.voltage_parameters:
             row = VoltageControlRow(input_id_type=input_id_type, param=param)
             self._row_components[param.name] = row
+
+        self.layout_columns = layout_columns
 
     def _get_id_type_str(self, element_name: str) -> str:
         return f"comp-{self.component_id}-{element_name}"

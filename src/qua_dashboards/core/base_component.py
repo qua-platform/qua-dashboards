@@ -44,6 +44,8 @@ class BaseComponent(abc.ABC):
             raise ValueError("component_id must be a non-empty string")
 
         self.component_id = component_id
+        self.layout_columns = 12
+        self.layout_rows = 8
         logger.debug(
             f"Initializing BaseComponent with component_id='{self.component_id}'"
         )

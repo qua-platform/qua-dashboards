@@ -60,6 +60,7 @@ class VideoModeComponent(BaseComponent):
         save_path: Union[str, Path] = "./video_mode_output",
         update_interval_sec: float = 0.1,
         include_update_button: bool = True,
+        layout_columns: int = 12,
     ):
         """
         Initializes the VideoModeComponent.
@@ -72,6 +73,7 @@ class VideoModeComponent(BaseComponent):
             include_update_button: Show button to update acquirer params.
         """
         super().__init__(component_id=component_id)
+        self.layout_columns = layout_columns
         if not isinstance(data_acquirer, BaseDataAcquirer):
             raise TypeError(
                 "data_acquirer must be an instance of BaseDataAcquirer or subclass."

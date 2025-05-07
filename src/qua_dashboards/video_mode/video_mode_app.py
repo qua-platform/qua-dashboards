@@ -17,6 +17,7 @@ import plotly.graph_objects as go
 import dash_bootstrap_components as dbc
 from dash.exceptions import PreventUpdate
 import json
+import re
 
 import logging
 
@@ -999,82 +1000,77 @@ class VideoModeApp:
             int: The index of the saved files.
 
         Raises:
-            ValueError: If the maximum number of files (9999) has been reached.
+            ValueError: If the maximum number of files (9999) has been reached.           
 
         Note:
+            - The index is computed from the max existing index over all folders plus one
             - The image is saved first, followed by the data. Finally, the annotation data is saved.
-            - If data saving fails due to a FileExistsError, a warning is logged instead of raising an exception.
         """
         if not self.save_path.exists():
             self.save_path.mkdir(parents=True)
             logging.info(f"Created directory: {self.save_path}")
 
-        # Save image first
-        idx = self.save_image()
+        # Information on all data saving folders and file extensions
+        dict_saving = {'images': {'folder_name': 'images', 'ending': '.png'}, 
+                       'data': {'folder_name': 'data', 'ending': '.h5'}, 
+                       'annotations': {'folder_name': 'annotations', 'ending': '.json'}}
 
-        # Attempt to save data with the same index
-        try:
-            self.save_data(idx)
-        except FileExistsError:
-            logging.warning(
-                f"Data file with index {idx} already exists. Image saved, but data was not overwritten."
-            )
-        
-        # Attempt to save points and lines (annotation data) with the same index
-        try:
-            self.save_annotation(points,lines,idx)
-        except FileExistsError:
-            logging.warning(
-                f"Annotation data file with index {idx} already exists. Image saved, but line and point data was not overwritten."
+        # Find index (max index from all folders + 1)
+        max_idx = []
+        for key in dict_saving: # iterate over all saving folders
+            save_path = self.save_path / dict_saving[key]['folder_name']
+            file_extension = dict_saving[key]['ending']
+
+            if not save_path.exists():
+                save_path.mkdir(parents=True)
+                logging.info(f"Created directory: {save_path}")
+
+            pattern = re.compile(rf"(\d+){re.escape(file_extension)}$")  # regular expression pattern: filenname ends with number (one or more digits) followed by file extension
+            max_i = 0  # variable to track max index
+            for file in save_path.iterdir(): # iterate over all files in the folder
+                if file.is_file():  # skip subdirectories
+                    match = pattern.search(file.name)
+                    if match:
+                        i = int(match.group(1))  # converts the numeric part of the match to an integer
+                        max_i = max(max_i,i)
+            max_idx.append(max_i)
+        idx = max(max_idx) + 1
+
+        # Save all data
+        if idx <= 9999:
+            self.save_image(idx,dict_saving["images"])
+            self.save_data(idx,dict_saving["data"])
+            self.save_annotation(points,lines,idx,dict_saving["annotations"])
+        else:
+            raise ValueError(
+                "Maximum number of screenshots (9999) reached. Cannot save more."
             )
 
         logging.info(f"Save operation completed with index: {idx}")
         return idx        
 
-    def save_annotation(self,points,lines,idx: Optional[int] = None):
+    def save_annotation(self,points,lines,idx,dict_saving_annotations):
         """
         Save the current annotation data (points and lines) to a json file.
 
         This method saves the current annotation data drawn in the graph to a json file in the specified data save path.
-        It automatically generates a unique filename by incrementing an index if not provided.
 
         Args:
-            idx (Optional[int]): The index to use for the filename. If None, an available index is automatically determined.
+            points:                  Added points
+            lines:                   Added lines
+            idx:                     The index to use for the filename.
+            dict_saving_annotations: Dictionary containing the saving folder and file extension
 
-        Returns:
-            int: The index of the saved data file.
-
-        Raises:
-            ValueError: If the maximum number of data files (9999) has been reached.
-            FileExistsError: If a file with the generated name already exists.
-
-        Note:
-            - The data save path is created if it doesn't exist.
+        Notes:
             - The filename format is 'annotation_XXXX.json', where XXXX is a four-digit index.
             - The annotation data is not saved if there are no points and lines.
         """        
-        data_save_path = self.save_path / "annotations"
-        logging.info(f"Attempting to save annotation data to folder: {data_save_path}")
+        annotation_save_path = self.save_path / dict_saving_annotations['folder_name']
+        filename = f"annotation_{idx}{dict_saving_annotations['ending']}"
+        filepath = annotation_save_path / filename    
 
-        if not data_save_path.exists():
-            data_save_path.mkdir(parents=True)
-            logging.info(f"Created directory: {data_save_path}")
-
-        if idx is None:
-            idx = 1
-            while idx <= 9999 and (data_save_path / f"annotation_{idx}.json").exists():
-                idx += 1
-
-        if idx > 9999:
-            raise ValueError(
-                "Maximum number of data files (9999) reached. Cannot save more."
-            )
-
-        filename = f"annotation_{idx}.json"
-        filepath = data_save_path / filename    
-
-        if filepath.exists():
-            raise FileExistsError(f"File {filepath} already exists.")
+        # if filepath.exists():
+        #     raise FileExistsError(f"File {filepath} already exists.")
         
         if (not points.get("x")) and (not lines.get("start_index")):
             logging.info("There is no annotation data to save.")
@@ -1088,100 +1084,51 @@ class VideoModeApp:
 
             logging.info(f"Annotation data saved successfully: {filepath}")
         logging.info("Annotation data save operation completed.")
-        return idx
 
-    def save_data(self, idx: Optional[int] = None):
+    def save_data(self, idx, dict_saving_data):
         """
         Save the current data to an HDF5 file.
 
         This method saves the current data from the data acquirer to an HDF5 file in the specified data save path.
-        It automatically generates a unique filename by incrementing an index if not provided.
 
         Args:
-            idx (Optional[int]): The index to use for the filename. If None, an available index is automatically determined.
+            idx:                     The index to use for the filename.
+            dict_saving_annotations: Dictionary containing the saving folder and file extension            
 
-        Returns:
-            int: The index of the saved data file.
-
-        Raises:
-            ValueError: If the maximum number of data files (9999) has been reached.
-            FileExistsError: If a file with the generated name already exists.
-
-        Note:
-            - The data save path is created if it doesn't exist.
+        Notes:
             - The filename format is 'data_XXXX.h5', where XXXX is a four-digit index.
         """
-        data_save_path = self.save_path / "data"
-        logging.info(f"Attempting to save data to folder: {data_save_path}")
-
-        if not data_save_path.exists():
-            data_save_path.mkdir(parents=True)
-            logging.info(f"Created directory: {data_save_path}")
-
-        if idx is None:
-            idx = 1
-            while idx <= 9999 and (data_save_path / f"data_{idx}.h5").exists():
-                idx += 1
-
-        if idx > 9999:
-            raise ValueError(
-                "Maximum number of data files (9999) reached. Cannot save more."
-            )
-
-        filename = f"data_{idx}.h5"
+        data_save_path = self.save_path / dict_saving_data['folder_name']
+        filename = f"data_{idx}{dict_saving_data['ending']}"
         filepath = data_save_path / filename
 
-        if filepath.exists():
-            raise FileExistsError(f"File {filepath} already exists.")
+        # if filepath.exists():
+        #     raise FileExistsError(f"File {filepath} already exists.")
+ 
         self.data_acquirer.data_array.to_netcdf(
             filepath
         )  # , engine="h5netcdf", format="NETCDF4")
+
         logging.info(f"Data saved successfully: {filepath}")
         logging.info("Data save operation completed.")
-        return idx
 
-    def save_image(self):
+    def save_image(self,idx,dict_saving_images):
         """
         Save the current image to a file.
 
         This method saves the current figure as a PNG image in the specified image save path.
-        It automatically generates a unique filename by incrementing an index.
-
-        Returns:
-            int: The index of the saved image file.
-
-        Raises:
-            ValueError: If the maximum number of screenshots (9999) has been reached.
 
         Note:
-            - The image save path is created if it doesn't exist.
             - The filename format is 'data_image_XXXX.png', where XXXX is a four-digit index.
         """
-        image_save_path = self.save_path / "images"
-        logging.info(f"Attempting to save image to folder: {image_save_path}")
-        if not image_save_path.exists():
-            image_save_path.mkdir(parents=True)
-            logging.info(f"Created directory: {image_save_path}")
+        image_save_path = self.save_path / dict_saving_images['folder_name']
+        filename = f"data_image_{idx}{dict_saving_images['ending']}"
+        filepath = image_save_path / filename
 
-        idx = 1
-        while idx <= 9999 and (image_save_path / f"data_image_{idx}.png").exists():
-            idx += 1
-        if idx <= 9999:
-            filename = f"data_image_{idx}.png"
-            filepath = image_save_path / filename
-            logging.debug(f"About to save image")
-            logging.debug(f"Figure type: {type(self.figure)}")
-            logging.debug(f"filepath: {filepath}")
-            #logging.debug(f"figure: {self.figure}")
-            #self.figure.write_image("test.png")
-            print(self.figure.write_image(filepath))  # Does not work since self.figure is a Heatmap, not a figure
-            logging.info(f"Image saved successfully: {filepath}")
-        else:
-            raise ValueError(
-                "Maximum number of screenshots (9999) reached. Cannot save more."
-            )
+        self.figure.write_image(filepath)
+        
+        logging.info(f"Image saved successfully: {filepath}")
         logging.info("Image save operation completed.")
-        return idx           
 
 
 class VideoMode(VideoModeApp):

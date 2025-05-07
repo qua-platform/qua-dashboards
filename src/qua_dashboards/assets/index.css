@@ -69,3 +69,11 @@ body,
 .dataset-view-toggle label:hover {
     background-color: #585858;
 }
+
+
+/* Voltage Control */
+.voltage-input-editing {
+    background-color: #fff3e0;
+    /* A light orange, for example */
+    border-color: #ffcc80;
+}

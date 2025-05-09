@@ -17,6 +17,7 @@ import plotly.graph_objects as go
 import dash_bootstrap_components as dbc
 from dash.exceptions import PreventUpdate
 import json
+import re
 
 import logging
 
@@ -104,8 +105,11 @@ class VideoModeApp:
             {"label": "Adding and moving points (SHIFT+P)", "value": "point"},
             {"label": "Adding lines (SHIFT+L)", "value": "line"},
             {"label": "Deleting points and lines (SHIFT+D)", "value": "delete"},
+            {"label": "Translate all points and lines (SHIFT+T)", "value": "translate-all"},
         ]
-        self.figure = self.generate_figure(dict_heatmap,dict_points,dict_lines)
+        dict_translation = {'translate': False, 'clicked_point': None}
+        label_value = ['points']
+        self.figure = self.generate_figure(dict_heatmap,dict_points,dict_lines,label_value)
 
         self.app.layout = dbc.Container(
             [                     # Store to hold key press events
@@ -233,43 +237,56 @@ class VideoModeApp:
                                     ],
                                     className="mb-4",
                                 ),
-                                # dbc.Row(
-                                #     [
-                                #         dbc.Col(
-                                #             dbc.Button(
-                                #                 "Compute compensation",
-                                #                 id="compensation-button",
-                                #                 n_clicks=0,
-                                #                 className="mt-3",
-                                #             ),
-                                #             width="auto",
-                                #         ),
-                                #     ],
-                                #     className="mb-1",
-                                # ), 
-                                # dbc.Row(
-                                #     [
-                                #         dbc.Col(
-                                #             html.Pre(
-                                #                 id="compensation-data",
-                                #                 className="bg-light p-3 rounded border",
-                                #                 style={'overflowX': 'scroll'},
-                                #             ),
-                                #             width=12,
-                                #         ),
-                                #     ],
-                                #     className="mb-4",
-                                # ),
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            dbc.Button(
+                                                "Compute compensation",
+                                                id="compensation-button",
+                                                n_clicks=0,
+                                                className="mt-3",
+                                            ),
+                                            width="auto",
+                                        ),
+                                    ],
+                                    className="mb-1",
+                                ), 
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            html.Pre(
+                                                id="compensation-data",
+                                                className="bg-light p-3 rounded border",
+                                                style={'overflowX': 'scroll'},
+                                            ),
+                                            width=12,
+                                        ),
+                                    ],
+                                    className="mb-4",
+                                ),
                             ],
                             width=5,
                         ),
                         dbc.Col(
-                            dcc.Graph(
-                                id="live-heatmap",
-                                figure=self.figure,
-                                style={"aspect-ratio": "1 / 1"},
-                                #config={'scrollZoom': True},
-                            ),
+                            [   
+                                dbc.Checklist(
+                                    id="plot-labels-checklist",
+                                    options=[
+                                        {"label": "point labels", "value": "points"},  # For point labels
+                                        #{"label": "line labels", "value": "lines"},   # If we also want to introduce line labels
+                                    ],
+                                    value=label_value,  # default selection
+                                    inline=True,
+                                    style={"marginLeft": "5rem"},
+                                    className="mt-5 mb-0"
+                                ),                               
+                                dcc.Graph(
+                                    id="live-heatmap",
+                                    figure=self.figure,
+                                    style={"aspect-ratio": "1 / 1"},
+                                    #config={'scrollZoom': True},
+                                ),
+                            ],
                             width=7,
                         ),
                     ]
@@ -291,7 +308,14 @@ class VideoModeApp:
                     id="added_lines-data-store",
                     data=dict_lines,
                 ),
-                dcc.Store(id="trigger-update-once",data=False),  # trigger for updating the heatmap!
+                dcc.Store( # Trigger for updating the heatmap!
+                    id="trigger-update-once",
+                    data=False,
+                ),  
+                dcc.Store( # Store the data that is needed to translate all points and lines
+                    id="translation-data-store",
+                    data=dict_translation,
+                )
             ],
             fluid=True,
             style={"height": "100vh"},
@@ -377,7 +401,7 @@ class VideoModeApp:
                 document.addEventListener("keydown", function(event) {
                     if (event.shiftKey) { // Shift key is pressed
                         let key = event.key.toLowerCase();  // Normalize to lowercase
-                        let mapping = {"p": "point", "l": "line", "d": "delete"};
+                        let mapping = {"p": "point", "l": "line", "d": "delete", "t": "translate-all"};
 
                         if (mapping.hasOwnProperty(key)) {
                             event.preventDefault();  // Prevent default browser actions
@@ -519,15 +543,25 @@ class VideoModeApp:
         @self.app.callback(
             [Output("added_points-data-store","data",allow_duplicate=True),
              Output("added_lines-data-store","data",allow_duplicate=True),
-             Output('live-heatmap','clickData')], # Reset to None, otherwise repeated clicks at the same coordinates in the graph are not possible in Dash!
+             Output('live-heatmap','clickData'), # Reset to None, otherwise repeated clicks at the same coordinates in the graph are not possible in Dash!
+             Output("translation-data-store","data",allow_duplicate=True)],
             [Input('live-heatmap','clickData')],
             [State("added_points-data-store","data"),
             State("mode-selector","value"),
-            State("added_lines-data-store","data")],
+            State("added_lines-data-store","data"),
+            State("translation-data-store","data")],
         )
-        def handle_clicks(clickData,dict_points,selected_mode,dict_lines):
+        def handle_clicks(clickData,dict_points,selected_mode,dict_lines,dict_translation):
             '''
             Handle clicks on the figure dependent on the different points and lines modes
+            - MODE Adding and moving points:
+              Clicking on the figure adds a new point. An existing point can be moved after having clicked on it.
+            - MODE Adding lines:
+              Clicking subsequentially on two existing points adds a line between the points.
+            - MODE Deleting points and lines:
+              Clicking on an existing point or line deletes this point or line.
+            - MODE Translate all points and lines:
+              After having clicked anywhere on the figure, all points and lines can be translated together.
             '''
             #logging.debug("Callback handle_clicks triggered!")
 
@@ -566,7 +600,7 @@ class VideoModeApp:
                         added_points['y'].append(y_value)
                         added_points['index'].append(point_index)
             
-                    return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}, None
+                    return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}, None, dash.no_update
                 
                 # MODE: Deleting points / lines (SHIFT + D)
                 elif selected_mode=="delete":
@@ -604,7 +638,7 @@ class VideoModeApp:
                                 del added_lines['start_index'][min_index]
                                 del added_lines['end_index'][min_index]
 
-                    return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}, None # return points even if no point was deleted -> no problems with ordering of traces in figure,
+                    return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}, None, dash.no_update # return points even if no point was deleted -> no problems with ordering of traces in figure,
                 
                 # MODE: Adding lines (SHIFT + L)
                 elif selected_mode=='line': 
@@ -623,22 +657,38 @@ class VideoModeApp:
                                 added_lines['start_index'].append(selected_points_for_line[0])
                                 added_lines['end_index'].append(selected_points_for_line[1])
                             selected_points_for_line.clear()
-                    return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}, None
+                    return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}, None, dash.no_update
+                
+                # MODE: Translate all points and lines (SHIFT + T)
+                elif selected_mode=="translate-all":
+                    # After first click: True (turn translation mode on); after second click: False (turn translation mode off)
+                    dict_translation['translate'] = not dict_translation['translate']
+
+                    # Add the clicked point when translation mode is turned on
+                    if dict_translation['translate'] == True: 
+                        dict_translation["clicked_point"] = clickData['points'][0]  
+                    # Remove the clicked point when translation mode is turned off
+                    else:
+                        dict_translation["clicked_point"] = None  
+
+                    return {'added_points': added_points, 'selected_point': selected_point_to_move}, {'selected_indices': selected_points_for_line, 'added_lines': added_lines}, None, dict_translation
             else:
                 return dash.no_update
         
         @self.app.callback(
-            [Output("added_points-data-store","data",allow_duplicate=True)],
+            [Output("added_points-data-store","data",allow_duplicate=True),
+             Output("translation-data-store","data",allow_duplicate=True)],
             [Input('live-heatmap','hoverData')],
-            [State("added_points-data-store","data"), 
-             State("mode-selector","value")],
+            [State("added_points-data-store","data"),
+             State("mode-selector","value"),
+             State("translation-data-store","data")],
         )
-        def handle_hovering(hoverData,dict_points,selected_mode):
+        def handle_hovering(hoverData,dict_points,selected_mode,dict_translate):
             '''
             Handle hovering over the figure. 
-            So far only needed in the mode "Adding and moving points (SHIFT + P)" in order to move a selected point
             '''
             #logging.debug(f"Callback handle_hovering triggered!")
+            # MODE: Adding and moving points (SHIFT + P)
             if selected_mode=="point":
                 if hoverData and 'points' in hoverData and hoverData['points']:
                     added_points = dict_points['added_points']
@@ -650,28 +700,165 @@ class VideoModeApp:
                         added_points['x'][selected_point_to_move['index']] = point['x']
                         added_points['y'][selected_point_to_move['index']] = point['y']
 
-                        return {'added_points': added_points, 'selected_point': selected_point_to_move} 
+                        return {'added_points': added_points, 'selected_point': selected_point_to_move}, dict_translate
                     else:
-                        return dash.no_update
+                        return dash.no_update, dash.no_update
                 else:
-                    return dash.no_update       
+                    return dash.no_update, dash.no_update
+
+            # MODE: Translate all points and lines (SHIFT + T)    
+            elif selected_mode=="translate-all":
+                if dict_translate["translate"]==True:
+                    if hoverData and 'points' in hoverData and hoverData['points']:
+                        # Compute the direction vector (hover point - clicked point)
+                        dx = hoverData['points'][0]['x'] - dict_translate['clicked_point']['x']
+                        dy = hoverData['points'][0]['y'] - dict_translate['clicked_point']['y']
+
+                        # Update the added points: added points + direction vector
+                        dict_points['added_points']['x'] = [x + dx for x in dict_points['added_points']['x']]
+                        dict_points['added_points']['y'] = [y + dy for y in dict_points['added_points']['y']]
+
+                        # Update the clicked point
+                        dict_translate['clicked_point']['x'] = dict_translate['clicked_point']['x'] + dx
+                        dict_translate['clicked_point']['y'] = dict_translate['clicked_point']['y'] + dy                     
+
+                        return dict_points, dict_translate
+                    else:
+                        dash.no_update, dash.no_update
+                else:
+                    return dash.no_update, dash.no_update
             else:
-                return dash.no_update
+                return dash.no_update, dash.no_update
         
         @self.app.callback(
             [Output('live-heatmap','figure')],
             [Input("heatmap-data-store", "data"),
              Input("added_points-data-store","data"),
-             Input("added_lines-data-store","data"), ]
+             Input("added_lines-data-store","data"), 
+             Input("plot-labels-checklist","value"), ]
         )
-        def update_figure(dict_heatmap,dict_points,dict_lines):
+        def update_figure(dict_heatmap,dict_points,dict_lines,labels_list):
             '''
             Update the figure whenever the heatmap or annotation data changes
             '''
             #logging.debug(f"Callback update_figure triggered!")
-            self.figure = self.generate_figure(dict_heatmap,dict_points,dict_lines)
+            self.figure = self.generate_figure(dict_heatmap,dict_points,dict_lines,labels_list)
             return self.figure
 
+        @self.app.callback(
+            [Output("compensation-data","children"),
+             Output("added_points-data-store","data",allow_duplicate=True)],
+            Input("compensation-button","n_clicks"),
+            [State("added_points-data-store","data"),
+             State("added_lines-data-store","data"),]
+        )
+        def compute_compensation(n_clicks,dict_points,dict_lines):
+            if n_clicks>0:
+                logging.debug(f"Callback compute_compensation triggered!")
+                # Test 1
+                # direction,slope,A = self.compensation_orthonormal(dict_points['added_points'],dict_lines['added_lines'])
+                # logging.debug(f"direction: {direction}")
+                # logging.debug(f"slopes: {slope}")
+                # logging.debug(f"Transformation matrix: {A}")
+                # added_points_transformed = self.basis_change(dict_points['added_points'],A)
+                # dict_points['added_points'] = added_points_transformed
+                # Test 2
+                direction,slope,A_inv,A = self.compensation(dict_points['added_points'],dict_lines['added_lines'])
+                logging.debug(f"direction: {direction}")
+                logging.debug(f"slopes: {slope}")
+                logging.debug(f"Inverse of transformation matrix: {A_inv}")
+                logging.debug(f"Test (A*A_inv): {np.dot(A_inv, A)}")
+                added_points_transformed = self.basis_change(dict_points['added_points'],A_inv)
+                logging.debug(f"added points : {dict_points['added_points']}")
+                logging.debug(f"added points transformed: {added_points_transformed}")
+                dict_points['added_points'] = added_points_transformed
+                #logging.debug(f"slopes: {direction['dy'][0]/direction['dx'][0]} and {direction['dy'][1]/direction['dx'][1]}")
+                return json.dumps(slope, indent=2),dict_points#json.dumps(Transformation.tolist(), indent=2)#dash.no_update  # TO DO: output matrix A
+            else:
+                return dash.no_update, dash.no_update
+            
+    def basis_change(self,added_points,A_inv):
+        # Convert the 'x' and 'y' lists into a 2xN NumPy array
+        points = np.array([added_points['x'], added_points['y']])            
+        
+        # Transform each point by matrix multiplication
+        transformed = A_inv @ points # 2xN NumPy array
+
+        # Generate a dictionary of the transformed points
+        added_points_transformed = {
+            'x': transformed[0].tolist(),
+            'y': transformed[1].tolist(),
+            'index': added_points['index']
+        }
+
+        return added_points_transformed
+
+
+    def compensation(self,added_points,added_lines):
+        # TO DO: ensure added_lines has exactly two lines added
+        # Compute direction for each line
+        direction = {'dx' : [], 'dy' : []}
+        for start_index, end_index in zip(added_lines['start_index'], added_lines['end_index']): # loop through lines
+            # Line start point (x1,y1) and end point (x2,y2) 
+            x1, y1 = added_points['x'][start_index], added_points['y'][start_index]
+            x2, y2 = added_points['x'][end_index], added_points['y'][end_index]
+            
+            # Direction vector from start to end point
+            direction["dx"].append(x2-x1)
+            direction["dy"].append(y2-y1)
+
+        # Compute slope for each line
+        slope = [dy / dx if dx != 0 else None for dx, dy in zip(direction['dx'], direction['dy'])]
+
+        # Compute transformation matrix A
+        if abs(slope[0]) > abs(slope[1]):  # First line more aligned with y-axis, second line more aligned with x-axis  WHY?????
+            a = np.array([direction['dy'][0],-direction["dx"][0]]) # From first line - steeper
+            b = np.array([direction['dy'][1],-direction["dx"][1]]) # From second line - flatter
+            A_inv = np.vstack([a,b])
+        else: # First line more aligned with x-axis, second line more aligned with y-axis
+            a = np.array([direction['dy'][1],-direction["dx"][1]]) # From second line - flatter
+            b = np.array([direction['dy'][0],-direction["dx"][0]]) # From first line - flatter
+            A_inv = np.vstack([a,b])
+
+        #Q, R = np.linalg.qr(A_inv)  # orthonormalization  DOES NOT DO THE RIGHT THING!!!
+        A = np.linalg.inv(A_inv)            
+
+        return direction,slope,A_inv,A
+    
+    def compensation_orthonormal(self,added_points,added_lines):
+        # TO DO: ensure added_lines has exactly two lines added
+        # Compute direction for each line
+        direction = {'dx' : [], 'dy' : []}
+        for start_index, end_index in zip(added_lines['start_index'], added_lines['end_index']): # loop through lines
+            # Line start point (x1,y1) and end point (x2,y2) 
+            x1, y1 = added_points['x'][start_index], added_points['y'][start_index]
+            x2, y2 = added_points['x'][end_index], added_points['y'][end_index]
+            
+            # Direction vector from start to end point
+            direction["dx"].append(x2-x1)
+            direction["dy"].append(y2-y1)
+
+        # Compute slope for each line
+        slope = [dy / dx if dx != 0 else None for dx, dy in zip(direction['dx'], direction['dy'])]
+        
+        # Normalize direction vectors
+        d1 = np.array([direction["dx"][0],direction["dy"][0]])
+        d2 = np.array([direction["dx"][1],direction["dy"][1]])
+        d1_unit = d1 / np.linalg.norm(d1)
+        d2_unit = d2 / np.linalg.norm(d2)
+
+        # Gram-Schmidt:
+        # Start with v1_unit
+        e1 = d1_unit
+        # Make v2 orthogonal to v1
+        d2_proj = np.dot(d2_unit, e1) * e1
+        e2 = d2_unit - d2_proj
+        e2 = e2 / np.linalg.norm(e2)
+
+        A = np.column_stack((e1, e2))
+
+        return direction,slope,A
+        
 
     def distance_to_lines(self, x, y, added_points, added_lines):
         '''
@@ -730,7 +917,7 @@ class VideoModeApp:
                 return i  # Return the index if the point is found
         return None  # Return None if no matching point is found
 
-    def generate_figure(self, dict_heatmap, dict_points, dict_lines):
+    def generate_figure(self, dict_heatmap, dict_points, dict_lines, labels_list):
         points = dict_points['added_points']
         lines = dict_lines['added_lines']
         selected_point_to_move = dict_points['selected_point']
@@ -759,7 +946,7 @@ class VideoModeApp:
             zorder=2, # top layer, heatmap has zorder=0 (background)
             mode='markers + text', 
             marker=dict(color="white", size=list(sizes), line=dict(color='black', width=1), opacity=1.0),
-            text=[str(int(i) + 1) for i in points['index']], # Use indices to label the points
+            text=[str(int(i) + 1) for i in points['index']] if 'points' in labels_list else None, # Use indices to label the points
             textposition='top center',
             textfont=dict(color='white'),
             showlegend=False,
@@ -774,7 +961,10 @@ class VideoModeApp:
             name=""
         ))
         figure.update_layout(xaxis_title=figure_titles['xaxis_title'], 
-                             yaxis_title=figure_titles['yaxis_title'], clickmode='event + select')
+                             yaxis_title=figure_titles['yaxis_title'], 
+                             clickmode='event + select',
+                             margin=dict(t=30,b=20,l=20,r=20) # top margin such that tool bar can be shown, but gap to checklist smaller
+                             )
         return figure    
 
     def list_json_files(self):
@@ -870,82 +1060,77 @@ class VideoModeApp:
             int: The index of the saved files.
 
         Raises:
-            ValueError: If the maximum number of files (9999) has been reached.
+            ValueError: If the maximum number of files (9999) has been reached.           
 
         Note:
+            - The index is computed from the max existing index over all folders plus one
             - The image is saved first, followed by the data. Finally, the annotation data is saved.
-            - If data saving fails due to a FileExistsError, a warning is logged instead of raising an exception.
         """
         if not self.save_path.exists():
             self.save_path.mkdir(parents=True)
             logging.info(f"Created directory: {self.save_path}")
 
-        # Save image first
-        idx = self.save_image()
+        # Information on all data saving folders and file extensions
+        dict_saving = {'images': {'folder_name': 'images', 'ending': '.png'}, 
+                       'data': {'folder_name': 'data', 'ending': '.h5'}, 
+                       'annotations': {'folder_name': 'annotations', 'ending': '.json'}}
 
-        # Attempt to save data with the same index
-        try:
-            self.save_data(idx)
-        except FileExistsError:
-            logging.warning(
-                f"Data file with index {idx} already exists. Image saved, but data was not overwritten."
-            )
-        
-        # Attempt to save points and lines (annotation data) with the same index
-        try:
-            self.save_annotation(points,lines,idx)
-        except FileExistsError:
-            logging.warning(
-                f"Annotation data file with index {idx} already exists. Image saved, but line and point data was not overwritten."
+        # Find index (max index from all folders + 1)
+        max_idx = []
+        for key in dict_saving: # iterate over all saving folders
+            save_path = self.save_path / dict_saving[key]['folder_name']
+            file_extension = dict_saving[key]['ending']
+
+            if not save_path.exists():
+                save_path.mkdir(parents=True)
+                logging.info(f"Created directory: {save_path}")
+
+            pattern = re.compile(rf"(\d+){re.escape(file_extension)}$")  # regular expression pattern: filenname ends with number (one or more digits) followed by file extension
+            max_i = 0  # variable to track max index
+            for file in save_path.iterdir(): # iterate over all files in the folder
+                if file.is_file():  # skip subdirectories
+                    match = pattern.search(file.name)
+                    if match:
+                        i = int(match.group(1))  # converts the numeric part of the match to an integer
+                        max_i = max(max_i,i)
+            max_idx.append(max_i)
+        idx = max(max_idx) + 1
+
+        # Save all data
+        if idx <= 9999:
+            self.save_image(idx,dict_saving["images"])
+            self.save_data(idx,dict_saving["data"])
+            self.save_annotation(points,lines,idx,dict_saving["annotations"])
+        else:
+            raise ValueError(
+                "Maximum number of screenshots (9999) reached. Cannot save more."
             )
 
         logging.info(f"Save operation completed with index: {idx}")
         return idx        
 
-    def save_annotation(self,points,lines,idx: Optional[int] = None):
+    def save_annotation(self,points,lines,idx,dict_saving_annotations):
         """
         Save the current annotation data (points and lines) to a json file.
 
         This method saves the current annotation data drawn in the graph to a json file in the specified data save path.
-        It automatically generates a unique filename by incrementing an index if not provided.
 
         Args:
-            idx (Optional[int]): The index to use for the filename. If None, an available index is automatically determined.
+            points:                  Added points
+            lines:                   Added lines
+            idx:                     The index to use for the filename.
+            dict_saving_annotations: Dictionary containing the saving folder and file extension
 
-        Returns:
-            int: The index of the saved data file.
-
-        Raises:
-            ValueError: If the maximum number of data files (9999) has been reached.
-            FileExistsError: If a file with the generated name already exists.
-
-        Note:
-            - The data save path is created if it doesn't exist.
+        Notes:
             - The filename format is 'annotation_XXXX.json', where XXXX is a four-digit index.
             - The annotation data is not saved if there are no points and lines.
         """        
-        data_save_path = self.save_path / "annotations"
-        logging.info(f"Attempting to save annotation data to folder: {data_save_path}")
+        annotation_save_path = self.save_path / dict_saving_annotations['folder_name']
+        filename = f"annotation_{idx}{dict_saving_annotations['ending']}"
+        filepath = annotation_save_path / filename    
 
-        if not data_save_path.exists():
-            data_save_path.mkdir(parents=True)
-            logging.info(f"Created directory: {data_save_path}")
-
-        if idx is None:
-            idx = 1
-            while idx <= 9999 and (data_save_path / f"annotation_{idx}.json").exists():
-                idx += 1
-
-        if idx > 9999:
-            raise ValueError(
-                "Maximum number of data files (9999) reached. Cannot save more."
-            )
-
-        filename = f"annotation_{idx}.json"
-        filepath = data_save_path / filename    
-
-        if filepath.exists():
-            raise FileExistsError(f"File {filepath} already exists.")
+        # if filepath.exists():
+        #     raise FileExistsError(f"File {filepath} already exists.")
         
         if (not points.get("x")) and (not lines.get("start_index")):
             logging.info("There is no annotation data to save.")
@@ -959,94 +1144,51 @@ class VideoModeApp:
 
             logging.info(f"Annotation data saved successfully: {filepath}")
         logging.info("Annotation data save operation completed.")
-        return idx
 
-    def save_data(self, idx: Optional[int] = None):
+    def save_data(self, idx, dict_saving_data):
         """
         Save the current data to an HDF5 file.
 
         This method saves the current data from the data acquirer to an HDF5 file in the specified data save path.
-        It automatically generates a unique filename by incrementing an index if not provided.
 
         Args:
-            idx (Optional[int]): The index to use for the filename. If None, an available index is automatically determined.
+            idx:                     The index to use for the filename.
+            dict_saving_annotations: Dictionary containing the saving folder and file extension            
 
-        Returns:
-            int: The index of the saved data file.
-
-        Raises:
-            ValueError: If the maximum number of data files (9999) has been reached.
-            FileExistsError: If a file with the generated name already exists.
-
-        Note:
-            - The data save path is created if it doesn't exist.
+        Notes:
             - The filename format is 'data_XXXX.h5', where XXXX is a four-digit index.
         """
-        data_save_path = self.save_path / "data"
-        logging.info(f"Attempting to save data to folder: {data_save_path}")
-
-        if not data_save_path.exists():
-            data_save_path.mkdir(parents=True)
-            logging.info(f"Created directory: {data_save_path}")
-
-        if idx is None:
-            idx = 1
-            while idx <= 9999 and (data_save_path / f"data_{idx}.h5").exists():
-                idx += 1
-
-        if idx > 9999:
-            raise ValueError(
-                "Maximum number of data files (9999) reached. Cannot save more."
-            )
-
-        filename = f"data_{idx}.h5"
+        data_save_path = self.save_path / dict_saving_data['folder_name']
+        filename = f"data_{idx}{dict_saving_data['ending']}"
         filepath = data_save_path / filename
 
-        if filepath.exists():
-            raise FileExistsError(f"File {filepath} already exists.")
+        # if filepath.exists():
+        #     raise FileExistsError(f"File {filepath} already exists.")
+ 
         self.data_acquirer.data_array.to_netcdf(
             filepath
         )  # , engine="h5netcdf", format="NETCDF4")
+
         logging.info(f"Data saved successfully: {filepath}")
         logging.info("Data save operation completed.")
-        return idx
 
-    def save_image(self):
+    def save_image(self,idx,dict_saving_images):
         """
         Save the current image to a file.
 
         This method saves the current figure as a PNG image in the specified image save path.
-        It automatically generates a unique filename by incrementing an index.
-
-        Returns:
-            int: The index of the saved image file.
-
-        Raises:
-            ValueError: If the maximum number of screenshots (9999) has been reached.
 
         Note:
-            - The image save path is created if it doesn't exist.
             - The filename format is 'data_image_XXXX.png', where XXXX is a four-digit index.
         """
-        image_save_path = self.save_path / "images"
-        logging.info(f"Attempting to save image to folder: {image_save_path}")
-        if not image_save_path.exists():
-            image_save_path.mkdir(parents=True)
-            logging.info(f"Created directory: {image_save_path}")
+        image_save_path = self.save_path / dict_saving_images['folder_name']
+        filename = f"data_image_{idx}{dict_saving_images['ending']}"
+        filepath = image_save_path / filename
 
-        idx = 1
-        while idx <= 9999 and (image_save_path / f"data_image_{idx}.png").exists():
-            idx += 1
-        if idx <= 9999:
-            filename = f"data_image_{idx}.png"
-            filepath = image_save_path / filename
-            logging.info(f"Image saved successfully: {filepath}")
-        else:
-            raise ValueError(
-                "Maximum number of screenshots (9999) reached. Cannot save more."
-            )
+        self.figure.write_image(filepath)
+        
+        logging.info(f"Image saved successfully: {filepath}")
         logging.info("Image save operation completed.")
-        return idx           
 
 
 class VideoMode(VideoModeApp):

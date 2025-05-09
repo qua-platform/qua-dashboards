@@ -746,7 +746,8 @@ class VideoModeApp:
             return self.figure
 
         @self.app.callback(
-            Output("compensation-data","children"),
+            [Output("compensation-data","children"),
+             Output("added_points-data-store","data",allow_duplicate=True)],
             Input("compensation-button","n_clicks"),
             [State("added_points-data-store","data"),
              State("added_lines-data-store","data"),]
@@ -754,22 +755,51 @@ class VideoModeApp:
         def compute_compensation(n_clicks,dict_points,dict_lines):
             if n_clicks>0:
                 logging.debug(f"Callback compute_compensation triggered!")
-                direction,slope,A_inv,Transformation = self.compensation(dict_points['added_points'],dict_lines['added_lines'])
+                # Test 1
+                # direction,slope,A = self.compensation_orthonormal(dict_points['added_points'],dict_lines['added_lines'])
+                # logging.debug(f"direction: {direction}")
+                # logging.debug(f"slopes: {slope}")
+                # logging.debug(f"Transformation matrix: {A}")
+                # added_points_transformed = self.basis_change(dict_points['added_points'],A)
+                # dict_points['added_points'] = added_points_transformed
+                # Test 2
+                direction,slope,A_inv,A = self.compensation(dict_points['added_points'],dict_lines['added_lines'])
                 logging.debug(f"direction: {direction}")
                 logging.debug(f"slopes: {slope}")
                 logging.debug(f"Inverse of transformation matrix: {A_inv}")
-                logging.debug(f"Test (A*A_inv): {np.dot(A_inv, Transformation)}")
+                logging.debug(f"Test (A*A_inv): {np.dot(A_inv, A)}")
+                added_points_transformed = self.basis_change(dict_points['added_points'],A_inv)
+                logging.debug(f"added points : {dict_points['added_points']}")
+                logging.debug(f"added points transformed: {added_points_transformed}")
+                dict_points['added_points'] = added_points_transformed
                 #logging.debug(f"slopes: {direction['dy'][0]/direction['dx'][0]} and {direction['dy'][1]/direction['dx'][1]}")
-                return json.dumps(Transformation.tolist(), indent=2)#dash.no_update  # TO DO: output matrix A
+                return json.dumps(slope, indent=2),dict_points#json.dumps(Transformation.tolist(), indent=2)#dash.no_update  # TO DO: output matrix A
             else:
-                return dash.no_update
+                return dash.no_update, dash.no_update
+            
+    def basis_change(self,added_points,A_inv):
+        # Convert the 'x' and 'y' lists into a 2xN NumPy array
+        points = np.array([added_points['x'], added_points['y']])            
+        
+        # Transform each point by matrix multiplication
+        transformed = A_inv @ points # 2xN NumPy array
+
+        # Generate a dictionary of the transformed points
+        added_points_transformed = {
+            'x': transformed[0].tolist(),
+            'y': transformed[1].tolist(),
+            'index': added_points['index']
+        }
+
+        return added_points_transformed
+
 
     def compensation(self,added_points,added_lines):
         # TO DO: ensure added_lines has exactly two lines added
         # Compute direction for each line
         direction = {'dx' : [], 'dy' : []}
         for start_index, end_index in zip(added_lines['start_index'], added_lines['end_index']): # loop through lines
-            # Line start point (x1,y1) and end point (x2,y2)
+            # Line start point (x1,y1) and end point (x2,y2) 
             x1, y1 = added_points['x'][start_index], added_points['y'][start_index]
             x2, y2 = added_points['x'][end_index], added_points['y'][end_index]
             
@@ -781,24 +811,54 @@ class VideoModeApp:
         slope = [dy / dx if dx != 0 else None for dx, dy in zip(direction['dx'], direction['dy'])]
 
         # Compute transformation matrix A
-        A_inv = np.zeros((2,2))
-        if abs(slope[0]) < abs(slope[1]):  # First line more aligned with x-axis, second line more aligned with y-axis
-            A_inv[0,0] = - direction['dy'][0]
-            A_inv[0,1] =   direction["dx"][0]
-            A_inv[1,0] = - direction['dy'][1]
-            A_inv[1,1] =   direction["dx"][1]
-        else: # First line more aligned with y-axis, second line more aligned with x-axis
-            A_inv[0,0] = - direction['dy'][1]
-            A_inv[0,1] =   direction["dx"][1]
-            A_inv[1,0] = - direction['dy'][0]
-            A_inv[1,1] =   direction["dx"][0]
+        if abs(slope[0]) > abs(slope[1]):  # First line more aligned with y-axis, second line more aligned with x-axis  WHY?????
+            a = np.array([direction['dy'][0],-direction["dx"][0]]) # From first line - steeper
+            b = np.array([direction['dy'][1],-direction["dx"][1]]) # From second line - flatter
+            A_inv = np.vstack([a,b])
+        else: # First line more aligned with x-axis, second line more aligned with y-axis
+            a = np.array([direction['dy'][1],-direction["dx"][1]]) # From second line - flatter
+            b = np.array([direction['dy'][0],-direction["dx"][0]]) # From first line - flatter
+            A_inv = np.vstack([a,b])
 
-        Transformation = np.linalg.inv(A_inv)            
+        #Q, R = np.linalg.qr(A_inv)  # orthonormalization  DOES NOT DO THE RIGHT THING!!!
+        A = np.linalg.inv(A_inv)            
 
-        return direction,slope,A_inv,Transformation
-        # TO DO: Figure out whether first or second line has larger slope dy/dx. 
-        #        Flatter line has parameters a, steeper line has parameters b
-        # TO DO: Compute A
+        return direction,slope,A_inv,A
+    
+    def compensation_orthonormal(self,added_points,added_lines):
+        # TO DO: ensure added_lines has exactly two lines added
+        # Compute direction for each line
+        direction = {'dx' : [], 'dy' : []}
+        for start_index, end_index in zip(added_lines['start_index'], added_lines['end_index']): # loop through lines
+            # Line start point (x1,y1) and end point (x2,y2) 
+            x1, y1 = added_points['x'][start_index], added_points['y'][start_index]
+            x2, y2 = added_points['x'][end_index], added_points['y'][end_index]
+            
+            # Direction vector from start to end point
+            direction["dx"].append(x2-x1)
+            direction["dy"].append(y2-y1)
+
+        # Compute slope for each line
+        slope = [dy / dx if dx != 0 else None for dx, dy in zip(direction['dx'], direction['dy'])]
+        
+        # Normalize direction vectors
+        d1 = np.array([direction["dx"][0],direction["dy"][0]])
+        d2 = np.array([direction["dx"][1],direction["dy"][1]])
+        d1_unit = d1 / np.linalg.norm(d1)
+        d2_unit = d2 / np.linalg.norm(d2)
+
+        # Gram-Schmidt:
+        # Start with v1_unit
+        e1 = d1_unit
+        # Make v2 orthogonal to v1
+        d2_proj = np.dot(d2_unit, e1) * e1
+        e2 = d2_unit - d2_proj
+        e2 = e2 / np.linalg.norm(e2)
+
+        A = np.column_stack((e1, e2))
+
+        return direction,slope,A
+        
 
     def distance_to_lines(self, x, y, added_points, added_lines):
         '''

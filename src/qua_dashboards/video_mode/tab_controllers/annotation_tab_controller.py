@@ -9,21 +9,21 @@ import xarray as xr
 from dash import Dash, Input, Output, State, html, ctx
 from dash.exceptions import PreventUpdate
 
-from qua_dashboards.video_mode.tab_controllers.itab_controller import ITabController
+from qua_dashboards.video_mode.tab_controllers.base_tab_controller import BaseTabController
 from qua_dashboards.video_mode import data_registry
 from qua_dashboards.video_mode.dash_tools import xarray_to_plotly
-from qua_dashboards.video_mode.utils.annotation_tools import (
+from qua_dashboards.video_mode.utils.annotation_utils import (
     calculate_slopes,
     find_closest_line_id,
 )
-from qua_dashboards.video_mode.utils.data_tools import load_data
+from qua_dashboards.video_mode.utils.data_utils import load_data
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["AnnotationTabController"]
 
 
-class AnnotationTabController(ITabController):
+class AnnotationTabController(BaseTabController):
     """
     Controls the 'Annotation & Analysis' tab in the Video Mode application.
 

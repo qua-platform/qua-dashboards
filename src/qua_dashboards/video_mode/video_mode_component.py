@@ -11,9 +11,9 @@ from qua_dashboards.core import BaseComponent
 from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import (
     BaseDataAcquirer,
 )
-from qua_dashboards.video_mode.tab_controllers.itab_controller import ITabController
+from qua_dashboards.video_mode.tab_controllers.base_tab_controller import BaseTabController
 from qua_dashboards.video_mode import data_registry
-from qua_dashboards.video_mode.utils.data_tools import save_data
+from qua_dashboards.video_mode.utils.data_utils import save_data
 from qua_dashboards.video_mode.shared_viewer_component import SharedViewerComponent
 from qua_dashboards.video_mode.tab_controllers.live_view_tab_controller import (
     LiveViewTabController,
@@ -69,7 +69,7 @@ class VideoModeComponent(BaseComponent):
     def __init__(
         self,
         data_acquirer: BaseDataAcquirer,
-        tab_controllers: Optional[List[ITabController]] = None,
+        tab_controllers: Optional[List[BaseTabController]] = None,
         default_tab_value: Optional[str] = None,
         component_id: str = DEFAULT_COMPONENT_ID,
         data_polling_interval_s: float = 0.1,
@@ -113,7 +113,7 @@ class VideoModeComponent(BaseComponent):
             annotation_tab = AnnotationTabController(
                 component_id=f"{self.component_id}-annotation-tab",
             )
-            self.tab_controllers: List[ITabController] = [
+            self.tab_controllers: List[BaseTabController] = [
                 live_view_tab,
                 annotation_tab,
             ]
@@ -126,7 +126,7 @@ class VideoModeComponent(BaseComponent):
                 "tab controllers. The UI will lack tab-based interactions."
             )
             self._active_tab_value: str = "no-tabs-dummy"
-        elif not all(isinstance(tc, ITabController) for tc in self.tab_controllers):
+        elif not all(isinstance(tc, BaseTabController) for tc in self.tab_controllers):
             raise TypeError(
                 "All items in tab_controllers must implement ITabController."
             )

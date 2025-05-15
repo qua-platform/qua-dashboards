@@ -6,10 +6,10 @@ from dash.development.base_component import Component
 
 from qua_dashboards.core import BaseComponent
 
-__all__ = ["ITabController"]
+__all__ = ["BaseTabController"]
 
 
-class ITabController(BaseComponent, abc.ABC):
+class BaseTabController(BaseComponent, abc.ABC):
     """
     Interface for Tab Controllers.
 

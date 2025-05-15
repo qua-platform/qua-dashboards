@@ -9,7 +9,7 @@ from qua_dashboards.core import BaseComponent
 from qua_dashboards.video_mode.dash_tools import xarray_to_plotly
 from qua_dashboards.video_mode import data_registry
 
-from qua_dashboards.video_mode.utils.annotation_tools import (
+from qua_dashboards.video_mode.utils.annotation_utils import (
     generate_annotation_traces,
 )
 

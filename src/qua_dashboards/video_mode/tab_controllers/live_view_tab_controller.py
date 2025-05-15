@@ -10,7 +10,7 @@ from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import (
     BaseDataAcquirer,
     ModifiedFlags,
 )
-from qua_dashboards.video_mode.tab_controllers.itab_controller import ITabController
+from qua_dashboards.video_mode.tab_controllers.base_tab_controller import BaseTabController
 from qua_dashboards.video_mode import data_registry
 
 
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 __all__ = ["LiveViewTabController"]
 
 
-class LiveViewTabController(ITabController):
+class LiveViewTabController(BaseTabController):
     """
     Controls the 'Live View' tab in the Video Mode application.
 

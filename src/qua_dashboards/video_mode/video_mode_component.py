@@ -11,7 +11,9 @@ from qua_dashboards.core import BaseComponent
 from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import (
     BaseDataAcquirer,
 )
-from qua_dashboards.video_mode.tab_controllers.base_tab_controller import BaseTabController
+from qua_dashboards.video_mode.tab_controllers.base_tab_controller import (
+    BaseTabController,
+)
 from qua_dashboards.video_mode import data_registry
 from qua_dashboards.video_mode.utils.data_utils import save_data
 from qua_dashboards.video_mode.shared_viewer_component import SharedViewerComponent
@@ -86,7 +88,6 @@ class VideoModeComponent(BaseComponent):
             component_id: Unique ID for this component instance.
             data_polling_interval_s: Interval for polling data.
             layout_columns: Number of layout columns (for grid systems).
-            annotation_save_load_path: Path for saving/loading annotations.
             **kwargs: Additional keyword arguments for BaseComponent.
         """
         super().__init__(component_id=component_id, **kwargs)
@@ -209,7 +210,7 @@ class VideoModeComponent(BaseComponent):
                         color="success",
                         className="me-2",
                     ),
-                    width="80px",
+                    width=3,
                 ),
             ],
             className="mb-3 g-2 justify-content-start",
@@ -248,7 +249,7 @@ class VideoModeComponent(BaseComponent):
                             lg=4,
                             className="mb-3 mb-lg-0",
                             style={
-                                "maxHeight": "calc(100vh - 70px)",  # Adjust as needed
+                                "maxHeight": "calc(100vh - 70px)",
                                 "overflowY": "auto",
                             },
                         ),
@@ -257,7 +258,7 @@ class VideoModeComponent(BaseComponent):
                             width=12,
                             lg=8,
                             style={
-                                "maxHeight": "calc(100vh - 70px)",  # Adjust as needed
+                                "maxHeight": "calc(100vh - 70px)",
                                 "overflowY": "hidden",  # Graph usually handles its own scroll
                             },
                         ),
@@ -356,7 +357,8 @@ class VideoModeComponent(BaseComponent):
                 message = (
                     f"Error saving data, please configure the data_root_folder. "
                     "To change the data_root_folder, please run "
-                    "**qualibrate-config config --storage-location {data_root_folder}**"
+                    "**qualibrate-config config --storage-location "
+                    "<your-desired-root-folder>}**"
                 )
                 logger.error(f"{message}: \n{e}")
                 return dbc.Alert(
@@ -367,8 +369,9 @@ class VideoModeComponent(BaseComponent):
 
             message = f"Data **#{details['idx']}** saved to {details['path']}."
             if ".qualibrate" in str(details["path"]):
-                message += "To change the data_root_folder, please run "
-                "**qualibrate-config config --storage-location {data_root_folder}**"
+                message += "To change the data root folder, please run "
+                "**qualibrate-config config --storage-location "
+                "<your-desired-root-folder>}**"
 
             return dbc.Alert(
                 dcc.Markdown(message),

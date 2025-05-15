@@ -97,7 +97,6 @@ def generate_annotation_traces(
         )
 
     # Point labels (e.g., "P1", "P2" based on order or a specific label property)
-    # For simplicity, using a part of the ID or index for now
     texts = [p_id for p_id in point_ids]
 
     points_trace = go.Scatter(

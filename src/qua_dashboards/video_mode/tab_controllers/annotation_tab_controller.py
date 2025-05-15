@@ -344,7 +344,7 @@ class AnnotationTabController(BaseTabController):
         orchestrator_stores: Dict[str, Any],
         shared_viewer_store_ids: Dict[
             str, Any
-        ],  # Note: This may not be needed directly by ATC
+        ], 
         shared_viewer_graph_id: Dict[str, str],
     ) -> None:
         """Registers all callbacks for the AnnotationTabController."""
@@ -358,10 +358,6 @@ class AnnotationTabController(BaseTabController):
         viewer_data_store_id = orchestrator_stores[
             VideoModeComponent.VIEWER_DATA_STORE_SUFFIX
         ]
-        # viewer_layout_config_store_id = orchestrator_stores[
-        #     VideoModeComponent.VIEWER_LAYOUT_CONFIG_STORE_SUFFIX
-        # ]
-
         self._register_import_live_frame_callback(
             app, latest_processed_data_store_id, viewer_data_store_id
         )
@@ -749,7 +745,6 @@ class AnnotationTabController(BaseTabController):
                 return "No annotations found in static data for analysis."
 
             annotations_data = static_data_object["annotations"]
-            # calculate_slopes will need to be adapted for the new annotations structure
             slopes = calculate_slopes(annotations_data)
             if slopes:
                 return json.dumps(slopes, indent=2)

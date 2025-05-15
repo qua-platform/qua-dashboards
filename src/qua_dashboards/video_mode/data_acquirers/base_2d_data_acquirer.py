@@ -96,8 +96,8 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                                 component_id=self.component_id,
                                 span=self.x_axis.span,
                                 points=self.x_axis.points,
-                                min_span=0.001,  # Example
-                                max_span=None,  # Example
+                                min_span=0.001,
+                                max_span=None,
                                 units=self.x_axis.units,
                             ),
                             create_axis_layout(
@@ -105,8 +105,8 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                                 component_id=self.component_id,
                                 span=self.y_axis.span,
                                 points=self.y_axis.points,
-                                min_span=0.001,  # Example
-                                max_span=None,  # Example
+                                min_span=0.001,
+                                max_span=None,
                                 units=self.y_axis.units,
                             ),
                         ],
@@ -167,7 +167,7 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                     (self.y_axis.name, self.y_axis.sweep_values_with_offset),
                     (self.x_axis.name, self.x_axis.sweep_values_with_offset),
                 ],
-                attrs={"long_name": "Signal"},  # You can customize this
+                attrs={"long_name": "Signal"},
             )
 
             for axis in [self.x_axis, self.y_axis]:

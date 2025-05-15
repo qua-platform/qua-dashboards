@@ -9,7 +9,7 @@ import dash_bootstrap_components as dbc
 from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import BaseDataAcquirer
 from qua_dashboards.video_mode.sweep_axis import SweepAxis
 from qua_dashboards.core import ModifiedFlags
-from qua_dashboards.video_mode.dash_tools import create_axis_layout
+from qua_dashboards.video_mode.utils.dash_utils import create_axis_layout
 
 
 logger = logging.getLogger(__name__)

@@ -11,7 +11,7 @@ from dash.exceptions import PreventUpdate
 
 from qua_dashboards.video_mode.tab_controllers.base_tab_controller import BaseTabController
 from qua_dashboards.video_mode import data_registry
-from qua_dashboards.video_mode.dash_tools import xarray_to_plotly
+from qua_dashboards.video_mode.utils.dash_utils import xarray_to_plotly
 from qua_dashboards.video_mode.utils.annotation_utils import (
     calculate_slopes,
     find_closest_line_id,

@@ -56,7 +56,7 @@ class RandomDataAcquirer(Base2DDataAcquirer):
             component_id=component_id, x_axis=x_axis, y_axis=y_axis, **kwargs
         )
 
-    def _perform_actual_acquisition(self) -> np.ndarray:
+    def perform_actual_acquisition(self) -> np.ndarray:
         """Simulates data acquisition by sleeping and returning random data.
 
         This method is called by the background thread in BaseDataAcquirer.

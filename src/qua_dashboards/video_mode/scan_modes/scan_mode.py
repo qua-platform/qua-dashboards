@@ -1,14 +1,13 @@
-from qua_dashboards.core import BaseUpdatableComponent
-from qua_dashboards.utils.qua_types import QuaVariableFloat
-
+from abc import ABC, abstractmethod
+from typing import Generator, Sequence, Tuple
 
 import numpy as np
 from matplotlib import axes, figure, pyplot as plt
 from matplotlib.ticker import MultipleLocator
+from dash import Dash
 
-
-from abc import ABC, abstractmethod
-from typing import Generator, Sequence, Tuple
+from qua_dashboards.core import BaseUpdatableComponent
+from qua_dashboards.utils.qua_types import QuaVariableFloat
 
 
 class ScanMode(BaseUpdatableComponent, ABC):
@@ -19,6 +18,12 @@ class ScanMode(BaseUpdatableComponent, ABC):
 
     def __init__(self, component_id: str = "scan-mode"):
         super().__init__(component_id=component_id)
+
+    def get_layout(self):
+        return None
+
+    def register_callbacks(self, app: Dash):
+        pass
 
     @abstractmethod
     def get_idxs(self, x_points: int, y_points: int) -> Tuple[np.ndarray, np.ndarray]:

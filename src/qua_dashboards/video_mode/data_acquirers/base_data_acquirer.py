@@ -53,7 +53,7 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
 
         self._data_history_raw: List[
             Any
-        ] = []  # Stores raw snapshots from _perform_actual_acquisition
+        ] = []  # Stores raw snapshots from perform_actual_acquisition
         self._latest_processed_data: Optional[Any] = None  # Stores the averaged data
 
         self._data_lock: threading.Lock = threading.Lock()
@@ -63,7 +63,7 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
         self._acquisition_status: str = "stopped"  # stopped, running, error
 
     @abc.abstractmethod
-    def _perform_actual_acquisition(self) -> Any:
+    def perform_actual_acquisition(self) -> Any:
         """
         The core raw data acquisition method implemented by subclasses.
 
@@ -119,7 +119,7 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
         while not self._stop_event.is_set():
             loop_start_time = time.perf_counter()
             try:
-                raw_snapshot = self._perform_actual_acquisition()
+                raw_snapshot = self.perform_actual_acquisition()
 
                 with self._data_lock:
                     self._data_history_raw.append(raw_snapshot)

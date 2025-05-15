@@ -1,15 +1,13 @@
 # %% Imports
-from qua_dashboards.video_mode.utils.dash_utils import *
 import numpy as np
 from matplotlib import pyplot as plt
-from qua_dashboards.video_mode.voltage_parameter import *
-from qua_dashboards.video_mode.sweep_axis import *
-from qua_dashboards.video_mode.data_acquirers import *
+
+from qua_dashboards.video_mode.voltage_parameter import VoltageParameter
+from qua_dashboards.video_mode.sweep_axis import SweepAxis
+from qua_dashboards.video_mode.data_acquirers import OPXDataAcquirer
 from qua_dashboards.video_mode import scan_modes
-from qua_dashboards.video_mode.inner_loop_actions.basic_inner_loop_action import (
-    BasicInnerLoopAction,
-)
-# from qua_dashboards.video_mode import VideoModeApp
+from qua_dashboards.video_mode.inner_loop_actions import BasicInnerLoopAction
+from qua_dashboards.video_mode.video_mode_component import VideoModeComponent
 
 from quam.components import (
     BasicQuam,
@@ -62,10 +60,10 @@ qmm = QuantumMachinesManager(host="172.16.33.101", cluster_name="CS_1")
 config = machine.generate_config()
 
 # Open the quantum machine
-# qm = qmm.open_qm(config, close_other_machines=True)
+qm = qmm.open_qm(config, close_other_machines=True)
 
 
-# %% Run OPXQuamDataAcquirer
+# %% Run OPXDataAcquirer
 
 x_offset = VoltageParameter(name="X Voltage Offset", initial_value=0.0)
 y_offset = VoltageParameter(name="Y Voltage Offset", initial_value=0.0)
@@ -113,9 +111,12 @@ if params["mode"] == "execution":
     results = data_acquirer.perform_actual_acquisition()
     print(f"Mean of results: {np.mean(np.abs(results))}")
 
-    # plt.figure()
-    # plt.pcolormesh(results)
-    # plt.colorbar()
+results = data_acquirer.perform_actual_acquisition()
+print(f"Mean of results: {np.mean(np.abs(results))}")
+
+# plt.figure()
+# plt.pcolormesh(results)
+# plt.colorbar()
 
 # %% Run Video Mode
 live_plotter = VideoModeComponent(data_acquirer=data_acquirer, update_interval=1)

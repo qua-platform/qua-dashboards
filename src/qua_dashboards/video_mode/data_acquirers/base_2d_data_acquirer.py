@@ -23,7 +23,7 @@ class Base2DDataAcquirer(BaseDataAcquirer):
 
     Inherits from BaseDataAcquirer and adds explicit handling for an X and Y
     sweep axis. This class is intended for acquirers that produce 2D grid data.
-    The raw data returned by `_perform_actual_acquisition` in subclasses
+    The raw data returned by `perform_actual_acquisition` in subclasses
     is typically expected to be a 2D numpy array or similar structure that
     can be mapped to an xarray.DataArray by the consumer.
     """

@@ -9,10 +9,10 @@ from qua_dashboards.video_mode import scan_modes
 from qua_dashboards.video_mode.inner_loop_actions.basic_inner_loop_action import (
     BasicInnerLoopAction,
 )
-from qua_dashboards.video_mode import VideoModeApp
+# from qua_dashboards.video_mode import VideoModeApp
 
 from quam.components import (
-    BasicQuAM,
+    BasicQuam,
     SingleChannel,
     InOutSingleChannel,
     pulses,
@@ -29,7 +29,7 @@ logging.getLogger("hpack.hpack").setLevel(logging.WARNING)
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
 # %% Create config and connect to QM
-machine = BasicQuAM()
+machine = BasicQuam()
 
 machine.channels["ch1"] = SingleChannel(
     opx_output=("con1", 1),
@@ -46,10 +46,11 @@ machine.channels["ch1_readout"] = InOutSingleChannel(
     opx_output=("con1", 3),
     opx_input=("con1", 1),
     intermediate_frequency=0,
-    operations={"readout": readout1_pulse},
+    operations={"readout": readout_pulse},
 )
 
-qmm = QuantumMachinesManager(host="192.168.8.4", cluster_name="Cluster_1")
+# qmm = QuantumMachinesManager(host="192.168.8.4", cluster_name="Cluster_1")
+qmm = QuantumMachinesManager(host="172.16.33.101", cluster_name="CS_1")
 config = machine.generate_config()
 
 # Open the quantum machine
@@ -57,7 +58,6 @@ config = machine.generate_config()
 
 
 # %% Run OPXQuamDataAcquirer
-
 
 x_offset = VoltageParameter(name="X Voltage Offset", initial_value=0.0)
 y_offset = VoltageParameter(name="Y Voltage Offset", initial_value=0.0)
@@ -70,7 +70,7 @@ inner_loop_action = BasicInnerLoopAction(
 )
 
 scan_mode = scan_modes.SwitchRasterScan()
-data_acquirer = OPXQuamDataAcquirer(
+data_acquirer = OPXDataAcquirer(
     qmm=qmm,
     machine=machine,
     qua_inner_loop_action=inner_loop_action,

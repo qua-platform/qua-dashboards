@@ -5,7 +5,6 @@ import logging
 __all__ = ["VoltageParameter"]
 
 
-# VoltageParameter Class remains unchanged
 class VoltageParameter:
     def __init__(self, name, label=None, initial_value=0.0, units="V"):
         self.name = name

@@ -110,10 +110,10 @@ class BaseDataAcquirer(BaseDashComponent, ABC):
             self.data_array.coords[axis.name].attrs.update(attrs)
 
         mean_abs_data = np.mean(np.abs(averaged_data))
-        logging.debug(
-            f"Data acquired with shape: {self.data_array.shape}, "
-            f"mean(abs(data)) = {mean_abs_data}"
-        )
+        # logging.debug(
+        #     f"Data acquired with shape: {self.data_array.shape}, "
+        #     f"mean(abs(data)) = {mean_abs_data}"
+        # )
         return self.data_array
 
     def get_dash_components(self, include_subcomponents: bool = True) -> List[html.Div]:

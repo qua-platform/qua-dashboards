@@ -2,6 +2,7 @@ import json
 import logging
 from typing import Dict, Any, List, Optional
 
+import dash
 import dash_bootstrap_components as dbc
 import numpy as np
 import xarray as xr
@@ -368,7 +369,9 @@ class AnnotationTabController(ITabController):
             app, shared_viewer_graph_id, viewer_data_store_id
         )
         self._register_clear_annotations_callback(app, viewer_data_store_id)
-        self._register_load_from_disk_callback(app, viewer_data_store_id)
+        self._register_load_from_disk_callback(
+            app, viewer_data_store_id, orchestrator_stores
+        )
         self._register_analysis_callback(app, viewer_data_store_id)
         self._register_shortcut_callback(app)
 
@@ -804,28 +807,55 @@ class AnnotationTabController(ITabController):
         )
 
     def _register_load_from_disk_callback(
-        self, app: Dash, viewer_data_store_id: Dict[str, str]
+        self,
+        app: Dash,
+        viewer_data_store_id: Dict[str, str],
+        orchestrator_stores: Dict[str, Any],
     ) -> None:
+        from qua_dashboards.video_mode.video_mode_component import VideoModeComponent
+
+        main_status_alert_id = orchestrator_stores.get(
+            VideoModeComponent._MAIN_STATUS_ALERT_ID_SUFFIX
+        )
+
         @app.callback(
             Output(viewer_data_store_id, "data", allow_duplicate=True),
+            Output(main_status_alert_id, "children", allow_duplicate=True),
             Input(self._get_id(self._LOAD_FROM_DISK_BUTTON_SUFFIX), "n_clicks"),
             State(self._get_id(self._LOAD_FROM_DISK_INPUT_SUFFIX), "value"),
             State(viewer_data_store_id, "data"),
             prevent_initial_call=True,
         )
         def load_from_disk_callback(n_clicks, idx, current_viewer_data_ref):
-            if not n_clicks or not idx:
+            if not n_clicks:
                 raise PreventUpdate
-            
+            if not idx:
+                return (
+                    dash.no_update,
+                    dbc.Alert(
+                        "Please provide an input idx to load data.",
+                        color="warning",
+                        dismissable=True,
+                    ),
+                )
             data = load_data(idx)
-            
             if not isinstance(data, dict):
                 raise PreventUpdate
             new_version = data_registry.set_data(data_registry.STATIC_DATA_KEY, data)
             self._reset_transient_state()
             if data.get("base_image_data") is not None:
                 self._update_click_tolerance(data["base_image_data"])
-
-            self._next_point_id_counter = len(data.get("annotations", {}).get("points", []))
-            self._next_line_id_counter = len(data.get("annotations", {}).get("lines", []))
-            return {"key": data_registry.STATIC_DATA_KEY, "version": new_version}
+            self._next_point_id_counter = len(
+                data.get("annotations", {}).get("points", [])
+            )
+            self._next_line_id_counter = len(
+                data.get("annotations", {}).get("lines", [])
+            )
+            return (
+                {"key": data_registry.STATIC_DATA_KEY, "version": new_version},
+                dbc.Alert(
+                    f"Successfully loaded data for idx '{idx}'.",
+                    color="success",
+                    dismissable=True,
+                ),
+            )

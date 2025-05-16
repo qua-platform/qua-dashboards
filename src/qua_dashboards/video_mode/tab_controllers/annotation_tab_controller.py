@@ -9,9 +9,11 @@ import xarray as xr
 from dash import Dash, Input, Output, State, html, ctx
 from dash.exceptions import PreventUpdate
 
-from qua_dashboards.video_mode.tab_controllers.base_tab_controller import BaseTabController
+from qua_dashboards.video_mode.tab_controllers.base_tab_controller import (
+    BaseTabController,
+)
 from qua_dashboards.video_mode import data_registry
-from qua_dashboards.video_mode.dash_tools import xarray_to_plotly
+from qua_dashboards.video_mode.utils.dash_utils import xarray_to_plotly
 from qua_dashboards.video_mode.utils.annotation_utils import (
     calculate_slopes,
     find_closest_line_id,
@@ -256,7 +258,7 @@ class AnnotationTabController(BaseTabController):
             # Update click tolerance if there's a base image in the default
             if default_obj.get("base_image_data") is not None:
                 fig_dict = xarray_to_plotly(default_obj["base_image_data"]).to_dict()
-                self._update_click_tolerance(fig_dict)
+                self._update_click_tolerance(fig_dict=fig_dict)
 
         viewer_data_store_payload = {
             "key": data_registry.STATIC_DATA_KEY,
@@ -274,21 +276,32 @@ class AnnotationTabController(BaseTabController):
         logger.info(f"{self.component_id} deactivated.")
         self._reset_transient_state()  # Clear selections when tab is left
 
-    def _update_click_tolerance(self, base_image_data: Optional[xr.DataArray]) -> None:
+    def _update_click_tolerance(
+        self,
+        base_image_data: Optional[xr.DataArray] = None,
+        fig_dict: Optional[Dict[str, Any]] = None,
+    ) -> None:
         """Updates the absolute click tolerance based on figure dimensions."""
-        if (
-            base_image_data is None
-            or not isinstance(base_image_data, xr.DataArray)
-            or base_image_data.size == 0
-        ):
-            self._absolute_click_tolerance = 0.01  # Default small absolute
-            logger.debug(
-                f"{self.component_id}: Base image is None or empty, using default tolerance."
+        if base_image_data is None and fig_dict is None:
+            logger.warning(
+                f"{self.component_id}: No base image or figure dict provided. "
+                "Using default tolerance."
             )
+            self._absolute_click_tolerance = 0.01  # Default small absolute
+            return
+
+        if isinstance(base_image_data, xr.DataArray):
+            fig_dict = xarray_to_plotly(base_image_data).to_dict()
+
+        if fig_dict is None:
+            logger.warning(
+                f"{self.component_id}: No figure dict provided. "
+                "Using default tolerance."
+            )
+            self._absolute_click_tolerance = 0.01  # Default small absolute
             return
         try:
             # Convert to figure dict to get ranges (assuming xarray_to_plotly works)
-            fig_dict = xarray_to_plotly(base_image_data).to_dict()
             layout = fig_dict.get("layout", {})
 
             x_axis_key = next(
@@ -342,9 +355,7 @@ class AnnotationTabController(BaseTabController):
         self,
         app: Dash,
         orchestrator_stores: Dict[str, Any],
-        shared_viewer_store_ids: Dict[
-            str, Any
-        ], 
+        shared_viewer_store_ids: Dict[str, Any],
         shared_viewer_graph_id: Dict[str, str],
     ) -> None:
         """Registers all callbacks for the AnnotationTabController."""
@@ -406,7 +417,7 @@ class AnnotationTabController(BaseTabController):
                 data_registry.STATIC_DATA_KEY, new_static_object
             )
             self._reset_transient_state()
-            self._update_click_tolerance(base_image)
+            self._update_click_tolerance(base_image_data=base_image)
 
             logger.info(
                 f"{self.component_id}: Imported live frame. New static data version: {new_version}"
@@ -839,7 +850,7 @@ class AnnotationTabController(BaseTabController):
             new_version = data_registry.set_data(data_registry.STATIC_DATA_KEY, data)
             self._reset_transient_state()
             if data.get("base_image_data") is not None:
-                self._update_click_tolerance(data["base_image_data"])
+                self._update_click_tolerance(base_image_data=data["base_image_data"])
             self._next_point_id_counter = len(
                 data.get("annotations", {}).get("points", [])
             )

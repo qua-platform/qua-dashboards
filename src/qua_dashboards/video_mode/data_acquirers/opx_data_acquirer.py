@@ -83,6 +83,15 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                          Defaults to ["I", "Q"].
             **kwargs: Additional arguments for Base2DDataAcquirer.
         """
+        super().__init__(
+            x_axis=x_axis,
+            y_axis=y_axis,
+            component_id=component_id,
+            num_software_averages=num_software_averages,
+            acquisition_interval_s=acquisition_interval_s,
+            **kwargs,
+        )
+
         self.qmm: QuantumMachinesManager = qmm
         self.machine: Any = machine
         self.qua_config: Dict[str, Any] = self.machine.generate_config()
@@ -100,18 +109,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self.stream_vars: List[str] = stream_vars or self.stream_vars_default
         self.result_types: List[str] = self.result_types_default
 
-        self._initialize_qm_and_program(force_recompile=True)
-
-        super().__init__(
-            x_axis=x_axis,
-            y_axis=y_axis,
-            component_id=component_id,
-            num_software_averages=num_software_averages,
-            acquisition_interval_s=acquisition_interval_s,
-            **kwargs,
-        )
-
-    def _generate_qua_program(self) -> Program:
+    def generate_qua_program(self) -> Program:
         """
         Generates the QUA program for the 2D scan.
         """
@@ -163,7 +161,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                         buffered_streams[self.stream_vars[i]]
                     )  # type: ignore
 
-                combined_qua_stream.save_all("all_streams_combined")
+                combined_qua_stream.save("all_streams_combined")
 
         self.qua_program = prog
         return prog
@@ -181,7 +179,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
         if self.qua_program is None or force_recompile:
             logger.info(f"Generating QUA program for {self.component_id}.")
-            self._generate_qua_program()
+            self.generate_qua_program()
 
         if self.qm_job is None or not self.qm_job.is_processing() or force_recompile:  # type: ignore
             if self.qm_job is not None:
@@ -192,7 +190,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                     logger.warning(f"Could not halt previous QM job: {e}")
 
             if self.qua_program is None:
-                self._generate_qua_program()
+                self.generate_qua_program()
 
             logger.info(f"Executing QUA program for {self.component_id}.")
             self.qm_job = self.qm.execute(self.qua_program)  # type: ignore
@@ -256,7 +254,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
         return output_data_2d
 
-    def _perform_actual_acquisition(self) -> np.ndarray:
+    def perform_actual_acquisition(self) -> np.ndarray:
         if self.qm_job is None or not self.qm_job.is_processing():  # type: ignore
             logger.warning(
                 f"QM job for {self.component_id} is not running or None. Attempting to re-initialize."
@@ -269,9 +267,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
         start_time = time.perf_counter()
         try:
-            fetched_results_tuple: Tuple = self.qm_job.result_handles.get(
-                "all_streams_combined"
-            ).fetch_all(timeout=2)  # type: ignore
+            result_handle = self.qm_job.result_handles.get("all_streams_combined")
+            fetched_results_tuple = result_handle.fetch_all()
         except Exception as e:
             logger.error(
                 f"Error fetching results from QM job for {self.component_id}: {e}"

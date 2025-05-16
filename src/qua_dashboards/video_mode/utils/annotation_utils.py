@@ -115,7 +115,7 @@ def generate_annotation_traces(
         hoverinfo="text",  # Show text on hover
         customdata=point_ids,  # Store unique point ID
         name="annotations_points",  # Consistent name for viewer identification
-        meta={"layer": "above"},  # Ensure drawn on top
+        zorder=2,
     ).to_plotly_json()
     traces.append(points_trace)
 
@@ -129,7 +129,7 @@ def generate_annotation_traces(
             ),  # Slightly transparent white
             hoverinfo="none",
             name="annotations_lines",  # Consistent name
-            meta={"layer": "above"},
+            zorder=1,
         ).to_plotly_json()
         traces.append(lines_trace)
 
@@ -211,16 +211,30 @@ def find_closest_line_id(
     Returns:
         The string ID of the closest line, or None.
     """
-    min_dist = tolerance
+    max_dist = tolerance
     closest_l_id: Optional[str] = None
 
+    logger.debug(
+        f"Starting find_closest_line_id ||||||||||||||| with x_click={x_click}, y_click={y_click}, tolerance={tolerance}"
+    )
+    logger.debug(
+        f"||||||||||||||| Annotations data lines: {annotations_data.get('lines', [])}"
+    )
+
     for line in annotations_data.get("lines", []):
+        logger.debug(f"||||||||||||||| Checking line: {line}")
         coords1 = get_point_coords_by_id(annotations_data, line["start_point_id"])
         coords2 = get_point_coords_by_id(annotations_data, line["end_point_id"])
 
+        logger.debug(
+            " ||||||||||||||| Start coords: %s, End coords: %s",
+            coords1,
+            coords2,
+        )
+
         if coords1 is None or coords2 is None:
             logger.warning(
-                f"Skipping line {line['id']} due to missing point coordinates."
+                f"||||||||||||||| Skipping line {line['id']} due to missing point coordinates."
             )
             continue
 
@@ -230,19 +244,34 @@ def find_closest_line_id(
         dx, dy = x2 - x1, y2 - y1
         d_sq = dx**2 + dy**2
 
+        logger.debug(f"||||||||||||||| dx: {dx}, dy: {dy}, d_sq: {d_sq}")
+
         if np.isclose(d_sq, 0):  # Line is a point
             dist = np.sqrt((x_click - x1) ** 2 + (y_click - y1) ** 2)
+            logger.debug(
+                f"||||||||||||||| Line is a point. Distance from click: {dist}"
+            )
         else:
             # Project click point onto the line segment
             t = ((x_click - x1) * dx + (y_click - y1) * dy) / d_sq
             t = max(0.0, min(1.0, t))  # Clamp t to the segment
             proj_x, proj_y = x1 + t * dx, y1 + t * dy
             dist = np.sqrt((x_click - proj_x) ** 2 + (y_click - proj_y) ** 2)
+            logger.debug(
+                f"||||||||||||||| Projection t: {t}, proj_x: {proj_x}, proj_y: {proj_y}, "
+                f"Distance: {dist}"
+            )
 
-        if dist < min_dist:
-            min_dist = dist
+        if dist < max_dist:
+            logger.debug(
+                f"||||||||||||||| New closest line found: {line['id']} with distance {dist}"
+            )
+            max_dist = dist
             closest_l_id = line["id"]
 
+    logger.debug(
+        f"||||||||||||||| Closest line id: {closest_l_id} with distance {max_dist}"
+    )
     return closest_l_id
 
 

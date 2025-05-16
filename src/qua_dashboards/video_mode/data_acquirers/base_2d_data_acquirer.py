@@ -9,7 +9,7 @@ import dash_bootstrap_components as dbc
 from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import BaseDataAcquirer
 from qua_dashboards.video_mode.sweep_axis import SweepAxis
 from qua_dashboards.core import ModifiedFlags
-from qua_dashboards.video_mode.dash_tools import create_axis_layout
+from qua_dashboards.video_mode.utils.dash_utils import create_axis_layout
 
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ class Base2DDataAcquirer(BaseDataAcquirer):
 
     Inherits from BaseDataAcquirer and adds explicit handling for an X and Y
     sweep axis. This class is intended for acquirers that produce 2D grid data.
-    The raw data returned by `_perform_actual_acquisition` in subclasses
+    The raw data returned by `perform_actual_acquisition` in subclasses
     is typically expected to be a 2D numpy array or similar structure that
     can be mapped to an xarray.DataArray by the consumer.
     """

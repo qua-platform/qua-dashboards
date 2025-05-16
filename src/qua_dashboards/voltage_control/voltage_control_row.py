@@ -11,7 +11,7 @@ from dash import Input, Output, State, ClientsideFunction, html
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 
-from .voltage_parameter_protocol import VoltageParameterProtocol
+from qua_dashboards.core import ParameterProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ class VoltageControlRow:
     def __init__(
         self,
         input_id_type: str,
-        param: VoltageParameterProtocol,
+        param: ParameterProtocol,
     ):
         self.input_id_type = input_id_type
         self.param = param
@@ -112,7 +112,7 @@ class VoltageControlRow:
                     },
                 ),
                 # Hidden Div to trigger clientside callback for blur
-                html.Div(id=self.blur_trigger_id, style={"display": "none"}),
+                html.Div(id=self.blur_trigger_id, style={"display": "none"}),  # type: ignore
             ],
             align="center",
             className="mb-2 g-3 flex-nowrap",

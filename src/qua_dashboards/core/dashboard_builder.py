@@ -7,6 +7,8 @@ from typing import Sequence, List, Dict, Any
 import logging
 from dash import dcc
 
+__all__ = ["build_dashboard"]
+
 logger = logging.getLogger(__name__)
 
 

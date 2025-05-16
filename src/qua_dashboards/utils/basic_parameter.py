@@ -6,7 +6,7 @@ __all__ = ["BasicParameter"]
 
 
 class BasicParameter:
-    def __init__(self, name, label=None, initial_value=0.0, units="V"):
+    def __init__(self, name, label=None, units="V", initial_value=0.0):
         self.name = name
         self.label = label
         self.latest_value = initial_value

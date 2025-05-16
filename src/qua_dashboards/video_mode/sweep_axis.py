@@ -3,7 +3,7 @@ from typing import Optional
 
 import numpy as np
 
-from qua_dashboards.core.basic_parameter import BasicParameter
+from qua_dashboards.utils.basic_parameter import BasicParameter
 
 
 __all__ = ["SweepAxis"]

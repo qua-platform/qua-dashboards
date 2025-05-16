@@ -2,7 +2,6 @@
 import numpy as np
 from matplotlib import pyplot as plt
 from qm import QuantumMachinesManager, SimulationConfig, generate_qua_script
-import logging
 from quam.components import (
     BasicQuam,
     SingleChannel,
@@ -12,21 +11,21 @@ from quam.components import (
 )
 
 from qua_dashboards.core import BasicParameter
-from qua_dashboards.video_mode.sweep_axis import SweepAxis
-from qua_dashboards.video_mode.data_acquirers import OPXDataAcquirer
-from qua_dashboards.video_mode import scan_modes
-from qua_dashboards.video_mode.inner_loop_actions import BasicInnerLoopAction
-from qua_dashboards.video_mode.video_mode_component import VideoModeComponent
+from qua_dashboards.utils import setup_logging
+from qua_dashboards.video_mode import (
+    SweepAxis,
+    OPXDataAcquirer,
+    scan_modes,
+    BasicInnerLoopAction,
+    VideoModeComponent,
+)
+
 
 params = dict(
     mode="execution"  # simulation | execution | video_mode
 )
 
-
-# Update the logging configuration
-logging.basicConfig(level=logging.DEBUG)
-logging.getLogger("hpack.hpack").setLevel(logging.WARNING)
-logging.getLogger("matplotlib").setLevel(logging.WARNING)
+logger = setup_logging(__name__)
 
 # %% Create config and connect to QM
 machine = BasicQuam()

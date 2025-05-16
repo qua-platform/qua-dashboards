@@ -4,6 +4,8 @@ Defines the protocol for parameter objects that can be used in control component
 
 from typing import Protocol, runtime_checkable
 
+__all__ = ["ParameterProtocol"]
+
 
 @runtime_checkable
 class ParameterProtocol(Protocol):

@@ -13,8 +13,7 @@ from dash import (
     Output,
 )
 
-from qua_dashboards.core import BaseComponent
-from .voltage_parameter_protocol import VoltageParameterProtocol
+from qua_dashboards.core import BaseComponent, ParameterProtocol
 
 from .voltage_control_row import VoltageControlRow, format_voltage
 
@@ -34,7 +33,7 @@ class VoltageControlComponent(BaseComponent):
     def __init__(
         self,
         component_id: str,
-        voltage_parameters: Sequence[VoltageParameterProtocol],
+        voltage_parameters: Sequence[ParameterProtocol],
         update_interval_ms: int = 1000,
         layout_columns: int = 3,
     ):

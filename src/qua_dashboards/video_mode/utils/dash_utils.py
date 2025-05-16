@@ -50,7 +50,9 @@ def xarray_to_plotly(da: xr.DataArray):
             colorbar=dict(title=zaxis_label),
         )
     )
-    fig.update_layout(xaxis_title=xaxis_label, yaxis_title=yaxis_label)
+    fig.update_layout(
+        xaxis_title=xaxis_label, yaxis_title=yaxis_label, template="plotly_dark"
+    )
     return fig
 
 
@@ -73,7 +75,7 @@ def create_axis_layout(
     return dbc.Col(
         dbc.Card(
             [
-                dbc.CardHeader(axis.upper()),
+                dbc.CardHeader(axis.upper(), className="text-light"),
                 dbc.CardBody(
                     [
                         create_input_field(
@@ -83,7 +85,7 @@ def create_axis_layout(
                             min=min_span,
                             max=max_span,
                             input_style={"width": "100px"},
-                            units=units,
+                            units=units if units is not None else "",
                         ),
                         create_input_field(
                             id=ids["points"],
@@ -93,10 +95,13 @@ def create_axis_layout(
                             max=501,
                             step=1,
                         ),
-                    ]
+                    ],
+                    className="text-light",
                 ),
             ],
-            className="h-100",
+            color="dark",
+            inverse=True,
+            className="h-100 tab-card-dark",
         ),
         md=6,
         className="mb-3",

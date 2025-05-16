@@ -1,8 +1,7 @@
 # %% Imports
 import numpy as np
 from matplotlib import pyplot as plt
-from qm import QuantumMachinesManager
-import logging
+from qm import QuantumMachinesManager, SimulationConfig, generate_qua_script
 from quam.components import (
     BasicQuam,
     SingleChannel,
@@ -11,22 +10,22 @@ from quam.components import (
     StickyChannelAddon,
 )
 
-from qua_dashboards.video_mode.voltage_parameter import VoltageParameter
-from qua_dashboards.video_mode.sweep_axis import SweepAxis
-from qua_dashboards.video_mode.data_acquirers import OPXDataAcquirer
-from qua_dashboards.video_mode import scan_modes
-from qua_dashboards.video_mode.inner_loop_actions import BasicInnerLoopAction
-from qua_dashboards.video_mode.video_mode_component import VideoModeComponent
+from qua_dashboards.core import BasicParameter
+from qua_dashboards.utils import setup_logging
+from qua_dashboards.video_mode import (
+    SweepAxis,
+    OPXDataAcquirer,
+    scan_modes,
+    BasicInnerLoopAction,
+    VideoModeComponent,
+)
+
 
 params = dict(
     mode="execution"  # simulation | execution | video_mode
 )
 
-
-# Update the logging configuration
-logging.basicConfig(level=logging.DEBUG)
-logging.getLogger("hpack.hpack").setLevel(logging.WARNING)
-logging.getLogger("matplotlib").setLevel(logging.WARNING)
+logger = setup_logging(__name__)
 
 # %% Create config and connect to QM
 machine = BasicQuam()
@@ -59,8 +58,8 @@ qm = qmm.open_qm(config, close_other_machines=True)
 
 # %% Run OPXDataAcquirer
 
-x_offset = VoltageParameter(name="X Voltage Offset", initial_value=0.0)
-y_offset = VoltageParameter(name="Y Voltage Offset", initial_value=0.0)
+x_offset = BasicParameter(name="X Voltage Offset", initial_value=0.0)
+y_offset = BasicParameter(name="Y Voltage Offset", initial_value=0.0)
 inner_loop_action = BasicInnerLoopAction(
     x_element=machine.channels["ch1"],
     y_element=machine.channels["ch2"],
@@ -80,9 +79,25 @@ data_acquirer = OPXDataAcquirer(
     result_type="I",
 )
 
-# %% Test simulation
-from qm import SimulationConfig
+# %% Run program and acquire data
+if params["mode"] == "execution":
+    results = data_acquirer.perform_actual_acquisition()
+    print(f"Mean of results: {np.mean(np.abs(results))}")
 
+    # plt.figure()
+    # plt.pcolormesh(results)
+    # plt.colorbar()
+
+# %% Run Video Mode
+live_plotter = VideoModeComponent(data_acquirer=data_acquirer, update_interval=1)
+live_plotter.run(use_reloader=False)
+
+# %% DEBUG: Generate QUA script
+
+qua_script = generate_qua_script(data_acquirer.generate_program(), config)
+print(qua_script)
+
+# %% Test simulation
 if params["mode"] == "simulation":
     prog = data_acquirer.generate_qua_program()
     simulation_config = SimulationConfig(duration=10000)  # In clock cycles = 4ns
@@ -99,44 +114,6 @@ if params["mode"] == "simulation":
     data_acquirer.scan_mode.plot_scan(
         data_acquirer.x_axis.points, data_acquirer.y_axis.points
     )
-
-# %% Run program and acquire data
-if params["mode"] == "execution":
-    results = data_acquirer.perform_actual_acquisition()
-    print(f"Mean of results: {np.mean(np.abs(results))}")
-
-    # plt.figure()
-    # plt.pcolormesh(results)
-    # plt.colorbar()
-
-# %% Run Video Mode
-live_plotter = VideoModeComponent(data_acquirer=data_acquirer, update_interval=1)
-live_plotter.run(use_reloader=False)
-
-# %% DEBUG: Generate QUA script
-from qm import generate_qua_script
-
-qua_script = generate_qua_script(data_acquirer.generate_program(), config)
-print(qua_script)
-
-# %% DEBUG: Simulate results
-from qm import SimulationConfig
-
-prog = data_acquirer.generate_program()
-simulation_config = SimulationConfig(duration=20000)  # In clock cycles = 4ns
-job = qmm.simulate(config, prog, simulation_config)
-con1 = job.get_simulated_samples().con1
-
-plt.figure(figsize=(10, 5))
-con1.plot(analog_ports=["1", "2"])
-
-plt.figure()
-plt.plot(con1.analog["1"], con1.analog["2"])
-
-plt.figure()
-data_acquirer.scan_mode.plot_scan(
-    data_acquirer.x_axis.points, data_acquirer.y_axis.points
-)
 
 # %% DEBUG:Validate readout inputs
 results = []

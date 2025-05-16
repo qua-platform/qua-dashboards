@@ -1,6 +1,5 @@
 from .video_mode_component import *
 from .sweep_axis import SweepAxis
-from .voltage_parameter import *
 from .inner_loop_actions import *
 from .scan_modes import *
 from .data_acquirers import *
@@ -17,7 +16,6 @@ from .data_registry import (
 __all__ = [
     *video_mode_component.__all__,
     "SweepAxis",
-    *voltage_parameter.__all__,
     *inner_loop_actions.__all__,
     *scan_modes.__all__,
     *data_acquirers.__all__,

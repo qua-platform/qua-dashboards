@@ -7,6 +7,8 @@ from typing import Sequence, List, Dict, Any
 import logging
 from dash import dcc
 
+__all__ = ["build_dashboard"]
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,10 +23,11 @@ def build_dashboard(
         title=title,
         external_stylesheets=[dbc.themes.BOOTSTRAP],
         suppress_callback_exceptions=True,
+        assets_folder="../assets",
     )
 
     if not components:
-        logger.warning("No components provided to build_dashboard.")
+        logger.warning(msg="No components provided to build_dashboard.")
         app.layout = html.Div("No components were provided for this dashboard.")
         return app
 
@@ -47,24 +50,16 @@ def build_dashboard(
             )
         )
 
-        # Determine the width of the component.
-        # If there's only one component, it spans the full width (12 cols for 'lg').
-        # Otherwise, default width is 6 columns.
-        default_width = 12 if len(components) == 1 else 6
-        default_height = 8 if len(components) == 1 else 4
-
         # Basic stacking layout if no specific initial_grid_layout is given
         default_item_layout.append(
-            # 'i': item key, 'x','y': position (grid units),
-            # 'w','h': size (grid units), 'minW','minH': min size.
             {
-                "i": comp_key,
-                "x": 0,
-                "y": i * 4,
-                "w": default_width,
-                "h": default_height,
-                "minW": 2,
-                "minH": 2,
+                "i": comp_key,  # item key
+                "x": 0,  # x position
+                "y": i * 4,  # y position
+                "w": comp.layout_columns,  # width
+                "h": comp.layout_rows,  # height
+                "minW": 2,  # minimum width
+                "minH": 2,  # minimum height
             }
         )
 
@@ -77,10 +72,13 @@ def build_dashboard(
         items=draggable_children,
         rowHeight=100,  # Adjust as needed
         # Defines number of columns in the grid for different screen size breakpoints.
-        #  'lg': 12 means on large screens (>=1200px wide), the grid has 12 columns.
-        # 'md': 10 for medium screens (>=996px), 'sm': 6 for small screens (>=768px),
-        # 'xs': 4 for extra-small screens (>=480px), 'xxs': 2  (<480px).
-        cols={"lg": 12, "md": 10, "sm": 6, "xs": 4, "xxs": 2},  # Standard breakpoints
+        cols={
+            "lg": 12,  # Large screens (1200px+)
+            "md": 10,  # Medium screens (996px-1199px)
+            "sm": 6,  # Small screens (768px-995px)
+            "xs": 4,  # Extra-small screens (480px-767px)
+            "xxs": 2,  # Extra-extra-small screens (<480px)
+        },
         itemLayout=final_item_layout,
     )
 

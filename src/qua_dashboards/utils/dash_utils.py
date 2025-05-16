@@ -78,6 +78,7 @@ def create_input_field(
     input_style: dict = None,
     div_style: dict = None,
     units: str = None,
+    type: str = "number",
     **kwargs,
 ) -> Any:
     """
@@ -115,7 +116,7 @@ def create_input_field(
         dbc.Col(
             dbc.Input(
                 id=id,
-                type="number",
+                type=type,
                 value=value,
                 debounce=debounce,
                 style=input_style,

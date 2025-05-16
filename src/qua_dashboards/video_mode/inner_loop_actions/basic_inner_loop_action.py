@@ -1,120 +1,44 @@
-from abc import ABC, abstractmethod
-from typing import Tuple, List, Dict, Any
-
+from qua_dashboards.core.base_updatable_component import ModifiedFlags
+from qua_dashboards.utils.dash_utils import create_input_field
 from dash import html
+from qm.qua.lib import Cast, Math
+from qualang_tools.units.units import unit
+from qua_dashboards.video_mode.inner_loop_actions.inner_loop_action import (
+    InnerLoopAction,
+)
+from qua_dashboards.utils.qua_types import QuaVariableFloat
+
 
 from qm.qua import (
-    declare,
-    fixed,
-    demod,
-    set_dc_offset,
     align,
-    wait,
+    assign,
+    declare,
+    demod,
+    else_,
+    fixed,
+    if_,
     measure,
     play,
     ramp,
-    assign,
-    else_,
-    if_,
     ramp_to_zero,
+    set_dc_offset,
+    wait,
 )
-from qua_dashboards.utils.qua_types import QuaVariableFloat
-from qua_dashboards.utils.dash_utils import create_input_field
-from qua_dashboards.video_mode.dash_tools import (
-    BaseDashComponent,
-    ModifiedFlags,
-)
-from qualang_tools.units.units import unit
-from qm.qua.lib import Cast, Math
 
 
-class InnerLoopAction(BaseDashComponent, ABC):
-    def __init__(self, component_id: str = "inner-loop"):
-        super().__init__(component_id=component_id)
-
-    @abstractmethod
-    def __call__(
-        self, x: QuaVariableFloat, y: QuaVariableFloat
-    ) -> Tuple[QuaVariableFloat, QuaVariableFloat]:
-        pass
-
-    def initial_action(self):
-        pass
-
-    def final_action(self):
-        pass
+from typing import Any, Dict, List, Tuple
 
 
 class BasicInnerLoopAction(InnerLoopAction):
-    """Inner loop action for the video mode: set voltages and measure.
-
-    This class is responsible for performing the inner loop action for the video mode.
-    It is used to set the voltages and measure the readout pulse.
-
-    Args:
-        x_element: The name of the element along the x-axis to set the voltage.
-        y_element: The name of the element along the y-axis to set the voltage.
-        readout_element: The name of the element to measure.
-        readout_pulse: The name of the pulse to measure.
-        pre_measurement_delay: The delay before the measurement in ns.
-    """
-
-    def __init__(
-        self,
-        x_element: str,
-        y_element: str,
-        readout_element: str,
-        readout_pulse: str = "readout",
-        pre_measurement_delay: float = 1e-6,
-    ):
-        super().__init__()
-        self.x_elem = x_element
-        self.y_elem = y_element
-        self.readout_elem = readout_element
-        self.readout_pulse = readout_pulse
-        self.pre_measurement_delay = pre_measurement_delay
-
-    def set_dc_offsets(self, x: QuaVariableFloat, y: QuaVariableFloat):
-        set_dc_offset(self.x_elem, "single", x)
-        set_dc_offset(self.y_elem, "single", y)
-
-    def __call__(
-        self, x: QuaVariableFloat, y: QuaVariableFloat
-    ) -> Tuple[QuaVariableFloat, QuaVariableFloat]:
-        outputs = {"I": declare(fixed), "Q": declare(fixed)}
-
-        self.set_dc_offsets(x, y)
-        align()
-        pre_measurement_delay_cycles = int(self.pre_measurement_delay * 1e9 // 4)
-        if pre_measurement_delay_cycles >= 4:
-            wait(pre_measurement_delay_cycles)
-        measure(
-            self.readout_pulse,
-            self.readout_elem,
-            None,
-            demod.full("cos", outputs["I"]),
-            demod.full("sin", outputs["Q"]),
-        )
-
-        return outputs["I"], outputs["Q"]
-
-    def initial_action(self):
-        set_dc_offset(self.x_elem, "single", 0)
-        set_dc_offset(self.y_elem, "single", 0)
-        align()
-
-
-class BasicInnerLoopActionQuam(InnerLoopAction):
-    """Inner loop action for the video mode: set voltages and measure.
-
-    This class is responsible for performing the inner loop action for the video mode.
-    It is used to set the voltages and measure the readout pulse.
+    """Inner loop action for the video mode: set voltages and measure using QUAM objects.
 
     Args:
         x_element: The QUAM Channel object along the x-axis.
         y_element: The QUAM Channel object along the y-axis.
         readout_pulse: The QUAM Pulse object to measure.
         pre_measurement_delay: The optional delay before the measurement.
+        ramp_rate: The ramp rate for voltage changes (optional).
+        use_dBm: Whether to use dBm for amplitude (optional).
     """
 
     def __init__(
@@ -145,7 +69,6 @@ class BasicInnerLoopActionQuam(InnerLoopAction):
         duration = declare(int)
         self.reached_voltage = declare(fixed)
         assign(dV, new_voltage - previous_voltage)
-        # duration = Math.abs(Cast.mul_int_by_fixed(ramp_cycles_ns_V, dV))
         assign(duration, Math.abs(Cast.mul_int_by_fixed(ramp_cycles_ns_V, dV)))
 
         with if_(duration > 4):

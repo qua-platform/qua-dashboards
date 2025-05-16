@@ -48,6 +48,7 @@ class RandomDataAcquirer(Base2DDataAcquirer):
                 BaseDataAcquirer.
         """
         self.acquire_time: float = acquire_time
+        self._first_acquisition: bool = True
         logger.debug(
             f"Initializing RandomDataAcquirer (ID: {component_id}) with "
             f"acquire_time: {self.acquire_time}s"
@@ -65,7 +66,10 @@ class RandomDataAcquirer(Base2DDataAcquirer):
             A 2D numpy array of random float values between 0 and 1, with
             dimensions (y_axis.points, x_axis.points).
         """
-        sleep(self.acquire_time)
+        if self._first_acquisition:
+            self._first_acquisition = False
+        else:
+            sleep(self.acquire_time)
         logger.debug(
             f"RandomDataAcquirer (ID: {self.component_id}): "
             f"Generating random data for {self.y_axis.points}x{self.x_axis.points}"

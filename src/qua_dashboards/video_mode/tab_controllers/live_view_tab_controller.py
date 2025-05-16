@@ -10,7 +10,9 @@ from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import (
     BaseDataAcquirer,
     ModifiedFlags,
 )
-from qua_dashboards.video_mode.tab_controllers.base_tab_controller import BaseTabController
+from qua_dashboards.video_mode.tab_controllers.base_tab_controller import (
+    BaseTabController,
+)
 from qua_dashboards.video_mode import data_registry
 
 
@@ -121,18 +123,21 @@ class LiveViewTabController(BaseTabController):
             className="mt-3 p-3 border rounded",
         )
 
-        return html.Div(
+        card_body = dbc.CardBody(
             [
-                html.H5("Live Acquisition Control", className="card-title"),
+                html.H5("Live Acquisition Control", className="card-title text-light"),
                 toggle_button_and_status,
                 html.Hr(),
-                html.H6("Acquirer Parameters"),
+                html.H6("Acquirer Parameters", className="text-light"),
                 acquirer_controls_div,
                 html.Div(
                     id=self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX),  # type: ignore
                     style={"display": "none"},
                 ),
             ]
+        )
+        return dbc.Card(
+            card_body, color="dark", inverse=True, className="tab-card-dark"
         )
 
     def on_tab_activated(self) -> Dict[str, Any]:

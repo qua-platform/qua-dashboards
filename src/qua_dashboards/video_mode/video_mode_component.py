@@ -76,6 +76,7 @@ class VideoModeComponent(BaseComponent):
         component_id: str = DEFAULT_COMPONENT_ID,
         data_polling_interval_s: float = 0.1,
         layout_columns: int = 12,
+        layout_rows: int = 10,
         **kwargs: Any,
     ):
         """Initializes the VideoModeComponent.
@@ -92,7 +93,7 @@ class VideoModeComponent(BaseComponent):
         """
         super().__init__(component_id=component_id, **kwargs)
         self.layout_columns = layout_columns
-
+        self.layout_rows = layout_rows
         if not isinstance(data_acquirer, BaseDataAcquirer):
             raise TypeError("data_acquirer must be an instance of BaseDataAcquirer.")
 
@@ -188,6 +189,8 @@ class VideoModeComponent(BaseComponent):
                                 className="tab-controller-content-wrapper",
                             )
                         ],
+                        # selected_className="dash-tab--selected",
+                        className="dash-tab",
                     )
                 )
 

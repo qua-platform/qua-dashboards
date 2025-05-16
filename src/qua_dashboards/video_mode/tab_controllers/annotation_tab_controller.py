@@ -207,7 +207,7 @@ class AnnotationTabController(BaseTabController):
                 ),
                 html.Pre(
                     id=self._get_id(self._ANALYSIS_RESULTS_SUFFIX),
-                    className="border rounded bg-light p-1 mb-3",
+                    className="border rounded analysis-results-dark p-1 mb-3",
                     style={
                         "maxHeight": "100px",
                         "overflowY": "auto",
@@ -229,7 +229,15 @@ class AnnotationTabController(BaseTabController):
         ]
 
         return html.Div(
-            [dbc.Card(controls_layout, className="h-100"), *other_components]
+            [
+                dbc.Card(
+                    controls_layout,
+                    color="dark",
+                    inverse=True,
+                    className="h-100 tab-card-dark",
+                ),
+                *other_components,
+            ]
         )
 
     def on_tab_activated(self) -> Dict[str, Any]:

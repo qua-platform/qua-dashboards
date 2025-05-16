@@ -38,8 +38,16 @@ class SharedViewerComponent(BaseComponent):
             **kwargs: Additional keyword arguments passed to BaseComponent.
         """
         super().__init__(component_id=component_id, **kwargs)
-        self._current_figure: go.Figure = go.Figure()  # Start with an empty figure
+        self._current_figure: go.Figure = (
+            self._get_default_figure()
+        )  # Start with an empty dark figure
         logger.info(f"SharedViewerComponent '{self.component_id}' initialized.")
+
+    def _get_default_figure(self) -> go.Figure:
+        """
+        Returns a default empty Plotly figure with the dark template.
+        """
+        return go.Figure().update_layout(template="plotly_dark")
 
     def get_layout(self) -> html.Div:
         """Generates the Dash layout for the SharedViewerComponent.
@@ -87,15 +95,15 @@ class SharedViewerComponent(BaseComponent):
                 f"is not a dict (type: {type(data_object)}). "
                 "Cannot auto-plot."
             )
-            self._current_figure = go.Figure()
+            self._current_figure = self._get_default_figure()
             return self._current_figure
-        if not "base_image_data" in data_object:
+        if "base_image_data" not in data_object:
             logger.warning(
                 f"SharedViewer ({self.component_id}): Live data object "
                 f"missing 'base_image_data' (type: {type(data_object)}). "
                 "Cannot auto-plot."
             )
-            self._current_figure = go.Figure()
+            self._current_figure = self._get_default_figure()
             return self._current_figure
         base_image_data = data_object.get("base_image_data")
         if not isinstance(base_image_data, xr.DataArray):
@@ -104,7 +112,7 @@ class SharedViewerComponent(BaseComponent):
                 f"base_image_data is not an xr.DataArray (type: {type(base_image_data)}). "
                 "Cannot auto-plot."
             )
-            self._current_figure = go.Figure()
+            self._current_figure = self._get_default_figure()
             return self._current_figure
 
         try:
@@ -116,7 +124,7 @@ class SharedViewerComponent(BaseComponent):
                 f"live xr.DataArray to Plotly: {e}",
                 exc_info=True,
             )
-            self._current_figure = go.Figure()
+            self._current_figure = self._get_default_figure()
         return self._current_figure
 
     def _create_figure_from_static_data(self, static_data_object: dict) -> go.Figure:
@@ -132,7 +140,7 @@ class SharedViewerComponent(BaseComponent):
         Returns:
             A Plotly Figure object with base image and annotations.
         """
-        fig = go.Figure()
+        fig = self._get_default_figure()
         if not isinstance(static_data_object, dict):
             logger.warning(
                 f"SharedViewer ({self.component_id}): Static data object is not a dict "
@@ -208,7 +216,7 @@ class SharedViewerComponent(BaseComponent):
             layout_updates_input: Optional[Dict[str, Any]],
             current_fig_state_dict: Optional[Dict[str, Any]],
         ) -> go.Figure:
-            fig_to_display = go.Figure()  # Default to empty figure
+            fig_to_display = self._get_default_figure()  # Default to empty dark figure
 
             if viewer_data_ref is None or not isinstance(viewer_data_ref, dict):
                 logger.debug(

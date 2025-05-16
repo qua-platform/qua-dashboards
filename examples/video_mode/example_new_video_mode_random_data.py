@@ -60,7 +60,7 @@ def main():
         y_axis=y_axis,
         acquire_time=0.03,  # Simulated time (s) per raw data frame
         num_software_averages=5,  # Number of raw frames to average
-        acquisition_interval_s=0.5,  # Target interval (s) for new averaged frames
+        acquisition_interval_s=0.1,  # Target interval (s) for new averaged frames
     )
     logger.info(f"RandomDataAcquirer instance created: {random_acquirer.component_id}")
 

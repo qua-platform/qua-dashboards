@@ -83,6 +83,15 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                          Defaults to ["I", "Q"].
             **kwargs: Additional arguments for Base2DDataAcquirer.
         """
+        super().__init__(
+            x_axis=x_axis,
+            y_axis=y_axis,
+            component_id=component_id,
+            num_software_averages=num_software_averages,
+            acquisition_interval_s=acquisition_interval_s,
+            **kwargs,
+        )
+
         self.qmm: QuantumMachinesManager = qmm
         self.machine: Any = machine
         self.qua_config: Dict[str, Any] = self.machine.generate_config()
@@ -99,17 +108,6 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self._raw_qua_results: Dict[str, np.ndarray] = {}
         self.stream_vars: List[str] = stream_vars or self.stream_vars_default
         self.result_types: List[str] = self.result_types_default
-
-        self._initialize_qm_and_program(force_recompile=True)
-
-        super().__init__(
-            x_axis=x_axis,
-            y_axis=y_axis,
-            component_id=component_id,
-            num_software_averages=num_software_averages,
-            acquisition_interval_s=acquisition_interval_s,
-            **kwargs,
-        )
 
     def _generate_qua_program(self) -> Program:
         """

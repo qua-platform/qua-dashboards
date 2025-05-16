@@ -1,16 +1,6 @@
 # %% Imports
-from qua_dashboards.video_mode.dash_tools import *
-import numpy as np
-from matplotlib import pyplot as plt
-from qua_dashboards.video_mode.voltage_parameter import *
-from qua_dashboards.video_mode.sweep_axis import *
-from qua_dashboards.video_mode.data_acquirers import *
-from qua_dashboards.video_mode import scan_modes
-from qua_dashboards.video_mode.inner_loop_actions.basic_inner_loop_action import (
-    BasicInnerLoopAction,
-)
-# from qua_dashboards.video_mode import VideoModeApp
-
+from qm import QuantumMachinesManager
+import logging
 from quam.components import (
     BasicQuam,
     SingleChannel,
@@ -19,9 +9,17 @@ from quam.components import (
     StickyChannelAddon,
 )
 
-from qm import QuantumMachinesManager
+from qua_dashboards.video_mode.voltage_parameter import VoltageParameter
+from qua_dashboards.video_mode.sweep_axis import SweepAxis
+from qua_dashboards.video_mode.data_acquirers import OPXDataAcquirer
+from qua_dashboards.video_mode import scan_modes
+from qua_dashboards.video_mode.inner_loop_actions import BasicInnerLoopAction
+from qua_dashboards.video_mode.video_mode_component import VideoModeComponent
 
-import logging
+params = dict(
+    mode="execution"  # simulation | execution | video_mode
+)
+
 
 # Update the logging configuration
 logging.basicConfig(level=logging.DEBUG)
@@ -65,7 +63,7 @@ inner_loop_action = BasicInnerLoopAction(
     x_element=machine.channels["ch1"],
     y_element=machine.channels["ch2"],
     readout_pulse=readout_pulse,
-    ramp_rate=1_000,
+    # ramp_rate=1_000,
     use_dBm=True,
 )
 
@@ -83,34 +81,34 @@ data_acquirer = OPXDataAcquirer(
 # %% Test simulation
 from qm import SimulationConfig
 
-prog = data_acquirer.generate_program()
-simulation_config = SimulationConfig(duration=10000)  # In clock cycles = 4ns
-job = qmm.simulate(config, prog, simulation_config)
-con1 = job.get_simulated_samples().con1
+if params["mode"] == "simulation":
+    prog = data_acquirer.generate_qua_program()
+    simulation_config = SimulationConfig(duration=10000)  # In clock cycles = 4ns
+    job = qmm.simulate(config, prog, simulation_config)
+    con1 = job.get_simulated_samples().con1
 
-plt.figure(figsize=(10, 5))
-con1.plot(analog_ports=["1", "2"])
+    plt.figure(figsize=(10, 5))
+    con1.plot(analog_ports=["1", "2"])
 
-plt.figure()
-plt.plot(con1.analog["1"], con1.analog["2"])
+    plt.figure()
+    plt.plot(con1.analog["1"], con1.analog["2"])
 
-plt.figure()
-data_acquirer.scan_mode.plot_scan(
-    data_acquirer.x_axis.points, data_acquirer.y_axis.points
-)
+    plt.figure()
+    data_acquirer.scan_mode.plot_scan(
+        data_acquirer.x_axis.points, data_acquirer.y_axis.points
+    )
 
 # %% Run program and acquire data
-data_acquirer.run_program()
+if params["mode"] == "execution":
+    results = data_acquirer.perform_actual_acquisition()
+    print(f"Mean of results: {np.mean(np.abs(results))}")
 
-results = data_acquirer.acquire_data()
-print(f"Mean of results: {np.mean(np.abs(results))}")
-
-# plt.figure()
-# plt.pcolormesh(results)
-# plt.colorbar()
+    # plt.figure()
+    # plt.pcolormesh(results)
+    # plt.colorbar()
 
 # %% Run Video Mode
-live_plotter = VideoModeApp(data_acquirer=data_acquirer, update_interval=1)
+live_plotter = VideoModeComponent(data_acquirer=data_acquirer, update_interval=1)
 live_plotter.run(use_reloader=False)
 
 # %% DEBUG: Generate QUA script

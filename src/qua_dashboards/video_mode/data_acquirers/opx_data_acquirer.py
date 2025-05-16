@@ -161,7 +161,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                         buffered_streams[self.stream_vars[i]]
                     )  # type: ignore
 
-                combined_qua_stream.save_all("all_streams_combined")
+                combined_qua_stream.save("all_streams_combined")
 
         self.qua_program = prog
         return prog

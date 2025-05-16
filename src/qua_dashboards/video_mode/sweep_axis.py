@@ -3,7 +3,7 @@ from typing import Optional
 
 import numpy as np
 
-from qua_dashboards.video_mode.voltage_parameter import VoltageParameter
+from qua_dashboards.core.basic_parameter import BasicParameter
 
 
 __all__ = ["SweepAxis"]
@@ -28,7 +28,7 @@ class SweepAxis:
     points: int
     label: Optional[str] = None
     units: Optional[str] = None
-    offset_parameter: Optional[VoltageParameter] = None
+    offset_parameter: Optional[BasicParameter] = None
     attenuation: float = 0
 
     @property

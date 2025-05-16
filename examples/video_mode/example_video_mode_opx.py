@@ -1,14 +1,8 @@
 # %% Imports
 import numpy as np
 from matplotlib import pyplot as plt
-
-from qua_dashboards.video_mode.voltage_parameter import VoltageParameter
-from qua_dashboards.video_mode.sweep_axis import SweepAxis
-from qua_dashboards.video_mode.data_acquirers import OPXDataAcquirer
-from qua_dashboards.video_mode import scan_modes
-from qua_dashboards.video_mode.inner_loop_actions import BasicInnerLoopAction
-from qua_dashboards.video_mode.video_mode_component import VideoModeComponent
-
+from qm import QuantumMachinesManager
+import logging
 from quam.components import (
     BasicQuam,
     SingleChannel,
@@ -111,12 +105,9 @@ if params["mode"] == "execution":
     results = data_acquirer.perform_actual_acquisition()
     print(f"Mean of results: {np.mean(np.abs(results))}")
 
-results = data_acquirer.perform_actual_acquisition()
-print(f"Mean of results: {np.mean(np.abs(results))}")
-
-# plt.figure()
-# plt.pcolormesh(results)
-# plt.colorbar()
+    # plt.figure()
+    # plt.pcolormesh(results)
+    # plt.colorbar()
 
 # %% Run Video Mode
 live_plotter = VideoModeComponent(data_acquirer=data_acquirer, update_interval=1)

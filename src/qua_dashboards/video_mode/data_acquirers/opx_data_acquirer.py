@@ -109,7 +109,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self.stream_vars: List[str] = stream_vars or self.stream_vars_default
         self.result_types: List[str] = self.result_types_default
 
-    def _generate_qua_program(self) -> Program:
+    def generate_qua_program(self) -> Program:
         """
         Generates the QUA program for the 2D scan.
         """
@@ -267,9 +267,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
         start_time = time.perf_counter()
         try:
-            fetched_results_tuple: Tuple = self.qm_job.result_handles.get(
-                "all_streams_combined"
-            ).fetch_all(timeout=2)  # type: ignore
+            result_handle = self.qm_job.result_handles.get("all_streams_combined")
+            fetched_results_tuple = result_handle.fetch_all()
         except Exception as e:
             logger.error(
                 f"Error fetching results from QM job for {self.component_id}: {e}"

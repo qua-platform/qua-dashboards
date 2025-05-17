@@ -1,6 +1,7 @@
 import json
 import logging
 from typing import Dict, Any, List, Optional
+import re
 
 import dash
 import dash_bootstrap_components as dbc
@@ -267,6 +268,26 @@ class AnnotationTabController(BaseTabController):
             if default_obj.get("base_image_data") is not None:
                 fig_dict = xarray_to_plotly(default_obj["base_image_data"]).to_dict()
                 self._update_click_tolerance(fig_dict=fig_dict)
+            static_data_obj = (
+                default_obj  # Ensure static_data_obj is set for counter logic
+            )
+
+        # Ensure point/line counters are set to the next available unique index
+        def get_next_index(items, prefix):
+            max_idx = -1
+            pattern = re.compile(rf"{prefix}_(\d+)")
+            for item in items:
+                match = pattern.fullmatch(str(item.get("id", "")))
+                if not match:
+                    continue
+
+                idx = int(match.group(1))
+                max_idx = max(max_idx, idx)
+            return max_idx + 1
+
+        annotations = static_data_obj.get("annotations", {}) if static_data_obj else {}
+        self._next_point_id_counter = get_next_index(annotations.get("points", []), "p")
+        self._next_line_id_counter = get_next_index(annotations.get("lines", []), "l")
 
         viewer_data_store_payload = {
             "key": data_registry.STATIC_DATA_KEY,

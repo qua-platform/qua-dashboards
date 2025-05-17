@@ -10,8 +10,7 @@ from quam.components import (
     StickyChannelAddon,
 )
 
-from qua_dashboards.core import BasicParameter
-from qua_dashboards.utils import setup_logging
+from qua_dashboards.utils import setup_logging, BasicParameter
 from qua_dashboards.video_mode import (
     SweepAxis,
     OPXDataAcquirer,
@@ -40,7 +39,7 @@ machine.channels["ch2"] = SingleChannel(
     sticky=StickyChannelAddon(duration=1_000, digital=False),
     operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
 )
-readout_pulse = pulses.SquareReadoutPulse(id="readout", length=1000, amplitude=0.1)
+readout_pulse = pulses.SquareReadoutPulse(id="readout", length=10000, amplitude=0.1)
 machine.channels["ch1_readout"] = InOutSingleChannel(
     opx_output=("con1", 3),
     opx_input=("con1", 1),
@@ -94,7 +93,7 @@ live_plotter.run(use_reloader=False)
 
 # %% DEBUG: Generate QUA script
 
-qua_script = generate_qua_script(data_acquirer.generate_program(), config)
+qua_script = generate_qua_script(data_acquirer.generate_qua_program(), config)
 print(qua_script)
 
 # %% Test simulation

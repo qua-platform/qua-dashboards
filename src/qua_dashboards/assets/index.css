@@ -1,6 +1,9 @@
 :root {
     --background-color: #181818;
     --text-color: #f8f8f8;
+    --tab-selected-bg: #23272b;
+    --tab-selected-text: #fff;
+    --tab-border: #007bff;
 }
 
 body,
@@ -21,25 +24,36 @@ body,
     background-color: var(--background-color) !important;
     color: var(--text-color) !important;
     padding: 6px 6px !important;
-    border: 1px solid #007bff;
+    border: 1px solid var(--tab-border);
     border-bottom: none;
-    /* margin-right: 2px; */
     cursor: pointer;
-    transition: background-color 0.3s ease;
+    transition: background-color 0.3s ease, color 0.3s ease;
     max-width: 140px;
+    font-family: monospace;
 }
 
 .dash-tab:hover {
     background-color: #222 !important;
+    color: var(--tab-selected-text) !important;
 }
 
 /* Styling for the selected tab */
-/* .dash-tab--selected {
-    background-color: var(--text-color) !important;
-    color: var(--background-color) !important;
+.dash-tab--selected {
+    background-color: var(--tab-selected-bg) !important;
+    color: var(--tab-selected-text) !important;
     font-weight: bold;
-} */
+    border-bottom: 2px solid var(--tab-border);
+    z-index: 2;
+}
 
+/* Tab content area styling */
+.tab-controller-content-wrapper, .dash-tabs-content, .dash-tab-content {
+    background-color: var(--background-color) !important;
+    color: var(--text-color) !important;
+    padding: 12px;
+    border-radius: 0 0 6px 6px;
+    min-height: 120px;
+}
 
 .dataset-view-toggle {
     display: flex;
@@ -68,4 +82,31 @@ body,
 /* Optionally, add a hover effect */
 .dataset-view-toggle label:hover {
     background-color: #585858;
+}
+
+
+/* Voltage Control */
+.voltage-input-editing {
+    background-color: #fff3e0;
+    /* A light orange, for example */
+    border-color: #ffcc80;
+}
+
+/* Dark card for tab panels */
+.tab-card-dark {
+    background-color: #23272b !important;
+    color: #f8f8f8 !important;
+    border: 1px solid #333 !important;
+}
+
+/* Analysis results area in dark mode */
+.analysis-results-dark {
+    background-color: #181818 !important;
+    color: #f8f8f8 !important;
+    border-color: #333 !important;
+}
+
+/* Ensure tab titles are visible in dark mode */
+.card-title.text-light, .text-light {
+    color: #f8f8f8 !important;
 }

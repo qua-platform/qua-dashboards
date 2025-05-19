@@ -14,6 +14,8 @@ dependencies = [
     "dash-extensions>=1.0.19",
     "matplotlib>=3.9.0",
     "qualang-tools>=0.18.2",
+    "dash-dynamic-grid-layout>=0.1.3",
+    "qualibrate-core>=0.3.1",
 ]
 
 [project.urls]
@@ -22,6 +24,7 @@ Homepage = "https://github.com/qua-platform/qua-dashboards/"
 [project.scripts]
 qua-dashboard = "qua_dashboards.app:main"
 data-dashboard = "qua_dashboards.data_dashboard.data_dashboard_app:main"
+qua-dashboard-cli = "qua_dashboards.cli:main"
 
 [build-system]
 requires = ["hatchling"]

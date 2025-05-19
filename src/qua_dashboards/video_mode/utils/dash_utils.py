@@ -1,8 +1,5 @@
-from abc import ABC
-from enum import Flag, auto
-from typing import Any, Dict, List, Literal, Optional
+from typing import Literal, Optional
 
-from dash import html
 import plotly.graph_objects as go
 import xarray as xr
 import dash_bootstrap_components as dbc
@@ -10,43 +7,9 @@ import dash_bootstrap_components as dbc
 from qua_dashboards.utils.dash_utils import create_input_field
 
 
-__all__ = ["xarray_to_plotly", "BaseDashComponent", "ModifiedFlags"]
-
-
-class ModifiedFlags(Flag):
-    """Flags indicating what needs to be modified after parameter changes."""
-
-    NONE = 0
-    PARAMETERS_MODIFIED = auto()
-    PROGRAM_MODIFIED = auto()
-    CONFIG_MODIFIED = auto()
-
-
-class BaseDashComponent(ABC):
-    def __init__(self, *args, component_id: str, **kwargs):
-        assert not args, "BaseDashComponent does not accept any positional arguments"
-        assert not kwargs, "BaseDashComponent does not accept any keyword arguments"
-
-        self.component_id = component_id
-
-    def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
-        """Update the component's attributes based on the input values."""
-        return ModifiedFlags.NONE
-
-    def get_dash_components(self, include_subcomponents: bool = True) -> List[html.Div]:
-        """Return a list of Dash components.
-
-        Args:
-            include_subcomponents (bool, optional): Whether to include subcomponents. Defaults to True.
-
-        Returns:
-            List[html.Div]: A list of Dash components.
-        """
-        return []
-
-    def get_component_ids(self) -> List[str]:
-        """Return a list of component IDs for this component including subcomponents."""
-        return [self.component_id]
+__all__ = [
+    "xarray_to_plotly",
+]
 
 
 def xarray_to_plotly(da: xr.DataArray):
@@ -87,7 +50,9 @@ def xarray_to_plotly(da: xr.DataArray):
             colorbar=dict(title=zaxis_label),
         )
     )
-    fig.update_layout(xaxis_title=xaxis_label, yaxis_title=yaxis_label)
+    fig.update_layout(
+        xaxis_title=xaxis_label, yaxis_title=yaxis_label, template="plotly_dark"
+    )
     return fig
 
 def xarray_to_heatmap(da: xr.DataArray):
@@ -156,7 +121,7 @@ def create_axis_layout(
     return dbc.Col(
         dbc.Card(
             [
-                dbc.CardHeader(axis.upper()),
+                dbc.CardHeader(axis.upper(), className="text-light"),
                 dbc.CardBody(
                     [
                         create_input_field(
@@ -166,7 +131,7 @@ def create_axis_layout(
                             min=min_span,
                             max=max_span,
                             input_style={"width": "100px"},
-                            units=units,
+                            units=units if units is not None else "",
                         ),
                         create_input_field(
                             id=ids["points"],
@@ -176,10 +141,13 @@ def create_axis_layout(
                             max=501,
                             step=1,
                         ),
-                    ]
+                    ],
+                    className="text-light",
                 ),
             ],
-            className="h-100",
+            color="dark",
+            inverse=True,
+            className="h-100 tab-card-dark",
         ),
         md=6,
         className="mb-3",

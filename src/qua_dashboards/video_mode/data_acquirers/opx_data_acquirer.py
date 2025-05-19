@@ -1,11 +1,8 @@
-import numpy as np
 import logging
-from typing import Any, Dict, List, Literal, Optional, Callable
-from time import perf_counter
+import time
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
-from dash import html
-import dash_bootstrap_components as dbc
-
+import numpy as np
 from qm import QuantumMachinesManager, Program
 from qm.jobs.running_qm_job import RunningQmJob
 from qm.qua import (
@@ -16,222 +13,380 @@ from qm.qua import (
     stream_processing,
     wait,
 )
+from dash import html
+import dash_bootstrap_components as dbc
 
-from qua_dashboards.video_mode.dash_tools import ModifiedFlags
-from qua_dashboards.video_mode.data_acquirers.base_data_aqcuirer import BaseDataAcquirer
+from qua_dashboards.video_mode.data_acquirers.base_2d_data_acquirer import (
+    Base2DDataAcquirer,
+)
+from qua_dashboards.core import ModifiedFlags
 from qua_dashboards.video_mode.sweep_axis import SweepAxis
 from qua_dashboards.video_mode.scan_modes import ScanMode
 
+from qua_dashboards.video_mode.inner_loop_actions.inner_loop_action import (
+    InnerLoopAction,
+)
+
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["OPXDataAcquirer"]
 
 
-class OPXDataAcquirer(BaseDataAcquirer):
-    """Data acquirer for OPX devices.
+class OPXDataAcquirer(Base2DDataAcquirer):
+    """
+    Data acquirer for OPX devices using a QUAM Machine object.
 
-    This class is responsible for acquiring data from OPX devices.
-
-    Args:
-        qmm: The QuantumMachinesManager instance.
-        qua_config: The QUAM configuration to use.
-        qua_inner_loop_action: The inner loop action to execute.
-        scan_mode: The scan mode to use.
-        x_axis: The x-axis of the data acquirer.
-        y_axis: The y-axis of the data acquirer.
-        num_averages: The number of averages to take as a rolling average.
-        result_type: The type of result to acquire.
-        initial_delay: The initial delay before starting each scan.
+    This class handles communication with the Quantum Orchestration Platform (QOP)
+    by generating QUA programs based on a QUAM machine configuration,
+    executing them, and processing the results for 2D video mode display.
+    It leverages a background thread (from BaseDataAcquirer) for continuous
+    data acquisition and software averaging.
     """
 
-    stream_vars = ["I", "Q"]
-    result_types = ["I", "Q", "amplitude", "phase"]
+    stream_vars_default = ["I", "Q"]  # Default stream variables expected from QUA
+    result_types_default = ["I", "Q", "amplitude", "phase"]
 
     def __init__(
         self,
         *,
         qmm: QuantumMachinesManager,
-        qua_config: Dict[str, Any],
-        qua_inner_loop_action: Callable,
+        machine: Any,
+        qua_inner_loop_action: InnerLoopAction,
         scan_mode: ScanMode,
         x_axis: SweepAxis,
         y_axis: SweepAxis,
-        num_averages=1,
+        component_id: str = "opx-data-acquirer",
+        num_software_averages: int = 1,
+        acquisition_interval_s: float = 0.1,
         result_type: Literal["I", "Q", "amplitude", "phase"] = "I",
-        initial_delay: Optional[float] = None,
-        **kwargs,
+        initial_delay_s: Optional[float] = None,
+        stream_vars: Optional[List[str]] = None,
+        **kwargs: Any,
     ):
-        self.qmm = qmm
-        self.qua_config = qua_config
-        self.qm = self.qmm.open_qm(self.qua_config)  # type: ignore
+        """
+        Initializes the OPXDataAcquirer.
 
-        self.scan_mode = scan_mode
-        self.qua_inner_loop_action = qua_inner_loop_action
-        self.initial_delay = initial_delay
-        self.program: Optional[Program] = None
-        self.job: Optional[RunningQmJob] = None
-        self.result_type = result_type
-        self.results: Dict[str, Any] = {}
-
+        Args:
+            qmm: The QuantumMachinesManager instance.
+            machine: The QUAM Machine instance to use for generating the QUA config.
+            qua_inner_loop_action: The QUA inner loop action to execute at each scan point.
+            scan_mode: The scan mode defining how the 2D grid is traversed.
+            x_axis: The X sweep axis.
+            y_axis: The Y sweep axis.
+            component_id: Unique ID for Dash elements.
+            num_software_averages: Number of raw snapshots for software averaging.
+            acquisition_interval_s: Target interval for acquiring a new raw snapshot.
+            result_type: The type of result to derive from I/Q data.
+            initial_delay_s: Initial delay in seconds before starting each full scan in QUA.
+            stream_vars: List of stream variables (e.g., ["I", "Q"]) expected from QUA.
+                         Defaults to ["I", "Q"].
+            **kwargs: Additional arguments for Base2DDataAcquirer.
+        """
         super().__init__(
             x_axis=x_axis,
             y_axis=y_axis,
-            num_averages=num_averages,
+            component_id=component_id,
+            num_software_averages=num_software_averages,
+            acquisition_interval_s=acquisition_interval_s,
             **kwargs,
         )
 
-    def generate_program(self) -> Program:
-        """Generate a QUA program to acquire data from the device."""
-        x_vals = self.x_axis.sweep_values_unattenuated
-        y_vals = self.y_axis.sweep_values_unattenuated
+        self.qmm: QuantumMachinesManager = qmm
+        self.machine: Any = machine
+        self.qua_config: Dict[str, Any] = self.machine.generate_config()
+        self.qm: Any = None
+
+        self.qua_inner_loop_action: InnerLoopAction = qua_inner_loop_action
+        self.scan_mode: ScanMode = scan_mode
+
+        self.initial_delay_s: Optional[float] = initial_delay_s
+        self.qua_program: Optional[Program] = None
+        self.qm_job: Optional[RunningQmJob] = None
+
+        self.result_type: str = result_type
+        self._raw_qua_results: Dict[str, np.ndarray] = {}
+        self.stream_vars: List[str] = stream_vars or self.stream_vars_default
+        self.result_types: List[str] = self.result_types_default
+
+    def generate_qua_program(self) -> Program:
+        """
+        Generates the QUA program for the 2D scan.
+        """
+        x_qua_values = list(self.x_axis.sweep_values_unattenuated)
+        y_qua_values = list(self.y_axis.sweep_values_unattenuated)
 
         with program() as prog:
-            IQ_streams = {"I": declare_stream(), "Q": declare_stream()}
+            qua_streams = {var: declare_stream() for var in self.stream_vars}
 
             with infinite_loop_():
                 self.qua_inner_loop_action.initial_action()
-                if self.initial_delay is not None:
-                    wait(int(self.initial_delay * 1e9) // 4)
+                if self.initial_delay_s is not None and self.initial_delay_s > 0:
+                    wait(int(self.initial_delay_s * 1e9 / 4))
 
-                for x, y in self.scan_mode.scan(x_vals=x_vals, y_vals=y_vals):
-                    I, Q = self.qua_inner_loop_action(x, y)
-                    save(I, IQ_streams["I"])
-                    save(Q, IQ_streams["Q"])
+                for x_qua_var, y_qua_var in self.scan_mode.scan(
+                    x_vals=x_qua_values,
+                    y_vals=y_qua_values,  # type: ignore
+                ):
+                    measured_qua_values = self.qua_inner_loop_action(
+                        x_qua_var, y_qua_var
+                    )
+
+                    if not isinstance(measured_qua_values, tuple):
+                        measured_qua_values = (measured_qua_values,)
+
+                    if len(measured_qua_values) != len(self.stream_vars):
+                        raise ValueError(
+                            f"Number of values returned by qua_inner_loop_action ({len(measured_qua_values)}) "
+                            f"does not match number of stream_vars ({len(self.stream_vars)})."
+                        )
+
+                    for var_name, qua_value_to_save in zip(
+                        self.stream_vars, measured_qua_values
+                    ):
+                        save(qua_value_to_save, qua_streams[var_name])
 
                 self.qua_inner_loop_action.final_action()
 
+            num_points_total = self.x_axis.points * self.y_axis.points
             with stream_processing():
-                streams = {
-                    "I": IQ_streams["I"].buffer(
-                        self.x_axis.points * self.y_axis.points
-                    ),
-                    "Q": IQ_streams["Q"].buffer(
-                        self.x_axis.points * self.y_axis.points
-                    ),
+                buffered_streams = {
+                    var: qua_streams[var].buffer(num_points_total)
+                    for var in self.stream_vars
                 }
-                combined_stream = None
-                for var in self.stream_vars:
-                    if combined_stream is None:
-                        combined_stream = streams[var]
-                    else:
-                        combined_stream = combined_stream.zip(streams[var])
-                combined_stream.save("combined")  # type: ignore
+
+                combined_qua_stream = buffered_streams[self.stream_vars[0]]
+                for i in range(1, len(self.stream_vars)):
+                    combined_qua_stream = combined_qua_stream.zip(
+                        buffered_streams[self.stream_vars[i]]
+                    )  # type: ignore
+
+                combined_qua_stream.save("all_streams_combined")
+
+        self.qua_program = prog
         return prog
 
-    def process_results(self, results: Dict[str, Any]) -> np.ndarray:
-        """Process the results from the device.
+    def _initialize_qm_and_program(self, force_recompile: bool = False) -> None:
+        if self.qm is None or self.qua_config != self.qm.get_config():  # type: ignore
+            logger.info(f"Opening QM for {self.component_id} with new/updated config.")
+            if self.qm is not None:
+                try:
+                    self.qm.close()
+                except Exception as e:
+                    logger.warning(f"Error closing previous QM instance: {e}")
+            self.qm = self.qmm.open_qm(self.qua_config)  # type: ignore
+            force_recompile = True
 
-        This method processes the results from the device and returns a 2D array.
-        The class variable `result_type` determines the type of result to acquire.
-        The `scan_mode` determines the order in which the data is acquired and sorted
+        if self.qua_program is None or force_recompile:
+            logger.info(f"Generating QUA program for {self.component_id}.")
+            self.generate_qua_program()
+
+        if self.qm_job is None or not self.qm_job.is_processing() or force_recompile:  # type: ignore
+            if self.qm_job is not None:
+                try:
+                    logger.info(f"Halting existing QM job for {self.component_id}.")
+                    self.qm_job.halt()
+                except Exception as e:
+                    logger.warning(f"Could not halt previous QM job: {e}")
+
+            if self.qua_program is None:
+                self.generate_qua_program()
+
+            logger.info(f"Executing QUA program for {self.component_id}.")
+            self.qm_job = self.qm.execute(self.qua_program)  # type: ignore
+
+            try:
+                self.qm_job.result_handles.get(  # type: ignore[attr-defined]
+                    "all_streams_combined"
+                ).wait_for_values(1)
+                logger.info(f"QM job for {self.component_id} started successfully.")
+            except Exception as e:
+                logger.error(
+                    f"QM job for {self.component_id} failed to start or produce initial values: {e}"
+                )
+                raise
+
+    def _process_fetched_results(self, fetched_qua_results: Tuple) -> np.ndarray:
         """
-        if self.result_type in ["I", "Q"]:
-            result = results[self.result_type]
-        elif self.result_type == "amplitude":
-            result = np.abs(results["I"] + 1j * results["Q"])
-        elif self.result_type == "phase":
-            result = np.angle(results["I"] + 1j * results["Q"])
-        else:
-            raise ValueError(f"Invalid result type: {self.result_type}")
+        Processes the raw tuple from QUA's fetch_all into a dictionary of named arrays,
+        then derives the final 2D array based on self.result_type.
+        """
+        if len(fetched_qua_results) != len(self.stream_vars):
+            raise ValueError(
+                f"Fetched {len(fetched_qua_results)} streams, but expected {len(self.stream_vars)}. "
+                f"Stream vars: {self.stream_vars}"
+            )
 
-        x_idxs, y_idxs = self.scan_mode.get_idxs(
+        self._raw_qua_results = dict(zip(self.stream_vars, fetched_qua_results))
+
+        if self.result_type == "I" and "I" in self._raw_qua_results:
+            output_data_flat = self._raw_qua_results["I"]
+        elif self.result_type == "Q" and "Q" in self._raw_qua_results:
+            output_data_flat = self._raw_qua_results["Q"]
+        elif self.result_type == "amplitude":
+            if "I" not in self._raw_qua_results or "Q" not in self._raw_qua_results:
+                raise ValueError(
+                    "Cannot calculate amplitude without 'I' and 'Q' streams."
+                )
+            output_data_flat = np.abs(
+                self._raw_qua_results["I"] + 1j * self._raw_qua_results["Q"]
+            )
+        elif self.result_type == "phase":
+            if "I" not in self._raw_qua_results or "Q" not in self._raw_qua_results:
+                raise ValueError("Cannot calculate phase without 'I' and 'Q' streams.")
+            output_data_flat = np.angle(
+                self._raw_qua_results["I"] + 1j * self._raw_qua_results["Q"]
+            )
+        else:
+            part1 = "Invalid result_type: '{}'.".format(self.result_type)
+            part2 = " Must be one of {} ".format(self.result_types)
+            part3 = "or a direct stream variable name from {}.".format(self.stream_vars)
+            error_msg = part1 + part2 + part3
+            raise ValueError(error_msg)
+
+        shape = (self.y_axis.points, self.x_axis.points)
+        output_data_2d = np.zeros(shape, dtype=output_data_flat.dtype)
+        x_indices, y_indices = self.scan_mode.get_idxs(
             x_points=self.x_axis.points, y_points=self.y_axis.points
         )
-        results_2D = np.zeros((self.y_axis.points, self.x_axis.points), dtype=float)
-        results_2D[y_idxs, x_idxs] = result
+        for i, (y, x) in enumerate(zip(y_indices, x_indices)):
+            output_data_2d[y, x] = output_data_flat[i]
 
-        return results_2D
+        return output_data_2d
 
-    def acquire_data(self) -> np.ndarray:
-        """Acquire data from the device.
+    def perform_actual_acquisition(self) -> np.ndarray:
+        if self.qm_job is None or not self.qm_job.is_processing():  # type: ignore
+            logger.warning(
+                f"QM job for {self.component_id} is not running or None. Attempting to re-initialize."
+            )
+            self._initialize_qm_and_program(force_recompile=True)
+            if self.qm_job is None:
+                raise RuntimeError(
+                    f"Failed to initialize QM job for {self.component_id}."
+                )
 
-        This method acquires data from the device and returns a 2D array.
-        """
-        if self.program is None:
-            self.run_program()
+        start_time = time.perf_counter()
+        try:
+            result_handle = self.qm_job.result_handles.get("all_streams_combined")
+            fetched_results_tuple = result_handle.fetch_all()
+        except Exception as e:
+            logger.error(
+                f"Error fetching results from QM job for {self.component_id}: {e}"
+            )
+            raise
 
-        t0 = perf_counter()
-        results_tuple = self.job.result_handles.get("combined").fetch_all()  # type: ignore
-        self.results = dict(zip(self.stream_vars, results_tuple))  # type: ignore
-        result_array = self.process_results(self.results)
-        logging.info(f"Time to acquire data: {(perf_counter() - t0) * 1e3:.2f} ms")
+        acquisition_time = (time.perf_counter() - start_time) * 1000
+        logger.debug(
+            f"{self.component_id}: Fetched QUA results in {acquisition_time:.2f} ms."
+        )
 
-        return result_array
+        return self._process_fetched_results(fetched_results_tuple)
 
-    def run_program(self, verify: bool = True) -> None:
-        """Run the QUA program.
+    def _regenerate_config_and_reopen_qm(self) -> None:
+        logger.info(f"Regenerating QUA config for {self.component_id} from machine.")
+        self.qua_config = self.machine.generate_config()
+        self._initialize_qm_and_program(force_recompile=True)
 
-        This method runs the QUA program and returns the results.
+    def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
+        flags = super().update_parameters(parameters)
 
-        Args:
-            verify: Whether to verify that data can be acquired once started.
-        """
-        if self.program is None:
-            self.program = self.generate_program()
+        needs_program_recompile = bool(flags & ModifiedFlags.PARAMETERS_MODIFIED)
+        needs_config_regenerate = False
 
-        self.job = self.qm.execute(self.program)
+        if self.component_id in parameters:
+            params = parameters[self.component_id]
+            if "result-type" in params and self.result_type != params["result-type"]:
+                self.result_type = params["result-type"]
+                flags |= ModifiedFlags.PARAMETERS_MODIFIED
 
-        if not verify:
-            return
+        if hasattr(self.scan_mode, "update_parameters"):
+            scan_flags = self.scan_mode.update_parameters(parameters)
+            if scan_flags & ModifiedFlags.PROGRAM_MODIFIED:
+                needs_program_recompile = True
+            if scan_flags & ModifiedFlags.CONFIG_MODIFIED:
+                needs_config_regenerate = True
+            flags |= scan_flags
 
-        # Wait until one buffer is filled{
-        self.job.result_handles.get("combined").wait_for_values(1)  # type: ignore
+        if hasattr(self.qua_inner_loop_action, "update_parameters"):
+            action_flags = self.qua_inner_loop_action.update_parameters(parameters)
+            if action_flags & ModifiedFlags.PROGRAM_MODIFIED:
+                needs_program_recompile = True
+            if action_flags & ModifiedFlags.CONFIG_MODIFIED:
+                needs_config_regenerate = True
+            flags |= action_flags
 
-    def get_dash_components(self, include_subcomponents: bool = True) -> List[html.Div]:
-        components = super().get_dash_components()
+        if flags & ModifiedFlags.PARAMETERS_MODIFIED and not (
+            needs_program_recompile or needs_config_regenerate
+        ):
+            pass
 
-        components.append(
-            dbc.Row(
-                [
-                    dbc.Label("Result Type", style={"max-width": "150px"}),
+        if needs_config_regenerate:
+            logger.info(f"Config regeneration triggered for {self.component_id}.")
+            self._regenerate_config_and_reopen_qm()
+            flags |= ModifiedFlags.CONFIG_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
+        elif needs_program_recompile:
+            logger.info(f"Program recompile triggered for {self.component_id}.")
+            self._initialize_qm_and_program(force_recompile=True)
+            flags |= ModifiedFlags.PROGRAM_MODIFIED
+
+        return flags
+
+    def get_dash_components(self, include_subcomponents: bool = True) -> List[Any]:
+        components = super().get_dash_components(include_subcomponents)
+
+        result_type_selector = dbc.Row(
+            [
+                dbc.Label("Result Type", width="auto", className="col-form-label"),
+                dbc.Col(
                     dbc.Select(
-                        id={"type": self.component_id, "index": "result-type"},
+                        id=self._get_id("result-type"),
                         options=[
                             {"label": rt, "value": rt} for rt in self.result_types
                         ],
                         value=self.result_type,
-                        style={"max-width": "150px"},
                     ),
-                ]
-            )
+                    width=True,
+                ),
+            ],
+            className="mb-2 align-items-center",
         )
+        components.append(result_type_selector)
 
         if include_subcomponents:
-            components.extend(self.scan_mode.get_dash_components())
-            components.extend(self.qua_inner_loop_action.get_dash_components())
+            if hasattr(self.scan_mode, "get_dash_components"):
+                components.extend(
+                    self.scan_mode.get_dash_components(include_subcomponents)
+                )
+            if hasattr(self.qua_inner_loop_action, "get_dash_components"):
+                components.extend(
+                    self.qua_inner_loop_action.get_dash_components(
+                        include_subcomponents
+                    )
+                )
 
         return components
 
-    def generate_config(self) -> None:
-        raise NotImplementedError("OPXDataAcquirer does not implement generate_config")
-
-    def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
-        flags = super().update_parameters(parameters)
-        # Update program if any sweep axes have been modified
-        if flags & ModifiedFlags.PARAMETERS_MODIFIED:
-            flags |= ModifiedFlags.PROGRAM_MODIFIED
-
-        params = parameters[self.component_id]
-        if self.result_type != params["result-type"]:
-            self.result_type = params["result-type"]
-            flags |= ModifiedFlags.PARAMETERS_MODIFIED
-
-        flags |= self.scan_mode.update_parameters(parameters)
-        flags |= self.qua_inner_loop_action.update_parameters(parameters)
-
-        if flags & ModifiedFlags.PARAMETERS_MODIFIED:
-            self.data_history.clear()
-
-        if flags & ModifiedFlags.CONFIG_MODIFIED:
-            self.generate_config()
-
-        if flags & (ModifiedFlags.CONFIG_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED):
-            self.program = self.generate_program()
-            self.run_program()
-
-        return flags
-
     def get_component_ids(self) -> List[str]:
-        component_ids = super().get_component_ids()
-        component_ids.append(self.scan_mode.component_id)
-        component_ids.append(self.qua_inner_loop_action.component_id)
-        return component_ids
+        ids = super().get_component_ids()
+
+        if hasattr(self.scan_mode, "get_component_ids"):
+            ids.extend(self.scan_mode.get_component_ids())
+        elif hasattr(self.scan_mode, "component_id"):
+            ids.append(self.scan_mode.component_id)  # type: ignore
+
+        if hasattr(self.qua_inner_loop_action, "get_component_ids"):
+            ids.extend(self.qua_inner_loop_action.get_component_ids())
+        elif hasattr(self.qua_inner_loop_action, "component_id"):
+            ids.append(self.qua_inner_loop_action.component_id)  # type: ignore
+
+        return list(set(ids))
+
+    def stop_acquisition(self) -> None:
+        logger.info(f"OPXDataAcquirer ({self.component_id}) attempting to halt QM job.")
+        if self.qm_job and self.qm_job.is_processing():  # type: ignore
+            try:
+                self.qm_job.halt()
+                logger.info(f"QM job for {self.component_id} halted.")
+            except Exception as e:
+                logger.warning(f"Error halting QM job for {self.component_id}: {e}")
+        super().stop_acquisition()

@@ -1,10 +1,14 @@
-from typing import Union
+from typing import Tuple, Optional, Any, Union
 from dash import dcc, html
-from dash.dash import Any
 import dash_bootstrap_components as dbc
 from plotly import graph_objects as go
 
-__all__ = ["convert_to_dash_component", "create_input_field"]
+__all__ = [
+    "convert_to_dash_component",
+    "create_input_field",
+    "print_component_structure",
+    "get_axis_limits",
+]
 
 
 def convert_to_dash_component(elem: Union[dict, list]) -> Any:
@@ -154,3 +158,43 @@ def print_component_structure(comp, indent=0):
             debug_component_structure(child, indent + 2)
     else:
         debug_component_structure(comp_children, indent + 2)
+
+
+def get_axis_limits(
+    fig: go.Figure,
+) -> Tuple[Optional[Tuple[float, float]], Optional[Tuple[float, float]]]:
+    """Returns the min and max limits of x and y axes from a Plotly figure.
+
+    This function scans all traces in the figure and calculates the overall
+    min and max of their x and y values. It does not rely on explicitly set
+    axis ranges, and instead computes them directly from the data.
+
+    Args:
+        fig: A Plotly figure containing one or more traces.
+
+    Returns:
+        A tuple containing two tuples:
+        - x-axis limits as (x_min, x_max), or (None, None) if no x values.
+        - y-axis limits as (y_min, y_max), or (None, None) if no y values.
+
+    Raises:
+        TypeError: If the provided input is not a Plotly Figure.
+    """
+    if not isinstance(fig, go.Figure):
+        raise TypeError("Input must be a plotly.graph_objects.Figure")
+
+    x_vals, y_vals = [], []
+
+    for trace in fig.data:
+        x = getattr(trace, "x", None)
+        y = getattr(trace, "y", None)
+
+        if x is not None:
+            x_vals.extend(x)
+        if y is not None:
+            y_vals.extend(y)
+
+    x_limits = (min(x_vals), max(x_vals)) if x_vals else None
+    y_limits = (min(y_vals), max(y_vals)) if y_vals else None
+
+    return x_limits, y_limits

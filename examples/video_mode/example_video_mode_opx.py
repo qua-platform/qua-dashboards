@@ -10,6 +10,7 @@ from quam.components import (
     StickyChannelAddon,
 )
 
+from qua_dashboards.core import build_dashboard
 from qua_dashboards.utils import setup_logging, BasicParameter
 from qua_dashboards.video_mode import (
     SweepAxis,
@@ -39,7 +40,7 @@ machine.channels["ch2"] = SingleChannel(
     sticky=StickyChannelAddon(duration=1_000, digital=False),
     operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
 )
-readout_pulse = pulses.SquareReadoutPulse(id="readout", length=1000, amplitude=0.1)
+readout_pulse = pulses.SquareReadoutPulse(id="readout", length=1500, amplitude=0.1)
 machine.channels["ch1_readout"] = InOutSingleChannel(
     opx_output=("con1", 3),
     opx_input=("con1", 1),
@@ -73,8 +74,8 @@ data_acquirer = OPXDataAcquirer(
     machine=machine,
     qua_inner_loop_action=inner_loop_action,
     scan_mode=scan_mode,
-    x_axis=SweepAxis("x", span=0.03, points=5, offset_parameter=x_offset),
-    y_axis=SweepAxis("y", span=0.03, points=5, offset_parameter=y_offset),
+    x_axis=SweepAxis("x", span=0.03, points=201, offset_parameter=x_offset),
+    y_axis=SweepAxis("y", span=0.03, points=201, offset_parameter=y_offset),
     result_type="I",
 )
 
@@ -88,43 +89,51 @@ if params["mode"] == "execution":
     # plt.colorbar()
 
 # %% Run Video Mode
-live_plotter = VideoModeComponent(data_acquirer=data_acquirer, update_interval=1)
-live_plotter.run(use_reloader=False)
+video_mode_component = VideoModeComponent(
+    data_acquirer=data_acquirer, update_interval=1
+)
+app = build_dashboard(
+    components=[video_mode_component],
+    title="Video Mode Simulation (Random Data)",
+)
 
-# %% DEBUG: Generate QUA script
+logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
+app.run(debug=True, host="0.0.0.0", port=8050, use_reloader=False)
 
-qua_script = generate_qua_script(data_acquirer.generate_qua_program(), config)
-print(qua_script)
+# # %% DEBUG: Generate QUA script
 
-# %% Test simulation
-if params["mode"] == "simulation":
-    prog = data_acquirer.generate_qua_program()
-    simulation_config = SimulationConfig(duration=10000)  # In clock cycles = 4ns
-    job = qmm.simulate(config, prog, simulation_config)
-    con1 = job.get_simulated_samples().con1
+# qua_script = generate_qua_script(data_acquirer.generate_qua_program(), config)
+# print(qua_script)
 
-    plt.figure(figsize=(10, 5))
-    con1.plot(analog_ports=["1", "2"])
+# # %% Test simulation
+# if params["mode"] == "simulation":
+#     prog = data_acquirer.generate_qua_program()
+#     simulation_config = SimulationConfig(duration=10000)  # In clock cycles = 4ns
+#     job = qmm.simulate(config, prog, simulation_config)
+#     con1 = job.get_simulated_samples().con1
 
-    plt.figure()
-    plt.plot(con1.analog["1"], con1.analog["2"])
+#     plt.figure(figsize=(10, 5))
+#     con1.plot(analog_ports=["1", "2"])
 
-    plt.figure()
-    data_acquirer.scan_mode.plot_scan(
-        data_acquirer.x_axis.points, data_acquirer.y_axis.points
-    )
+#     plt.figure()
+#     plt.plot(con1.analog["1"], con1.analog["2"])
 
-# %% DEBUG:Validate readout inputs
-results = []
-for readout_pulse in [readout1_pulse, readout2_pulse]:
-    inner_loop_action.readout_pulse = readout_pulse
-    data_acquirer.program = data_acquirer.generate_program()
-    data_acquirer.run_program()
+#     plt.figure()
+#     data_acquirer.scan_mode.plot_scan(
+#         data_acquirer.x_axis.points, data_acquirer.y_axis.points
+#     )
 
-    results.append(data_acquirer.acquire_data())
+# # %% DEBUG:Validate readout inputs
+# results = []
+# for readout_pulse in [readout1_pulse, readout2_pulse]:
+#     inner_loop_action.readout_pulse = readout_pulse
+#     data_acquirer.program = data_acquirer.generate_program()
+#     data_acquirer.run_program()
 
-fig, axes = plt.subplots(1, 2, figsize=(10, 5))
-for ax, result, ch in zip(axes, results, [1, 2]):
-    im = ax.pcolormesh(result, rasterized=True)
-    ax.set_title(f"Channel {ch}")
-# %%
+#     results.append(data_acquirer.acquire_data())
+
+# fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+# for ax, result, ch in zip(axes, results, [1, 2]):
+#     im = ax.pcolormesh(result, rasterized=True)
+#     ax.set_title(f"Channel {ch}")
+# # %%

@@ -58,7 +58,7 @@ class AnnotationTabController(BaseTabController):
     def __init__(
         self,
         component_id: str = "annotation-tab-controller",
-        point_select_tolerance: float = 0.01,  # Relative
+        point_select_tolerance: float = 0.025,  # Relative
         **kwargs: Any,
     ) -> None:
         """Initializes the AnnotationTabController.
@@ -297,7 +297,7 @@ class AnnotationTabController(BaseTabController):
                 f"{self.component_id}: No base image or figure dict provided. "
                 "Using default tolerance."
             )
-            self._absolute_click_tolerance = 0.01  # Default small absolute
+            self._absolute_click_tolerance = 0.025  # Default small absolute
             return
 
         if isinstance(base_image_data, xr.DataArray):
@@ -308,7 +308,7 @@ class AnnotationTabController(BaseTabController):
                 f"{self.component_id}: No figure or base image provided. "
                 "Using default tolerance."
             )
-            self._absolute_click_tolerance = 0.01  # Default small absolute
+            self._absolute_click_tolerance = 0.025  # Default small absolute
             return
 
         try:
@@ -319,7 +319,7 @@ class AnnotationTabController(BaseTabController):
                     f"tolerance from base_image_data. Using default. "
                     f"x_limits: {x_limits}, y_limits: {y_limits}"
                 )
-                self._absolute_click_tolerance = 0.01
+                self._absolute_click_tolerance = 0.025
                 return
 
             x_span, y_span = x_limits[1] - x_limits[0], y_limits[1] - y_limits[0]
@@ -327,7 +327,7 @@ class AnnotationTabController(BaseTabController):
             if diag > 1e-9:  # Avoid division by zero or tiny diagonals
                 self._absolute_click_tolerance = diag * self._relative_click_tolerance
             else:
-                self._absolute_click_tolerance = 0.01  # Fallback for zero-size image
+                self._absolute_click_tolerance = 0.025  # Fallback for zero-size image
 
             logger.debug(
                 f"{self.component_id}: Absolute click tolerance set to: "
@@ -337,7 +337,7 @@ class AnnotationTabController(BaseTabController):
             logger.warning(
                 f"{self.component_id}: Error calculating tolerance from base_image_data: {e}"
             )
-            self._absolute_click_tolerance = 0.01
+            self._absolute_click_tolerance = 0.025
 
     def register_callbacks(
         self,

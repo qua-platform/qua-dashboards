@@ -8,7 +8,9 @@ import numpy as np
 import xarray as xr
 from dash import Dash, Input, Output, State, html, ctx
 from dash.exceptions import PreventUpdate
+from plotly import graph_objects as go
 
+from qua_dashboards.utils import get_axis_limits
 from qua_dashboards.video_mode.tab_controllers.base_tab_controller import (
     BaseTabController,
 )
@@ -56,7 +58,7 @@ class AnnotationTabController(BaseTabController):
     def __init__(
         self,
         component_id: str = "annotation-tab-controller",
-        point_select_tolerance: float = 0.01,  # Relative
+        point_select_tolerance: float = 0.025,  # Relative
         **kwargs: Any,
     ) -> None:
         """Initializes the AnnotationTabController.
@@ -265,8 +267,8 @@ class AnnotationTabController(BaseTabController):
             self._reset_transient_state()  # Reset IDs if creating new
             # Update click tolerance if there's a base image in the default
             if default_obj.get("base_image_data") is not None:
-                fig_dict = xarray_to_plotly(default_obj["base_image_data"]).to_dict()
-                self._update_click_tolerance(fig_dict=fig_dict)
+                fig = xarray_to_plotly(default_obj["base_image_data"])
+                self._update_click_tolerance(fig=fig)
 
         viewer_data_store_payload = {
             "key": data_registry.STATIC_DATA_KEY,
@@ -287,77 +289,55 @@ class AnnotationTabController(BaseTabController):
     def _update_click_tolerance(
         self,
         base_image_data: Optional[xr.DataArray] = None,
-        fig_dict: Optional[Dict[str, Any]] = None,
+        fig: Optional[go.Figure] = None,
     ) -> None:
         """Updates the absolute click tolerance based on figure dimensions."""
-        if base_image_data is None and fig_dict is None:
+        if base_image_data is None and fig is None:
             logger.warning(
                 f"{self.component_id}: No base image or figure dict provided. "
                 "Using default tolerance."
             )
-            self._absolute_click_tolerance = 0.01  # Default small absolute
+            self._absolute_click_tolerance = 0.025  # Default small absolute
             return
 
         if isinstance(base_image_data, xr.DataArray):
-            fig_dict = xarray_to_plotly(base_image_data).to_dict()
+            fig = xarray_to_plotly(base_image_data)
 
-        if fig_dict is None:
+        if fig is None:
             logger.warning(
-                f"{self.component_id}: No figure dict provided. "
+                f"{self.component_id}: No figure or base image provided. "
                 "Using default tolerance."
             )
-            self._absolute_click_tolerance = 0.01  # Default small absolute
+            self._absolute_click_tolerance = 0.025  # Default small absolute
             return
+
         try:
-            # Convert to figure dict to get ranges (assuming xarray_to_plotly works)
-            layout = fig_dict.get("layout", {})
-
-            x_axis_key = next(
-                (key for key in layout if key.startswith("xaxis")), "xaxis"
-            )
-            y_axis_key = next(
-                (key for key in layout if key.startswith("yaxis")), "yaxis"
-            )
-
-            x_range = layout.get(x_axis_key, {}).get("range")
-            y_range = layout.get(y_axis_key, {}).get("range")
-
-            if (
-                x_range
-                and y_range
-                and isinstance(x_range, (list, tuple))
-                and len(x_range) == 2
-                and isinstance(y_range, (list, tuple))
-                and len(y_range) == 2
-                and all(isinstance(v, (int, float)) for v in x_range + y_range)
-            ):
-                diag = np.sqrt(
-                    (x_range[1] - x_range[0]) ** 2 + (y_range[1] - y_range[0]) ** 2
-                )
-                if diag > 1e-9:  # Avoid division by zero or tiny diagonals
-                    self._absolute_click_tolerance = (
-                        diag * self._relative_click_tolerance
-                    )
-                else:
-                    self._absolute_click_tolerance = (
-                        0.01  # Fallback for zero-size image
-                    )
-                logger.debug(
-                    f"{self.component_id}: Absolute click tolerance set to: "
-                    f"{self._absolute_click_tolerance:.4g}"
-                )
-            else:
+            x_limits, y_limits = get_axis_limits(fig=fig)
+            if x_limits is None or y_limits is None:
                 logger.warning(
                     f"{self.component_id}: Could not determine figure range for "
                     f"tolerance from base_image_data. Using default. "
-                    f"x_range: {x_range}, y_range: {y_range}"
+                    f"x_limits: {x_limits}, y_limits: {y_limits}"
                 )
-                self._absolute_click_tolerance = 0.01
+                self._absolute_click_tolerance = 0.025
+                return
+
+            x_span, y_span = x_limits[1] - x_limits[0], y_limits[1] - y_limits[0]
+            diag = np.sqrt(x_span**2 + y_span**2)
+            if diag > 1e-9:  # Avoid division by zero or tiny diagonals
+                self._absolute_click_tolerance = diag * self._relative_click_tolerance
+            else:
+                self._absolute_click_tolerance = 0.025  # Fallback for zero-size image
+
+            logger.debug(
+                f"{self.component_id}: Absolute click tolerance set to: "
+                f"{self._absolute_click_tolerance:.4g}"
+            )
         except Exception as e:
             logger.warning(
                 f"{self.component_id}: Error calculating tolerance from base_image_data: {e}"
             )
-            self._absolute_click_tolerance = 0.01
+            self._absolute_click_tolerance = 0.025
 
     def register_callbacks(
         self,

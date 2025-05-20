@@ -181,7 +181,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             logger.info(f"Generating QUA program for {self.component_id}.")
             self.generate_qua_program()
 
-        if self.qm_job is None or not self.qm_job.is_processing() or force_recompile:  # type: ignore
+        if self.qm_job is None or self.qm_job.status != "running" or force_recompile:  # type: ignore
             if self.qm_job is not None:
                 try:
                     logger.info(f"Halting existing QM job for {self.component_id}.")
@@ -255,7 +255,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         return output_data_2d
 
     def perform_actual_acquisition(self) -> np.ndarray:
-        if self.qm_job is None or not self.qm_job.is_processing():  # type: ignore
+        if self.qm_job is None or self.qm_job.status != "running":
             logger.warning(
                 f"QM job for {self.component_id} is not running or None. Attempting to re-initialize."
             )
@@ -383,7 +383,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
     def stop_acquisition(self) -> None:
         logger.info(f"OPXDataAcquirer ({self.component_id}) attempting to halt QM job.")
-        if self.qm_job and self.qm_job.is_processing():  # type: ignore
+        if self.qm_job and self.qm_job.status == "running":
             try:
                 self.qm_job.halt()
                 logger.info(f"QM job for {self.component_id} halted.")

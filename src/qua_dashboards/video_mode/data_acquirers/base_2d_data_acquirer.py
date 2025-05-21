@@ -8,9 +8,7 @@ import dash_bootstrap_components as dbc
 
 from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import BaseDataAcquirer
 from qua_dashboards.video_mode.sweep_axis import SweepAxis
-from qua_dashboards.core import ModifiedFlags
-from qua_dashboards.video_mode.utils.dash_utils import create_axis_layout
-
+from qua_dashboards.core import ModifiedFlags, BaseUpdatableComponent
 
 logger = logging.getLogger(__name__)
 
@@ -91,24 +89,8 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                 [
                     dbc.Row(
                         [
-                            create_axis_layout(
-                                axis="x",
-                                component_id=self.component_id,
-                                span=self.x_axis.span,
-                                points=self.x_axis.points,
-                                min_span=0.001,
-                                max_span=None,
-                                units=self.x_axis.units,
-                            ),
-                            create_axis_layout(
-                                axis="y",
-                                component_id=self.component_id,
-                                span=self.y_axis.span,
-                                points=self.y_axis.points,
-                                min_span=0.001,
-                                max_span=None,
-                                units=self.y_axis.units,
-                            ),
+                            self.x_axis.get_layout(),
+                            self.y_axis.get_layout(),
                         ],
                         className="g-0",  # No gutters
                     ),
@@ -192,3 +174,8 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                 "error": e,
                 "status": "error",
             }
+
+    def get_components(self) -> List[BaseUpdatableComponent]:
+        components = super().get_components()
+        components.extend([self.x_axis, self.y_axis])
+        return components

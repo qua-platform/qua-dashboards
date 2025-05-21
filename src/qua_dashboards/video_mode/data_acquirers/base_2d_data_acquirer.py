@@ -53,31 +53,6 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         self.x_axis: SweepAxis = x_axis
         self.y_axis: SweepAxis = y_axis
 
-    def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
-        """
-        Updates 2D data acquirer parameters (axes, averages).
-        """
-        flags = super().update_parameters(parameters)
-
-        if self.component_id in parameters:
-            params = parameters[self.component_id]
-            # X-axis
-            if "x-span" in params and self.x_axis.span != params["x-span"]:
-                self.x_axis.span = params["x-span"]
-                flags |= ModifiedFlags.PARAMETERS_MODIFIED
-            if "x-points" in params and self.x_axis.points != params["x-points"]:
-                self.x_axis.points = params["x-points"]
-                flags |= ModifiedFlags.PARAMETERS_MODIFIED
-            # Y-axis
-            if "y-span" in params and self.y_axis.span != params["y-span"]:
-                self.y_axis.span = params["y-span"]
-                flags |= ModifiedFlags.PARAMETERS_MODIFIED
-            if "y-points" in params and self.y_axis.points != params["y-points"]:
-                self.y_axis.points = params["y-points"]
-                flags |= ModifiedFlags.PARAMETERS_MODIFIED
-
-        return flags
-
     def get_dash_components(self, include_subcomponents: bool = True) -> List[Any]:
         """
         Returns Dash UI components for X and Y axis configuration.

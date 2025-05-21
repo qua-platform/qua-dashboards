@@ -14,14 +14,14 @@ def get_video_mode_component():
     """
     # 2. Define SweepAxis objects
     x_axis = SweepAxis(
-        name="Horizontal Axis",
+        name="x",
         label="X Coordinate",
         units="µm",
         span=10.0,
         points=61,
     )
     y_axis = SweepAxis(
-        name="Vertical Axis",
+        name="y",
         label="Y Coordinate",
         units="µm",
         span=8.0,

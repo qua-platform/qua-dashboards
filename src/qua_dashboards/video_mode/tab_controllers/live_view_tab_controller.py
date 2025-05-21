@@ -1,6 +1,6 @@
 import logging
 import uuid
-from typing import Any, Dict
+from typing import Any, Dict, Union
 
 import dash_bootstrap_components as dbc
 import dash
@@ -349,59 +349,44 @@ class LiveViewTabController(BaseTabController):
             parameters_to_update: Dict[str, Dict[str, Any]] = {}
 
             for i, component in enumerate(all_acquirer_components):
-                param_values_for_this_type = values_by_type_list[i]
-                param_ids_dicts_for_this_type = ids_by_type_list[i]
-
-                if not param_values_for_this_type or not param_ids_dicts_for_this_type:
-                    continue
-
-                current_type_params: Dict[str, Any] = {}
-                for idx, param_id_dict in enumerate(param_ids_dicts_for_this_type):
-                    if isinstance(param_id_dict, dict) and "index" in param_id_dict:
-                        param_name = param_id_dict["index"]
-                        if idx < len(param_values_for_this_type):
-                            param_value = param_values_for_this_type[idx]
-                            current_type_params[param_name] = param_value
-                        else:
-                            logger.warning(
-                                f"Value missing for param_id {param_id_dict} "
-                                f"of type {component.component_id}"
-                            )
-                    else:
-                        logger.warning(
-                            f"Unexpected ID format in acquirer params: "
-                            f"{param_id_dict} of type {component.component_id}"
-                        )
-
-                if current_type_params:
-                    parameters_to_update[component.component_id] = current_type_params
-
-            if not parameters_to_update:
-                logger.debug(
-                    "No valid parameters found to update for acquirer "
-                    f"'{self._data_acquirer_instance.component_id}'."
+                component_params = self._parse_component_parameters(
+                    component.component_id,
+                    values_by_type_list[i],
+                    ids_by_type_list[i],
                 )
-                return dash.no_update
 
-            logger.debug(
-                f"Updating DataAcquirer "
-                f"'{self._data_acquirer_instance.component_id}' "
-                f"with parameters: {parameters_to_update}"
-            )
-            modified_flags = self._data_acquirer_instance.update_parameters(
-                parameters_to_update
-            )
-            logger.info(f"DataAcquirer parameters updated. Flags: {modified_flags}")
+                if not component_params:
+                    continue
+                parameters_to_update[component.component_id] = component_params
 
-            if modified_flags != ModifiedFlags.NONE:
-                if modified_flags & ModifiedFlags.PROGRAM_MODIFIED:
-                    logger.info(
-                        f"Acquirer '{self._data_acquirer_instance.component_id}' "
-                        f"program was modified and recompiled."
-                    )
-                if modified_flags & ModifiedFlags.CONFIG_MODIFIED:
-                    logger.info(
-                        f"Acquirer '{self._data_acquirer_instance.component_id}' "
-                        f"config was modified and reloaded."
-                    )
+            self._data_acquirer_instance.update_parameters(parameters_to_update)
+
             return dash.no_update
+
+    @staticmethod
+    def _parse_component_parameters(
+        component_id: Union[str, dict],
+        values: Any,
+        ids: Any,
+    ) -> Dict[str, Any]:
+        if not values or not ids:
+            return {}
+
+        current_type_params: Dict[str, Any] = {}
+        for idx, param_id_dict in enumerate(ids):
+            if isinstance(param_id_dict, dict) and "index" in param_id_dict:
+                param_name = param_id_dict["index"]
+                if idx < len(values):
+                    param_value = values[idx]
+                    current_type_params[param_name] = param_value
+                else:
+                    logger.warning(
+                        f"Value missing for param_id {param_id_dict} "
+                        f"of type {component_id}"
+                    )
+            else:
+                logger.warning(
+                    f"Unexpected ID format in acquirer params: "
+                    f"{param_id_dict} of type {component_id}"
+                )
+        return current_type_params

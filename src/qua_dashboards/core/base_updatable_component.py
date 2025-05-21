@@ -77,16 +77,15 @@ class BaseUpdatableComponent(BaseComponent, ABC):
         """
         return []
 
-    def get_component_ids(self) -> List[str]:
+    def get_components(self) -> List["BaseUpdatableComponent"]:
         """
-        Return a list of component type IDs for this component's parameter UIs.
+        Return a list of component instances for this component's parameter UIs.
 
-        These are the 'type' part of pattern-matching IDs used for Dash callbacks
-        to collect parameter values. Typically, this will be `[self.component_id]`,
-        but can include IDs of managed sub-components if `include_subcomponents`
-        was True in `get_dash_components`.
+        These components are used in Dash callbacks to manage and update parameter
+        values. Typically, this will be `[self]`, but can include managed sub-components
+        if `include_subcomponents` was True in `get_dash_components`.
 
         Returns:
-            A list of component ID strings. Defaults to `[self.component_id]`.
+            A list of component instances. Defaults to `[self]`.
         """
-        return [self.component_id]
+        return [self]

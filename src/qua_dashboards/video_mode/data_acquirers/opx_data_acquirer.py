@@ -16,6 +16,7 @@ from qm.qua import (
 from dash import html
 import dash_bootstrap_components as dbc
 
+from qua_dashboards.core.base_updatable_component import BaseUpdatableComponent
 from qua_dashboards.video_mode.data_acquirers.base_2d_data_acquirer import (
     Base2DDataAcquirer,
 )
@@ -366,20 +367,11 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
         return components
 
-    def get_component_ids(self) -> List[str]:
-        ids = super().get_component_ids()
-
-        if hasattr(self.scan_mode, "get_component_ids"):
-            ids.extend(self.scan_mode.get_component_ids())
-        elif hasattr(self.scan_mode, "component_id"):
-            ids.append(self.scan_mode.component_id)  # type: ignore
-
-        if hasattr(self.qua_inner_loop_action, "get_component_ids"):
-            ids.extend(self.qua_inner_loop_action.get_component_ids())
-        elif hasattr(self.qua_inner_loop_action, "component_id"):
-            ids.append(self.qua_inner_loop_action.component_id)  # type: ignore
-
-        return list(set(ids))
+    def get_components(self) -> List[BaseUpdatableComponent]:
+        components = super().get_components()
+        components.extend(self.scan_mode.get_components())
+        components.extend(self.qua_inner_loop_action.get_components())
+        return components
 
     def stop_acquisition(self) -> None:
         logger.info(f"OPXDataAcquirer ({self.component_id}) attempting to halt QM job.")

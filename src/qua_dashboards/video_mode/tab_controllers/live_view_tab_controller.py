@@ -300,26 +300,6 @@ class LiveViewTabController(BaseTabController):
             return button_text, button_color, status_text, status_color
 
     def _register_parameter_update_callback(self, app: Dash) -> None:
-        # comp_id = self._data_acquirer_instance._get_id(ALL)
-        # # comp_id = self._data_acquirer_instance._get_id("acquire-time")
-
-        # @app.callback(
-        #     Output(
-        #         self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX),
-        #         "children",
-        #     ),
-        #     Input(
-        #         comp_id,
-        #         "value",
-        #     ),
-        #     prevent_initial_call=True,
-        # )
-        # def handle_acquirer_parameter_update(*args: Any) -> None:
-        #     print("!!!!!!!!!!!!!!!!!!" * 50)
-        #     logger.info(
-        #         f"Acquirer parameter update triggered. Acquire time: {acquire_time}"
-        #     )
-        #     return dash.no_update
 
         """Registers callback for data acquirer parameter updates."""
         all_acquirer_components = self._data_acquirer_instance.get_components()

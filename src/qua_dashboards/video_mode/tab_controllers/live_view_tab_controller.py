@@ -1,6 +1,6 @@
 import logging
 import uuid
-from typing import Any, Dict
+from typing import Any, Dict, Union
 
 import dash_bootstrap_components as dbc
 import dash
@@ -61,7 +61,7 @@ class LiveViewTabController(BaseTabController):
             f"Data Acquirer '{self._data_acquirer_instance.component_id}'."
         )
 
-    def get_layout(self) -> html.Div:
+    def get_layout(self) -> dbc.Card:
         """
         Generates the Dash layout for the Live View control panel.
 
@@ -192,11 +192,17 @@ class LiveViewTabController(BaseTabController):
             orchestrator_stores: Dictionary of orchestrator-level store IDs.
             shared_viewer_store_ids: Dictionary of shared viewer store IDs.
         """
-        from qua_dashboards.video_mode.video_mode_component import VideoModeComponent
-
         logger.info(
             f"Registering callbacks for LiveViewTabController '{self.component_id}'."
         )
+        self._register_acquisition_control_callback(app, orchestrator_stores)
+        self._register_parameter_update_callback(app)
+
+    def _register_acquisition_control_callback(
+        self, app: Dash, orchestrator_stores: Dict[str, Any]
+    ) -> None:
+        """Registers callback for acquisition control and status updates."""
+        from qua_dashboards.video_mode.video_mode_component import VideoModeComponent
 
         main_status_alert_id = orchestrator_stores.get(
             VideoModeComponent._MAIN_STATUS_ALERT_ID_SUFFIX
@@ -213,12 +219,7 @@ class LiveViewTabController(BaseTabController):
             Output(self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX), "children"),
             Output(self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX), "color"),
             Input(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "n_clicks"),
-            # Add Input for the main status alert if available to react to polled status
-            Input(main_status_alert_id, "children")
-            if main_status_alert_id
-            else Input(
-                self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "id"
-            ),  # Dummy input if alert id not found
+            Input(main_status_alert_id, "children"),
             prevent_initial_call=True,
         )
         def handle_acquisition_control_and_status_update(
@@ -226,13 +227,6 @@ class LiveViewTabController(BaseTabController):
         ) -> tuple[str, str, str, str]:
             """
             Handles acquisition toggle and updates UI based on acquirer status.
-
-            This callback is triggered by:
-            1. Clicks on the toggle acquisition button.
-            2. Changes in the main status alert (by polling in VideoModeComponent),
-               allowing the UI to reflect the actual acquirer status even if the
-               action was not initiated from this tab (e.g., after a refresh or
-               if acquisition was stopped by other means).
             """
             triggered_input_id_obj = ctx.triggered_id
             is_button_click = False
@@ -267,7 +261,6 @@ class LiveViewTabController(BaseTabController):
                         f"'{self._data_acquirer_instance.component_id}'"
                     )
                     self._data_acquirer_instance.stop_acquisition()
-                    # Optimistic UI update, will be confirmed by next status poll
                     button_text, button_color = "Start Acquisition", "success"
                     status_text, status_color = "STOPPED", "secondary"
                 else:  # Was STOPPED, ERROR, or UNKNOWN
@@ -276,13 +269,9 @@ class LiveViewTabController(BaseTabController):
                         f"'{self._data_acquirer_instance.component_id}'"
                     )
                     self._data_acquirer_instance.start_acquisition()
-                    # Optimistic UI update
                     button_text, button_color = "Stop Acquisition", "danger"
                     status_text, status_color = "RUNNING", "success"
             else:
-                # Status update triggered by polling or tab activation, not a button
-                # click. Simply reflect the current state of the acquirer
-
                 if current_status != "STOPPED":
                     logger.debug(
                         f"LiveViewTab: Status update triggered externally. "
@@ -298,11 +287,11 @@ class LiveViewTabController(BaseTabController):
                     button_text, button_color = (
                         "Start Acquisition",
                         "success",
-                    )  # Allow attempt to restart
+                    )
                     status_text = (
                         f"ERROR{(': ' + str(error_details)) if error_details else ''}"
                     )
-                    status_text = status_text[:100]  # Truncate long errors
+                    status_text = status_text[:100]
                     status_color = "danger"
                 else:  # Unknown or other states
                     button_text, button_color = "Start Acquisition", "warning"
@@ -310,103 +299,74 @@ class LiveViewTabController(BaseTabController):
 
             return button_text, button_color, status_text, status_color
 
-        # Callbacks for Data Acquirer Parameters
-        all_acquirer_managed_ids_types = (
-            self._data_acquirer_instance.get_component_ids()
+    def _register_parameter_update_callback(self, app: Dash) -> None:
+
+        """Registers callback for data acquirer parameter updates."""
+        all_acquirer_components = self._data_acquirer_instance.get_components()
+
+        dynamic_inputs = [
+            Input(component._get_id(ALL), "value")
+            for component in all_acquirer_components
+        ]
+        dynamic_states_ids = [
+            State(component._get_id(ALL), "id") for component in all_acquirer_components
+        ]
+
+        @app.callback(
+            Output(
+                self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX),
+                component_property="children",
+            ),
+            dynamic_inputs,
+            dynamic_states_ids,
+            prevent_initial_call=True,
         )
+        def handle_acquirer_parameter_update(*args: Any):
+            num_comp_types = len(all_acquirer_components)
+            values_by_type_list = args[:num_comp_types]
+            ids_by_type_list = args[num_comp_types : 2 * num_comp_types]
 
-        if not all_acquirer_managed_ids_types:
-            logger.warning(
-                f"DataAcquirer '{self._data_acquirer_instance.component_id}' "
-                f"reported no managed component IDs for parameter updates."
-            )
-        else:
-            dynamic_inputs = [
-                Input({"type": comp_type_id, "index": ALL}, "value")
-                for comp_type_id in all_acquirer_managed_ids_types
-            ]
-            dynamic_states_ids = [
-                State({"type": comp_type_id, "index": ALL}, "id")
-                for comp_type_id in all_acquirer_managed_ids_types
-            ]
+            parameters_to_update: Dict[str, Dict[str, Any]] = {}
 
-            @app.callback(
-                Output(
-                    self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX),
-                    component_property="children",
-                ),
-                dynamic_inputs,
-                dynamic_states_ids,
-                prevent_initial_call=True,
-            )
-            def handle_acquirer_parameter_update(*args: Any):
-                num_comp_types = len(all_acquirer_managed_ids_types)
-                values_by_type_list = args[:num_comp_types]
-                ids_by_type_list = args[num_comp_types : 2 * num_comp_types]
+            for i, component in enumerate(all_acquirer_components):
+                component_params = self._parse_component_parameters(
+                    component.component_id,
+                    values_by_type_list[i],
+                    ids_by_type_list[i],
+                )
 
-                parameters_to_update: Dict[str, Dict[str, Any]] = {}
+                if not component_params:
+                    continue
+                parameters_to_update[component.component_id] = component_params
 
-                for i, comp_type_id_for_params in enumerate(
-                    all_acquirer_managed_ids_types
-                ):
-                    param_values_for_this_type = values_by_type_list[i]
-                    param_ids_dicts_for_this_type = ids_by_type_list[i]
+            self._data_acquirer_instance.update_parameters(parameters_to_update)
 
-                    if (
-                        not param_values_for_this_type
-                        or not param_ids_dicts_for_this_type
-                    ):
-                        continue
+            return dash.no_update
 
-                    current_type_params: Dict[str, Any] = {}
-                    for idx, param_id_dict in enumerate(param_ids_dicts_for_this_type):
-                        if isinstance(param_id_dict, dict) and "index" in param_id_dict:
-                            param_name = param_id_dict["index"]
-                            if idx < len(param_values_for_this_type):
-                                param_value = param_values_for_this_type[idx]
-                                current_type_params[param_name] = param_value
-                            else:
-                                logger.warning(
-                                    f"Value missing for param_id {param_id_dict} "
-                                    f"of type {comp_type_id_for_params}"
-                                )
-                        else:
-                            logger.warning(
-                                f"Unexpected ID format in acquirer params: "
-                                f"{param_id_dict} of type {comp_type_id_for_params}"
-                            )
+    @staticmethod
+    def _parse_component_parameters(
+        component_id: Union[str, dict],
+        values: Any,
+        ids: Any,
+    ) -> Dict[str, Any]:
+        if not values or not ids:
+            return {}
 
-                    if current_type_params:
-                        parameters_to_update[comp_type_id_for_params] = (
-                            current_type_params
-                        )
-
-                if not parameters_to_update:
-                    logger.debug(
-                        "No valid parameters found to update for acquirer "
-                        f"'{self._data_acquirer_instance.component_id}'."
+        current_type_params: Dict[str, Any] = {}
+        for idx, param_id_dict in enumerate(ids):
+            if isinstance(param_id_dict, dict) and "index" in param_id_dict:
+                param_name = param_id_dict["index"]
+                if idx < len(values):
+                    param_value = values[idx]
+                    current_type_params[param_name] = param_value
+                else:
+                    logger.warning(
+                        f"Value missing for param_id {param_id_dict} "
+                        f"of type {component_id}"
                     )
-                    return dash.no_update
-
-                logger.debug(
-                    f"Updating DataAcquirer "
-                    f"'{self._data_acquirer_instance.component_id}' "
-                    f"with parameters: {parameters_to_update}"
+            else:
+                logger.warning(
+                    f"Unexpected ID format in acquirer params: "
+                    f"{param_id_dict} of type {component_id}"
                 )
-                modified_flags = self._data_acquirer_instance.update_parameters(
-                    parameters_to_update
-                )
-                logger.info(f"DataAcquirer parameters updated. Flags: {modified_flags}")
-
-                if modified_flags != ModifiedFlags.NONE:
-                    if modified_flags & ModifiedFlags.PROGRAM_MODIFIED:
-                        logger.info(
-                            f"Acquirer '{self._data_acquirer_instance.component_id}' "
-                            f"program was modified and recompiled."
-                        )
-                    if modified_flags & ModifiedFlags.CONFIG_MODIFIED:
-                        logger.info(
-                            f"Acquirer '{self._data_acquirer_instance.component_id}' "
-                            f"config was modified and reloaded."
-                        )
-                return dash.no_update
+        return current_type_params

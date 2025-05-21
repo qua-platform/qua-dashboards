@@ -1,10 +1,6 @@
-from typing import Literal, Optional
 
 import plotly.graph_objects as go
 import xarray as xr
-import dash_bootstrap_components as dbc
-
-from qua_dashboards.utils.dash_utils import create_input_field
 
 
 __all__ = [
@@ -54,55 +50,3 @@ def xarray_to_plotly(da: xr.DataArray):
         xaxis_title=xaxis_label, yaxis_title=yaxis_label, template="plotly_dark"
     )
     return fig
-
-
-def create_axis_layout(
-    axis: Literal["x", "y"],
-    span: float,
-    points: int,
-    min_span: float,
-    max_span: Optional[float] = None,
-    units: Optional[str] = None,
-    component_id: Optional[str] = None,
-):
-    if component_id is None:
-        ids = {"span": f"{axis.lower()}-span", "points": f"{axis.lower()}-points"}
-    else:
-        ids = {
-            "span": {"type": component_id, "index": f"{axis.lower()}-span"},
-            "points": {"type": component_id, "index": f"{axis.lower()}-points"},
-        }
-    return dbc.Col(
-        dbc.Card(
-            [
-                dbc.CardHeader(axis.upper(), className="text-light"),
-                dbc.CardBody(
-                    [
-                        create_input_field(
-                            id=ids["span"],
-                            label="Span",
-                            value=span,
-                            min=min_span,
-                            max=max_span,
-                            input_style={"width": "100px"},
-                            units=units if units is not None else "",
-                        ),
-                        create_input_field(
-                            id=ids["points"],
-                            label="Points",
-                            value=points,
-                            min=1,
-                            max=501,
-                            step=1,
-                        ),
-                    ],
-                    className="text-light",
-                ),
-            ],
-            color="dark",
-            inverse=True,
-            className="h-100 tab-card-dark",
-        ),
-        md=6,
-        className="mb-3",
-    )

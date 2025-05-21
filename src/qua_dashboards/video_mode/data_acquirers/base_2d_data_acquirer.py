@@ -8,9 +8,7 @@ import dash_bootstrap_components as dbc
 
 from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import BaseDataAcquirer
 from qua_dashboards.video_mode.sweep_axis import SweepAxis
-from qua_dashboards.core import ModifiedFlags
-from qua_dashboards.video_mode.utils.dash_utils import create_axis_layout
-
+from qua_dashboards.core import ModifiedFlags, BaseUpdatableComponent
 
 logger = logging.getLogger(__name__)
 
@@ -55,31 +53,6 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         self.x_axis: SweepAxis = x_axis
         self.y_axis: SweepAxis = y_axis
 
-    def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
-        """
-        Updates 2D data acquirer parameters (axes, averages).
-        """
-        flags = super().update_parameters(parameters)
-
-        if self.component_id in parameters:
-            params = parameters[self.component_id]
-            # X-axis
-            if "x-span" in params and self.x_axis.span != params["x-span"]:
-                self.x_axis.span = params["x-span"]
-                flags |= ModifiedFlags.PARAMETERS_MODIFIED
-            if "x-points" in params and self.x_axis.points != params["x-points"]:
-                self.x_axis.points = params["x-points"]
-                flags |= ModifiedFlags.PARAMETERS_MODIFIED
-            # Y-axis
-            if "y-span" in params and self.y_axis.span != params["y-span"]:
-                self.y_axis.span = params["y-span"]
-                flags |= ModifiedFlags.PARAMETERS_MODIFIED
-            if "y-points" in params and self.y_axis.points != params["y-points"]:
-                self.y_axis.points = params["y-points"]
-                flags |= ModifiedFlags.PARAMETERS_MODIFIED
-
-        return flags
-
     def get_dash_components(self, include_subcomponents: bool = True) -> List[Any]:
         """
         Returns Dash UI components for X and Y axis configuration.
@@ -91,24 +64,8 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                 [
                     dbc.Row(
                         [
-                            create_axis_layout(
-                                axis="x",
-                                component_id=self.component_id,
-                                span=self.x_axis.span,
-                                points=self.x_axis.points,
-                                min_span=0.001,
-                                max_span=None,
-                                units=self.x_axis.units,
-                            ),
-                            create_axis_layout(
-                                axis="y",
-                                component_id=self.component_id,
-                                span=self.y_axis.span,
-                                points=self.y_axis.points,
-                                min_span=0.001,
-                                max_span=None,
-                                units=self.y_axis.units,
-                            ),
+                            self.x_axis.get_layout(),
+                            self.y_axis.get_layout(),
                         ],
                         className="g-0",  # No gutters
                     ),
@@ -192,3 +149,8 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                 "error": e,
                 "status": "error",
             }
+
+    def get_components(self) -> List[BaseUpdatableComponent]:
+        components = super().get_components()
+        components.extend([self.x_axis, self.y_axis])
+        return components

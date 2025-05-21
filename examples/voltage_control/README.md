@@ -28,7 +28,7 @@ An example demonstrating this combined usage can be found in `examples/combined_
 
 The `examples/voltage_control` folder contains scripts to help you get started:
 
-### 1. Simulated Voltage Control ([example_voltage_control.py]())
+### 1. Simulated Voltage Control ([example_voltage_control_simulated.py](example_voltage_control_simulated.py))
 
 - **Purpose**: This example uses simulated voltage parameters (`BasicParameter`).
   It's designed for **testing the functionality and familiarizing yourself with the `VoltageControlComponent` interface** without needing any actual hardware.
@@ -44,7 +44,7 @@ The `examples/voltage_control` folder contains scripts to help you get started:
 - **How it Works**: It defines a list of `BasicParameter` objects, each representing a simulated DC voltage source.
   These are then passed to the `VoltageControlComponent` to create the dashboard.
 
-### 2. QDAC Voltage Control (`example_voltage_control_qdac.py`)
+### 2. QDAC Voltage Control ([example_voltage_control_qdac.py](example_voltage_control_qdac.py))
 
 - **Purpose**: This is the more relevant, **real-life use case**, demonstrating how to connect the `VoltageControlComponent` to an actual QDevil QDAC (Digital-to-Analog Converter).
 

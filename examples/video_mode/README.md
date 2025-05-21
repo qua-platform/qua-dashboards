@@ -23,9 +23,9 @@ The core functionality provides an interactive web frontend that displays a live
 
 ## Running Video Mode
 
-The `examples/video_mode` folder provides practical demonstrations of how to use this module.
+The `[examples/video_mode](examples/video_mode)` folder provides practical demonstrations of how to use this module.
 
-### Simulating Video Mode (`example_video_mode_random.py`)
+### Simulating Video Mode ([example_video_mode_random.py](example_video_mode_random.py))
 
 For development, testing, or educational purposes, you can run Video Mode in a simulation.
 This does not require any connection to an OPX.
@@ -38,9 +38,9 @@ This does not require any connection to an OPX.
   - Debugging custom scan modes or inner loop actions in a controlled environment.
 - **How it Works**: It sets up `SweepAxis` for X and Y dimensions and feeds them to a `RandomDataAcquirer`.
   The `VideoModeComponent` then displays the randomly generated 2D scan.
-- **Further Details**: For a detailed guide on the `example_video_mode_random.py` script, please refer to \[link to the specific random video mode guide, if available, or its separate README file\].
+- **Further Details**: For a detailed guide, see the `example_video_mode_random.py` script.
 
-### Running Video Mode with OPX (`example_video_mode_opx.py`)
+### Running Video Mode with OPX ([example_video_mode_opx.py](example_video_mode_opx.py))
 
 This is the primary mode for conducting experiments on actual quantum hardware.
 

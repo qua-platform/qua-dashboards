@@ -14,14 +14,14 @@ def get_video_mode_component():
     """
     # 2. Define SweepAxis objects
     x_axis = SweepAxis(
-        name="Horizontal Axis",
+        name="x",
         label="X Coordinate",
         units="µm",
         span=10.0,
         points=61,
     )
     y_axis = SweepAxis(
-        name="Vertical Axis",
+        name="y",
         label="Y Coordinate",
         units="µm",
         span=8.0,
@@ -29,7 +29,7 @@ def get_video_mode_component():
     )
     # 3. Instantiate RandomDataAcquirer
     random_acquirer = RandomDataAcquirer(
-        component_id="random-data-source-001",
+        component_id="random-data-acquirer",
         x_axis=x_axis,
         y_axis=y_axis,
         acquire_time=0.03,

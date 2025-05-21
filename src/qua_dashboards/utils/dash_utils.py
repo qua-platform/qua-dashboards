@@ -155,9 +155,9 @@ def print_component_structure(comp, indent=0):
         print(f"{space}  No children")
     elif isinstance(comp_children, list):
         for child in comp_children:
-            debug_component_structure(child, indent + 2)
+            print_component_structure(child, indent + 2)
     else:
-        debug_component_structure(comp_children, indent + 2)
+        print_component_structure(comp_children, indent + 2)
 
 
 def get_axis_limits(

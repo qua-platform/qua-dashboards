@@ -125,8 +125,8 @@ data_acquirer = OPXDataAcquirer(
     machine=machine,
     qua_inner_loop_action=inner_loop_action,
     scan_mode=scan_mode,
-    x_axis=SweepAxis("x", span=0.03, points=201, offset_parameter=x_offset),
-    y_axis=SweepAxis("y", span=0.03, points=201, offset_parameter=y_offset),
+    x_axis=SweepAxis("x", span=0.03, points=61, offset_parameter=x_offset),
+    y_axis=SweepAxis("y", span=0.03, points=61, offset_parameter=y_offset),
     result_type="I",  # Specify the type of result to display (e.g., "I", "Q", "amplitude", "phase")
 )
 

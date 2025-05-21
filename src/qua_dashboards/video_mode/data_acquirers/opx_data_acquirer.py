@@ -378,6 +378,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         if self.qm_job and self.qm_job.status == "running":
             try:
                 self.qm_job.halt()
+                self.qm_job = None
                 logger.info(f"QM job for {self.component_id} halted.")
             except Exception as e:
                 logger.warning(f"Error halting QM job for {self.component_id}: {e}")

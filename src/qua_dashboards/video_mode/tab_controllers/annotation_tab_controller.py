@@ -1,6 +1,7 @@
 import json
 import logging
 from typing import Dict, Any, List, Optional
+import re
 
 import dash
 import dash_bootstrap_components as dbc
@@ -25,6 +26,28 @@ from qua_dashboards.video_mode.utils.data_utils import load_data
 logger = logging.getLogger(__name__)
 
 __all__ = ["AnnotationTabController"]
+
+
+# Ensure point/line counters are set to the next available unique index
+def get_next_index(items: List[str], prefix: str) -> int:
+    """Get the next available unique index for a given prefix.
+
+    example:
+    items = ["p_0", "p_1", "l_0", "l_1"]
+    prefix = "p"
+    get_next_index(items, prefix)
+    >>> 2
+    """
+    max_idx = -1
+    pattern = re.compile(rf"{prefix}_(\d+)")
+    for item in items:
+        match = pattern.fullmatch(str(item.get("id", "")))
+        if not match:
+            continue
+
+        idx = int(match.group(1))
+        max_idx = max(max_idx, idx)
+    return max_idx + 1
 
 
 class AnnotationTabController(BaseTabController):
@@ -269,6 +292,12 @@ class AnnotationTabController(BaseTabController):
             if default_obj.get("base_image_data") is not None:
                 fig = xarray_to_plotly(default_obj["base_image_data"])
                 self._update_click_tolerance(fig=fig)
+            # Ensure static_data_obj is set for counter logic
+            static_data_obj = default_obj
+
+        annotations = static_data_obj.get("annotations", {}) if static_data_obj else {}
+        self._next_point_id_counter = get_next_index(annotations.get("points", []), "p")
+        self._next_line_id_counter = get_next_index(annotations.get("lines", []), "l")
 
         viewer_data_store_payload = {
             "key": data_registry.STATIC_DATA_KEY,
@@ -667,6 +696,12 @@ class AnnotationTabController(BaseTabController):
                 }
                 new_version = data_registry.set_data(
                     data_registry.STATIC_DATA_KEY, new_static_data_object
+                )
+                self._next_point_id_counter = get_next_index(
+                    annotations_copy.get("points", []), "p"
+                )
+                self._next_line_id_counter = get_next_index(
+                    annotations_copy.get("lines", []), "l"
                 )
                 logger.debug(
                     f"{self.component_id}: Annotations updated. New version: {new_version}"

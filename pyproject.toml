@@ -1,7 +1,7 @@
 [project]
 name = "qua-dashboards"
 authors = [{ name = "Quantum Machines", email = "info@quantum-machines.co" }]
-version = "0.1.0"
+version = "0.2.0"
 description = "Collection of dashboards for the QUA platform"
 readme = "README.md"
 requires-python = ">=3.9,<3.13"

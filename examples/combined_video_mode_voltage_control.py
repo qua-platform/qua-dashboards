@@ -1,5 +1,7 @@
 from video_mode.example_video_mode_random import get_video_mode_component
-from voltage_control.example_voltage_control import get_voltage_control_component
+from voltage_control.example_voltage_control_simulated import (
+    get_voltage_control_component,
+)
 from qua_dashboards.core import build_dashboard
 from qua_dashboards.utils import setup_logging
 

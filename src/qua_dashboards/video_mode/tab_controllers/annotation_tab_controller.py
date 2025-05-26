@@ -1,6 +1,7 @@
 import json
 import logging
 from typing import Dict, Any, List, Optional
+import re
 
 import dash
 import dash_bootstrap_components as dbc
@@ -25,6 +26,28 @@ from qua_dashboards.video_mode.utils.data_utils import load_data
 logger = logging.getLogger(__name__)
 
 __all__ = ["AnnotationTabController"]
+
+
+# Ensure point/line counters are set to the next available unique index
+def get_next_index(items: List[str], prefix: str) -> int:
+    """Get the next available unique index for a given prefix.
+
+    example:
+    items = ["p_0", "p_1", "l_0", "l_1"]
+    prefix = "p"
+    get_next_index(items, prefix)
+    >>> 2
+    """
+    max_idx = -1
+    pattern = re.compile(rf"{prefix}_(\d+)")
+    for item in items:
+        match = pattern.fullmatch(str(item.get("id", "")))
+        if not match:
+            continue
+
+        idx = int(match.group(1))
+        max_idx = max(max_idx, idx)
+    return max_idx + 1
 
 
 class AnnotationTabController(BaseTabController):
@@ -52,8 +75,6 @@ class AnnotationTabController(BaseTabController):
     _IMPORT_LIVE_FRAME_BUTTON_SUFFIX = "import-live-frame-button"
     _LOAD_FROM_DISK_BUTTON_SUFFIX = "load-from-disk-button"
     _LOAD_FROM_DISK_INPUT_SUFFIX = "load-from-disk-input"
-    _SHORTCUT_DUMMY_INPUT_SUFFIX = "shortcuts-dummy-input"
-    _SHORTCUT_DUMMY_OUTPUT_SUFFIX = "shortcuts-dummy-output"
 
     def __init__(
         self,
@@ -146,10 +167,10 @@ class AnnotationTabController(BaseTabController):
         """Generates the Dash layout for the Annotation tab."""
         logger.debug(f"Generating layout for {self.component_id}")
         radio_options = [
-            {"label": "Add/Move Points (Shift+P)", "value": "point"},
-            {"label": "Add Lines (Shift+L)", "value": "line"},
-            {"label": "Delete (Shift+D)", "value": "delete"},
-            {"label": "Translate all points and lines (SHIFT+T)", "value": "translate-all"},
+            {"label": "Add/Move Points", "value": "point"},
+            {"label": "Add Lines", "value": "line"},
+            {"label": "Delete", "value": "delete"},
+            {"label": "Translate all points and lines", "value": "translate-all"},
         ]
 
         controls_layout = dbc.CardBody(
@@ -225,16 +246,7 @@ class AnnotationTabController(BaseTabController):
             ]
         )
 
-        other_components = [
-            html.Div(
-                id=self._get_id(self._SHORTCUT_DUMMY_INPUT_SUFFIX),
-                style={"display": "none"},
-            ),
-            html.Div(
-                id=self._get_id(self._SHORTCUT_DUMMY_OUTPUT_SUFFIX),
-                style={"display": "none"},
-            ),
-        ]
+        other_components = []
 
         return html.Div(
             [
@@ -275,6 +287,12 @@ class AnnotationTabController(BaseTabController):
             if default_obj.get("base_image_data") is not None:
                 fig = xarray_to_plotly(default_obj["base_image_data"])
                 self._update_click_tolerance(fig=fig)
+            # Ensure static_data_obj is set for counter logic
+            static_data_obj = default_obj
+
+        annotations = static_data_obj.get("annotations", {}) if static_data_obj else {}
+        self._next_point_id_counter = get_next_index(annotations.get("points", []), "p")
+        self._next_line_id_counter = get_next_index(annotations.get("lines", []), "l")
 
         viewer_data_store_payload = {
             "key": data_registry.STATIC_DATA_KEY,
@@ -374,7 +392,6 @@ class AnnotationTabController(BaseTabController):
             app, viewer_data_store_id, orchestrator_stores
         )
         self._register_analysis_callback(app, viewer_data_store_id)
-        self._register_shortcut_callback(app)
 
     def _register_import_live_frame_callback(
         self,
@@ -723,6 +740,12 @@ class AnnotationTabController(BaseTabController):
                 new_version = data_registry.set_data(
                     data_registry.STATIC_DATA_KEY, new_static_data_object
                 )
+                self._next_point_id_counter = get_next_index(
+                    annotations_copy.get("points", []), "p"
+                )
+                self._next_line_id_counter = get_next_index(
+                    annotations_copy.get("lines", []), "l"
+                )
                 logger.debug(
                     f"{self.component_id}: Annotations updated. New version: {new_version}"
                 )
@@ -803,57 +826,6 @@ class AnnotationTabController(BaseTabController):
             if slopes:
                 return json.dumps(slopes, indent=2)
             return "No lines to analyze or error in calculation."
-
-    def _register_shortcut_callback(self, app: Dash) -> None:
-        """Client-side callback for handling keyboard shortcuts."""
-        app.clientside_callback(
-            f"""
-            function(dummy_input_value) {{
-                const componentId = '{self.component_id}';
-                const listenerAttachedFlag = `annotationKeyListenerAttached_${{componentId}}`;
-                const modeSelectorIdObj = {json.dumps(self._get_id(self._MODE_SELECTOR_SUFFIX))};
-
-                if (!window[listenerAttachedFlag]) {{
-                     const handleKeyDown = function(event) {{
-                        const activeElement = document.activeElement;
-                        const isInputFocused = activeElement &&
-                            (activeElement.tagName === 'INPUT' ||
-                             activeElement.tagName === 'TEXTAREA' ||
-                             activeElement.isContentEditable);
-
-                        let modeSelectorElement = document.getElementById(JSON.stringify(modeSelectorIdObj));
-                        if (!modeSelectorElement) {{ return; }}
-                        
-                        const isTabActive = modeSelectorElement.offsetParent !== null;
-
-                        if (event.shiftKey && !isInputFocused && isTabActive) {{
-                            let key = event.key.toLowerCase();
-                            let mapping = {{"p": "point", "l": "line", "d": "delete", "t": "translate-all"}};
-                            if (mapping.hasOwnProperty(key)) {{
-                                event.preventDefault();
-                                try {{
-                                    dash_clientside.set_props(modeSelectorIdObj, {{value: mapping[key]}});
-                                }} catch (e) {{
-                                     console.error(`Error setting mode selector for ${{componentId}}:`, e);
-                                }}
-                            }}
-                        }}
-                    }};
-                    document.addEventListener("keydown", handleKeyDown);
-                    window[listenerAttachedFlag] = true;
-                }}
-                return window.dash_clientside.no_update;
-            }}
-            """,
-            Output(
-                component_id=self._get_id(self._SHORTCUT_DUMMY_OUTPUT_SUFFIX),
-                component_property="children",
-            ),
-            Input(
-                component_id=self._get_id(self._SHORTCUT_DUMMY_INPUT_SUFFIX),
-                component_property="children",
-            ),
-        )
 
     def _register_load_from_disk_callback(
         self,

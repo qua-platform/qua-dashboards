@@ -27,8 +27,9 @@ __all__ = [
 def generate_annotation_traces(
     annotations_data: Dict[str, List[Dict[str, Any]]],
     # The following are for highlighting, passed from AnnotationTabController's transient state
-    selected_point_to_move_id: Optional[str] = None,
-    selected_indices_for_line: Optional[List[str]] = None,
+    viewer_ui_state_input: Dict[str, Any],
+    #selected_point_to_move_id: Optional[str] = None,
+    #selected_indices_for_line: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Generates Plotly trace dictionaries for annotation points and lines.
@@ -53,9 +54,11 @@ def generate_annotation_traces(
     if not points:
         return []
 
+    selected_point_to_move_id = viewer_ui_state_input.get("selected_point_to_move",None)
+    selected_indices_for_line = viewer_ui_state_input.get("selected_point_for_line",[])
     # Ensure selected_indices_for_line is a list for consistent checking
-    _selected_indices_for_line = selected_indices_for_line or []
-
+    #_selected_indices_for_line = selected_indices_for_line or []
+    
     point_x_coords = [p["x"] for p in points]
     point_y_coords = [p["y"] for p in points]
     point_ids = [p["id"] for p in points]
@@ -83,7 +86,8 @@ def generate_annotation_traces(
 
     for p_id in point_ids:
         is_selected_for_move = p_id == selected_point_to_move_id
-        is_selected_for_line = p_id in _selected_indices_for_line
+        #is_selected_for_line = p_id in _selected_indices_for_line
+        is_selected_for_line = p_id in selected_indices_for_line
 
         if is_selected_for_move or is_selected_for_line:
             sizes.append(13)
@@ -91,9 +95,9 @@ def generate_annotation_traces(
             sizes.append(10)
         # Example color logic (can be expanded)
         marker_colors.append(
-            "rgba(255, 255, 255, 0.8)"
+            "rgba(255, 255, 255, 1)"
             if not (is_selected_for_move or is_selected_for_line)
-            else "rgba(255, 0, 0, 0.9)"
+            else "rgba(255, 0, 0, 1)"
         )
 
     # Point labels (e.g., "P1", "P2" based on order or a specific label property)
@@ -125,7 +129,7 @@ def generate_annotation_traces(
             y=line_y_coords,
             mode="lines",
             line=dict(
-                color="rgba(255, 255, 255, 0.7)", width=2
+                color="rgba(255, 255, 255, 1)", width=2
             ),  # Slightly transparent white
             hoverinfo="none",
             name="annotations_lines",  # Consistent name

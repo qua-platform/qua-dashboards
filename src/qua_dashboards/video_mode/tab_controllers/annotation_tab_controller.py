@@ -102,6 +102,7 @@ class AnnotationTabController(BaseTabController):
         self._selected_indices_for_line: List[str] = []
         self._next_point_id_counter: int = 0  # Reset when new base_image is loaded
         self._next_line_id_counter: int = 0  # Reset when new base_image is loaded
+        self._show_point_labels = True
 
         logger.info(f"AnnotationTabController '{self.component_id}' initialized.")
 
@@ -156,6 +157,7 @@ class AnnotationTabController(BaseTabController):
         self._selected_indices_for_line = []
         self._next_point_id_counter = 0
         self._next_line_id_counter = 0
+        ### TO DO: SAVE NEW TRANSIENT STATE
         logger.debug(f"{self.component_id}: Transient annotation state reset.")
 
     def get_layout(self) -> html.Div:
@@ -292,10 +294,16 @@ class AnnotationTabController(BaseTabController):
             "key": data_registry.STATIC_DATA_KEY,
             "version": current_version,
         }
+        viewer_ui_state_store_payload = {
+            "selected_point_to_move": self._selected_point_to_move["point_id"],
+            "selected_point_for_line": self._selected_indices_for_line,
+            "show_labels": self._show_point_labels,
+        }
         layout_config_payload = {"clickmode": "event+select"}
 
         return {
             VideoModeComponent.VIEWER_DATA_STORE_SUFFIX: viewer_data_store_payload,
+            VideoModeComponent.VIEWER_UI_STATE_STORE_SUFFIX: viewer_ui_state_store_payload,
             VideoModeComponent.VIEWER_LAYOUT_CONFIG_STORE_SUFFIX: layout_config_payload,
         }
 
@@ -375,28 +383,66 @@ class AnnotationTabController(BaseTabController):
         viewer_data_store_id = orchestrator_stores[
             VideoModeComponent.VIEWER_DATA_STORE_SUFFIX
         ]
+        viewer_ui_state_store_id = orchestrator_stores[
+            VideoModeComponent.VIEWER_UI_STATE_STORE_SUFFIX
+        ]
         self._register_import_live_frame_callback(
-            app, latest_processed_data_store_id, viewer_data_store_id
+            app, latest_processed_data_store_id, viewer_data_store_id, viewer_ui_state_store_id
         )
         self._register_graph_interaction_callback(
-            app, shared_viewer_graph_id, viewer_data_store_id
+            app, shared_viewer_graph_id, viewer_data_store_id, viewer_ui_state_store_id
         )
-        self._register_clear_annotations_callback(app, viewer_data_store_id)
+        self._register_clear_annotations_callback(
+            app, viewer_data_store_id, viewer_ui_state_store_id
+        )
         self._register_load_from_disk_callback(
-            app, viewer_data_store_id, orchestrator_stores
+            app, viewer_data_store_id, orchestrator_stores, viewer_ui_state_store_id
         )
-        self._register_analysis_callback(app, viewer_data_store_id)
+        self._register_analysis_callback(
+            app, viewer_data_store_id
+        )
+        self._register_mode_change(
+            app, viewer_ui_state_store_id
+        )
+
+    def _register_mode_change(
+            self,
+            app:Dash,
+            viewer_ui_state_store_id: Dict[str, Any],
+    ) -> None:
+        """Callback to reset all selected points when changing the mode"""
+
+        @app.callback(
+            Output(viewer_ui_state_store_id, "data", allow_duplicate=True),
+            Input(self._get_id(self._MODE_SELECTOR_SUFFIX), "value"),
+            prevent_initial_call = True,
+        )
+        def _mode_change(
+            mode: str,
+        ) -> Dict[str, Any]:
+            # NOT self._reset_transient_state(), otherwise labels are reset!
+            self._selected_point_to_move = {"is_moving": False, "point_id": None}
+            self._selected_indices_for_line = []
+            viewer_ui_state_store_payload = {
+                "selected_point_to_move": self._selected_point_to_move["point_id"],
+                "selected_point_for_line": self._selected_indices_for_line,
+                "show_labels": self._show_point_labels,
+            }
+            #logging.debug(f"viewer ui state: {viewer_ui_state_store_payload}")
+            return viewer_ui_state_store_payload
 
     def _register_import_live_frame_callback(
         self,
         app: Dash,
         latest_processed_data_store_id: Dict[str, str],
-        viewer_data_store_output_id: Dict[str, str],
+        viewer_data_store_id: Dict[str, str],
+        viewer_ui_state_store_id: Dict[str, Any],  ### TO DO: Maybe change Any 
     ) -> None:
         """Callback to import the current live frame as a static snapshot."""
 
         @app.callback(
-            Output(viewer_data_store_output_id, "data"),
+            Output(viewer_data_store_id, "data"),
+            Output(viewer_ui_state_store_id, "data"),
             Input(self._get_id(self._IMPORT_LIVE_FRAME_BUTTON_SUFFIX), "n_clicks"),
             State(latest_processed_data_store_id, "data"),
             prevent_initial_call=True,
@@ -422,12 +468,19 @@ class AnnotationTabController(BaseTabController):
                 data_registry.STATIC_DATA_KEY, new_static_object
             )
             self._reset_transient_state()
+            viewer_ui_state_store_payload = {
+                "selected_point_to_move": self._selected_point_to_move["point_id"],
+                "selected_point_for_line": self._selected_indices_for_line,
+                "show_labels": self._show_point_labels,
+            }
+            #logging.debug(f"viewer ui state: {viewer_ui_state_store_payload}")
+
             self._update_click_tolerance(base_image_data=base_image)
 
             logger.info(
                 f"{self.component_id}: Imported live frame. New static data version: {new_version}"
             )
-            return {"key": data_registry.STATIC_DATA_KEY, "version": new_version}
+            return {"key": data_registry.STATIC_DATA_KEY, "version": new_version}, viewer_ui_state_store_payload
 
     def _handle_point_mode_interaction(
         self,
@@ -588,11 +641,13 @@ class AnnotationTabController(BaseTabController):
         app: Dash,
         shared_viewer_graph_id: Dict[str, str],
         viewer_data_store_id: Dict[str, str],
+        viewer_ui_state_store_id: Dict[str, Any],
     ) -> None:
         """Callback to handle user interactions with the graph (clicks, hovers)."""
 
         @app.callback(
             Output(viewer_data_store_id, "data", allow_duplicate=True),
+            Output(viewer_ui_state_store_id, "data", allow_duplicate=True),
             Input(shared_viewer_graph_id, "clickData"),
             Input(shared_viewer_graph_id, "hoverData"),
             State(self._get_id(self._MODE_SELECTOR_SUFFIX), "value"),
@@ -677,6 +732,13 @@ class AnnotationTabController(BaseTabController):
                     hover_data, mode, annotations_copy
                 )
 
+            viewer_ui_state_store_payload = {
+                "selected_point_to_move": self._selected_point_to_move["point_id"],
+                "selected_point_for_line": self._selected_indices_for_line,
+                "show_labels": self._show_point_labels,
+            }
+            #logging.debug(f"viewer ui state: {viewer_ui_state_store_payload}")            
+
             if interaction_changed_data:
                 new_static_data_object = {
                     "base_image_data": static_data_object["base_image_data"],
@@ -694,18 +756,24 @@ class AnnotationTabController(BaseTabController):
                 logger.debug(
                     f"{self.component_id}: Annotations updated. New version: {new_version}"
                 )
-                return {"key": data_registry.STATIC_DATA_KEY, "version": new_version}
+                return {"key": data_registry.STATIC_DATA_KEY, "version": new_version}, viewer_ui_state_store_payload
 
-            logger.debug("No changes to annotations, raising PreventUpdate")
-            raise PreventUpdate
+            else:
+                logger.debug("No changes to annotations") #, raising PreventUpdate")
+                #raise PreventUpdate
+                return dash.no_update, viewer_ui_state_store_payload
 
     def _register_clear_annotations_callback(
-        self, app: Dash, viewer_data_store_id: Dict[str, str]
+        self, 
+        app: Dash, 
+        viewer_data_store_id: Dict[str, str], 
+        viewer_ui_state_store_id: Dict[str, Any],
     ) -> None:
         """Callback to clear all current annotations."""
 
         @app.callback(
             Output(viewer_data_store_id, "data", allow_duplicate=True),
+            Output(viewer_ui_state_store_id, "data", allow_duplicate=True),
             Input(self._get_id(self._CLEAR_BUTTON_SUFFIX), "n_clicks"),
             State(viewer_data_store_id, "data"),
             prevent_initial_call=True,
@@ -736,11 +804,17 @@ class AnnotationTabController(BaseTabController):
                 data_registry.STATIC_DATA_KEY, cleared_static_object
             )
             self._reset_transient_state()  # Also reset point/line ID counters
+            viewer_ui_state_store_payload = {
+                "selected_point_to_move": self._selected_point_to_move["point_id"],
+                "selected_point_for_line": self._selected_indices_for_line,
+                "show_labels": self._show_point_labels,
+            }
+            #logging.debug(f"viewer ui state: {viewer_ui_state_store_payload}")
 
             logger.info(
                 f"{self.component_id}: Cleared annotations. New version: {new_version}"
             )
-            return {"key": data_registry.STATIC_DATA_KEY, "version": new_version}
+            return {"key": data_registry.STATIC_DATA_KEY, "version": new_version}, viewer_ui_state_store_payload
 
     def _register_analysis_callback(
         self, app: Dash, viewer_data_store_id: Dict[str, str]
@@ -777,6 +851,7 @@ class AnnotationTabController(BaseTabController):
         app: Dash,
         viewer_data_store_id: Dict[str, str],
         orchestrator_stores: Dict[str, Any],
+        viewer_ui_state_store_id: Dict[str, Any],
     ) -> None:
         from qua_dashboards.video_mode.video_mode_component import VideoModeComponent
 
@@ -786,6 +861,7 @@ class AnnotationTabController(BaseTabController):
 
         @app.callback(
             Output(viewer_data_store_id, "data", allow_duplicate=True),
+            Output(viewer_ui_state_store_id, "data", allow_duplicate=True),
             Output(main_status_alert_id, "children", allow_duplicate=True),
             Input(self._get_id(self._LOAD_FROM_DISK_BUTTON_SUFFIX), "n_clicks"),
             State(self._get_id(self._LOAD_FROM_DISK_INPUT_SUFFIX), "value"),
@@ -809,6 +885,13 @@ class AnnotationTabController(BaseTabController):
                 raise PreventUpdate
             new_version = data_registry.set_data(data_registry.STATIC_DATA_KEY, data)
             self._reset_transient_state()
+            viewer_ui_state_store_payload = {
+                "selected_point_to_move": self._selected_point_to_move["point_id"],
+                "selected_point_for_line": self._selected_indices_for_line,
+                "show_labels": self._show_point_labels,
+            }
+            #logging.debug(f"viewer ui state: {viewer_ui_state_store_payload}")
+
             if data.get("base_image_data") is not None:
                 self._update_click_tolerance(base_image_data=data["base_image_data"])
             self._next_point_id_counter = len(
@@ -819,6 +902,7 @@ class AnnotationTabController(BaseTabController):
             )
             return (
                 {"key": data_registry.STATIC_DATA_KEY, "version": new_version},
+                viewer_ui_state_store_payload,
                 dbc.Alert(
                     f"Successfully loaded data for idx '{idx}'.",
                     color="success",

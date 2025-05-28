@@ -169,6 +169,7 @@ class LiveViewTabController(BaseTabController):
 
         updates = {
             VideoModeComponent.VIEWER_DATA_STORE_SUFFIX: viewer_data_payload,
+            VideoModeComponent.VIEWER_UI_STATE_STORE_SUFFIX: {},
             VideoModeComponent.VIEWER_LAYOUT_CONFIG_STORE_SUFFIX: {},
         }
         return updates

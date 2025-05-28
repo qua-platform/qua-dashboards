@@ -26,10 +26,7 @@ __all__ = [
 
 def generate_annotation_traces(
     annotations_data: Dict[str, List[Dict[str, Any]]],
-    # The following are for highlighting, passed from AnnotationTabController's transient state
     viewer_ui_state_input: Dict[str, Any],
-    #selected_point_to_move_id: Optional[str] = None,
-    #selected_indices_for_line: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Generates Plotly trace dictionaries for annotation points and lines.
@@ -54,10 +51,10 @@ def generate_annotation_traces(
     if not points:
         return []
 
+    # Highlighting and labels
     selected_point_to_move_id = viewer_ui_state_input.get("selected_point_to_move",None)
     selected_indices_for_line = viewer_ui_state_input.get("selected_point_for_line",[])
-    # Ensure selected_indices_for_line is a list for consistent checking
-    #_selected_indices_for_line = selected_indices_for_line or []
+    labels_list = viewer_ui_state_input.get("show_labels",[])
     
     point_x_coords = [p["x"] for p in points]
     point_y_coords = [p["y"] for p in points]
@@ -86,7 +83,6 @@ def generate_annotation_traces(
 
     for p_id in point_ids:
         is_selected_for_move = p_id == selected_point_to_move_id
-        #is_selected_for_line = p_id in _selected_indices_for_line
         is_selected_for_line = p_id in selected_indices_for_line
 
         if is_selected_for_move or is_selected_for_line:
@@ -101,7 +97,7 @@ def generate_annotation_traces(
         )
 
     # Point labels (e.g., "P1", "P2" based on order or a specific label property)
-    texts = [p_id for p_id in point_ids]
+    texts = [p_id for p_id in point_ids] if 'points' in labels_list else None
 
     points_trace = go.Scatter(
         x=point_x_coords,

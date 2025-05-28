@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 import re
 
 import dash
@@ -75,6 +75,7 @@ class AnnotationTabController(BaseTabController):
     _IMPORT_LIVE_FRAME_BUTTON_SUFFIX = "import-live-frame-button"
     _LOAD_FROM_DISK_BUTTON_SUFFIX = "load-from-disk-button"
     _LOAD_FROM_DISK_INPUT_SUFFIX = "load-from-disk-input"
+    _SHOW_LABELS_CHECKLIST_SUFFIX = "show-labels-checklist"
 
     def __init__(
         self,
@@ -102,7 +103,7 @@ class AnnotationTabController(BaseTabController):
         self._selected_indices_for_line: List[str] = []
         self._next_point_id_counter: int = 0  # Reset when new base_image is loaded
         self._next_line_id_counter: int = 0  # Reset when new base_image is loaded
-        self._show_point_labels = True
+        self._show_labels = ['points']
 
         logger.info(f"AnnotationTabController '{self.component_id}' initialized.")
 
@@ -157,12 +158,15 @@ class AnnotationTabController(BaseTabController):
         self._selected_indices_for_line = []
         self._next_point_id_counter = 0
         self._next_line_id_counter = 0
-        ### TO DO: SAVE NEW TRANSIENT STATE
         logger.debug(f"{self.component_id}: Transient annotation state reset.")
 
     def get_layout(self) -> html.Div:
         """Generates the Dash layout for the Annotation tab."""
         logger.debug(f"Generating layout for {self.component_id}")
+        checklist_options = [
+            {"label": "point labels", "value": "points"},  # For point labels
+            #{"label": "line labels", "value": "lines"},   # If we also want to introduce line labels            
+        ]
         radio_options = [
             {"label": "Add/Move Points", "value": "point"},
             {"label": "Add Lines", "value": "line"},
@@ -208,6 +212,14 @@ class AnnotationTabController(BaseTabController):
                     className="g-2 mb-2",
                 ),
                 html.Hr(),
+                html.H6("Show labels"),
+                dbc.Checklist(
+                    id=self._get_id(self._SHOW_LABELS_CHECKLIST_SUFFIX),
+                    options = checklist_options,
+                    value = ["points"],
+                    className="mb-3 me-2",
+                ),
+                html.Hr(),                
                 dbc.RadioItems(
                     id=self._get_id(self._MODE_SELECTOR_SUFFIX),
                     options=radio_options,
@@ -297,7 +309,7 @@ class AnnotationTabController(BaseTabController):
         viewer_ui_state_store_payload = {
             "selected_point_to_move": self._selected_point_to_move["point_id"],
             "selected_point_for_line": self._selected_indices_for_line,
-            "show_labels": self._show_point_labels,
+            "show_labels": self._show_labels,
         }
         layout_config_payload = {"clickmode": "event+select"}
 
@@ -426,9 +438,8 @@ class AnnotationTabController(BaseTabController):
             viewer_ui_state_store_payload = {
                 "selected_point_to_move": self._selected_point_to_move["point_id"],
                 "selected_point_for_line": self._selected_indices_for_line,
-                "show_labels": self._show_point_labels,
+                "show_labels": self._show_labels,
             }
-            #logging.debug(f"viewer ui state: {viewer_ui_state_store_payload}")
             return viewer_ui_state_store_payload
 
     def _register_import_live_frame_callback(
@@ -436,7 +447,7 @@ class AnnotationTabController(BaseTabController):
         app: Dash,
         latest_processed_data_store_id: Dict[str, str],
         viewer_data_store_id: Dict[str, str],
-        viewer_ui_state_store_id: Dict[str, Any],  ### TO DO: Maybe change Any 
+        viewer_ui_state_store_id: Dict[str, Any],
     ) -> None:
         """Callback to import the current live frame as a static snapshot."""
 
@@ -449,7 +460,7 @@ class AnnotationTabController(BaseTabController):
         )
         def _import_live_frame(
             n_clicks: int, live_data_ref: Optional[Dict[str, Any]]
-        ) -> Dict[str, Any]:
+        ) -> Tuple[Dict[str, Any],Dict[str, Any]]:
             if live_data_ref is None:
                 logger.warning("Import Live Frame: No live data reference found.")
                 raise PreventUpdate
@@ -471,9 +482,8 @@ class AnnotationTabController(BaseTabController):
             viewer_ui_state_store_payload = {
                 "selected_point_to_move": self._selected_point_to_move["point_id"],
                 "selected_point_for_line": self._selected_indices_for_line,
-                "show_labels": self._show_point_labels,
+                "show_labels": self._show_labels,
             }
-            #logging.debug(f"viewer ui state: {viewer_ui_state_store_payload}")
 
             self._update_click_tolerance(base_image_data=base_image)
 
@@ -650,6 +660,7 @@ class AnnotationTabController(BaseTabController):
             Output(viewer_ui_state_store_id, "data", allow_duplicate=True),
             Input(shared_viewer_graph_id, "clickData"),
             Input(shared_viewer_graph_id, "hoverData"),
+            Input(self._get_id(self._SHOW_LABELS_CHECKLIST_SUFFIX), "value"),
             State(self._get_id(self._MODE_SELECTOR_SUFFIX), "value"),
             State(viewer_data_store_id, "data"),  # Get current key and version
             prevent_initial_call=True,
@@ -657,9 +668,10 @@ class AnnotationTabController(BaseTabController):
         def _handle_graph_interactions(
             click_data: Optional[Dict[str, Any]],
             hover_data: Optional[Dict[str, Any]],
+            labels_list: List[str],
             mode: str,
             current_viewer_data_ref: Optional[Dict[str, str]],
-        ) -> Dict[str, Any]:
+        ) -> Tuple[Dict[str, Any],Dict[str, Any]]:
             if not self.is_active:
                 raise PreventUpdate
             elif (
@@ -731,13 +743,18 @@ class AnnotationTabController(BaseTabController):
                 interaction_changed_data = self._handle_hover_interaction(
                     hover_data, mode, annotations_copy
                 )
+            elif (
+                interaction_type == "value"  # Checklist for showing labels
+            ):
+                self._show_labels = labels_list
+                logging.info(f"Callback triggered by checklist. Show labels: {self._show_labels}")
 
+            # Potential improvement: Only update viewer_ui_state_store_payload, if there are changes.
             viewer_ui_state_store_payload = {
                 "selected_point_to_move": self._selected_point_to_move["point_id"],
                 "selected_point_for_line": self._selected_indices_for_line,
-                "show_labels": self._show_point_labels,
+                "show_labels": self._show_labels,
             }
-            #logging.debug(f"viewer ui state: {viewer_ui_state_store_payload}")            
 
             if interaction_changed_data:
                 new_static_data_object = {
@@ -780,7 +797,7 @@ class AnnotationTabController(BaseTabController):
         )
         def _clear_annotations(
             _n_clicks: int, current_viewer_data_ref: Optional[Dict[str, str]]
-        ) -> Dict[str, Any]:
+        ) -> Tuple[Dict[str, Any],Dict[str, Any]]:
             if (
                 not current_viewer_data_ref
                 or current_viewer_data_ref.get("key") != data_registry.STATIC_DATA_KEY
@@ -807,9 +824,8 @@ class AnnotationTabController(BaseTabController):
             viewer_ui_state_store_payload = {
                 "selected_point_to_move": self._selected_point_to_move["point_id"],
                 "selected_point_for_line": self._selected_indices_for_line,
-                "show_labels": self._show_point_labels,
+                "show_labels": self._show_labels,
             }
-            #logging.debug(f"viewer ui state: {viewer_ui_state_store_payload}")
 
             logger.info(
                 f"{self.component_id}: Cleared annotations. New version: {new_version}"
@@ -888,9 +904,8 @@ class AnnotationTabController(BaseTabController):
             viewer_ui_state_store_payload = {
                 "selected_point_to_move": self._selected_point_to_move["point_id"],
                 "selected_point_for_line": self._selected_indices_for_line,
-                "show_labels": self._show_point_labels,
+                "show_labels": self._show_labels,
             }
-            #logging.debug(f"viewer ui state: {viewer_ui_state_store_payload}")
 
             if data.get("base_image_data") is not None:
                 self._update_click_tolerance(base_image_data=data["base_image_data"])

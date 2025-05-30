@@ -44,6 +44,7 @@ def xarray_to_plotly(da: xr.DataArray):
             y=y_coord.values,
             colorscale="plasma",
             colorbar=dict(title=zaxis_label),
+            hovertemplate="x: %{x}<br>y: %{y}<br>z: %{z}<extra></extra>"
         )
     )
     fig.update_layout(

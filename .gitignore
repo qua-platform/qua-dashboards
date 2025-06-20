@@ -175,6 +175,7 @@ tempCodeRunnerFile*
 tmp_file.py
 
 # Virtual environments
+.venv*
 .venv
 .venv*
 uv.lock
@@ -182,3 +183,5 @@ uv.lock
 .vscode
 
 video_mode_output
+
+.vscode

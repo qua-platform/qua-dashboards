@@ -291,41 +291,17 @@ class OPXDataAcquirer(Base2DDataAcquirer):
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
         flags = super().update_parameters(parameters)
 
-        needs_program_recompile = bool(flags & ModifiedFlags.PARAMETERS_MODIFIED)
-        needs_config_regenerate = False
-
         if self.component_id in parameters:
             params = parameters[self.component_id]
             if "result-type" in params and self.result_type != params["result-type"]:
                 self.result_type = params["result-type"]
                 flags |= ModifiedFlags.PARAMETERS_MODIFIED
 
-        if hasattr(self.scan_mode, "update_parameters"):
-            scan_flags = self.scan_mode.update_parameters(parameters)
-            if scan_flags & ModifiedFlags.PROGRAM_MODIFIED:
-                needs_program_recompile = True
-            if scan_flags & ModifiedFlags.CONFIG_MODIFIED:
-                needs_config_regenerate = True
-            flags |= scan_flags
-
-        if hasattr(self.qua_inner_loop_action, "update_parameters"):
-            action_flags = self.qua_inner_loop_action.update_parameters(parameters)
-            if action_flags & ModifiedFlags.PROGRAM_MODIFIED:
-                needs_program_recompile = True
-            if action_flags & ModifiedFlags.CONFIG_MODIFIED:
-                needs_config_regenerate = True
-            flags |= action_flags
-
-        if flags & ModifiedFlags.PARAMETERS_MODIFIED and not (
-            needs_program_recompile or needs_config_regenerate
-        ):
-            pass
-
-        if needs_config_regenerate:
+        if flags & ModifiedFlags.CONFIG_MODIFIED:
             logger.info(f"Config regeneration triggered for {self.component_id}.")
             self._regenerate_config_and_reopen_qm()
             flags |= ModifiedFlags.CONFIG_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
-        elif needs_program_recompile:
+        elif flags & ModifiedFlags.PROGRAM_MODIFIED:
             logger.info(f"Program recompile triggered for {self.component_id}.")
             self._initialize_qm_and_program(force_recompile=True)
             flags |= ModifiedFlags.PROGRAM_MODIFIED

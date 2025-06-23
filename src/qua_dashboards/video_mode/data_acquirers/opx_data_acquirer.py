@@ -104,6 +104,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self.initial_delay_s: Optional[float] = initial_delay_s
         self.qua_program: Optional[Program] = None
         self.qm_job: Optional[RunningQmJob] = None
+        self._compilation_flags: ModifiedFlags = ModifiedFlags.NONE
 
         self.result_type: str = result_type
         self._raw_qua_results: Dict[str, np.ndarray] = {}
@@ -251,6 +252,15 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         return output_data_2d
 
     def perform_actual_acquisition(self) -> np.ndarray:
+        if self._compilation_flags & ModifiedFlags.CONFIG_MODIFIED:
+            logger.info(f"Config regeneration triggered for {self.component_id}.")
+            self._regenerate_config_and_reopen_qm()
+            self._compilation_flags = ModifiedFlags.NONE
+        elif self._compilation_flags & ModifiedFlags.PROGRAM_MODIFIED:
+            logger.info(f"Program recompile triggered for {self.component_id}.")
+            self.execute_program()
+            self._compilation_flags = ModifiedFlags.NONE
+
         if self.qm_job is None or self.qm_job.status != "running":
             logger.warning(
                 f"QM job for {self.component_id} is not running or None. Attempting to re-initialize."
@@ -294,15 +304,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 self.result_type = params["result-type"]
                 flags |= ModifiedFlags.PARAMETERS_MODIFIED
 
-        if flags & ModifiedFlags.CONFIG_MODIFIED:
-            logger.info(f"Config regeneration triggered for {self.component_id}.")
-            self._regenerate_config_and_reopen_qm()
-            flags |= ModifiedFlags.CONFIG_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
-        elif flags & ModifiedFlags.PROGRAM_MODIFIED:
-            logger.info(f"Program recompile triggered for {self.component_id}.")
-            self.execute_program()
-            flags |= ModifiedFlags.PROGRAM_MODIFIED
-
+        self._compilation_flags = flags
         return flags
 
     def get_dash_components(self, include_subcomponents: bool = True) -> List[Any]:

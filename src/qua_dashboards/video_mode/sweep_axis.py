@@ -126,17 +126,22 @@ class SweepAxis(BaseUpdatableComponent):
             className="mb-3",
         )
 
-    def update_parameters(self, parameters: Dict[str, Any]) -> ModifiedFlags:
+    def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
         """
         Updates 2D data acquirer parameters (axes, averages).
         """
         flags = super().update_parameters(parameters)
 
+        if self.component_id not in parameters:
+            return flags
+
+        params = parameters[self.component_id]
+
         # X-axis
-        if "span" in parameters and self.span != parameters["span"]:
-            self.span = parameters["span"]
+        if "span" in params and self.span != params["span"]:
+            self.span = params["span"]
             flags |= ModifiedFlags.PARAMETERS_MODIFIED
-        if "points" in parameters and self.points != parameters["points"]:
-            self.points = parameters["points"]
+        if "points" in params and self.points != params["points"]:
+            self.points = params["points"]
             flags |= ModifiedFlags.PARAMETERS_MODIFIED
         return flags

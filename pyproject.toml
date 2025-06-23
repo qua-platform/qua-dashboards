@@ -35,3 +35,11 @@ exclude = [".idea", ".github"]
 
 [tool.hatch.build.targets.sdist.sources]
 "src/qua_dashboards" = "qua_dashboards"
+
+[tool.uv]
+prerelease = "allow"
+
+[dependency-groups]
+dev = [
+    "quam>=0.4.1",
+]

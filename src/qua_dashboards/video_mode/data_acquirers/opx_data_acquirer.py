@@ -188,19 +188,19 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             logger.info(f"Generating QUA program for {self.component_id}.")
             self.generate_qua_program()
 
-            logger.info(f"Executing QUA program for {self.component_id}.")
-            self.qm_job = self.qm.execute(self.qua_program)  # type: ignore
+        logger.info(f"Executing QUA program for {self.component_id}.")
+        self.qm_job = self.qm.execute(self.qua_program)  # type: ignore
 
-            if validate_running:
-                try:
-                    handle = self.qm_job.result_handles.get("all_streams_combined")
-                    handle.wait_for_values(1)
-                    logger.info(f"QM job for {self.component_id} started successfully.")
-                except Exception as e:
-                    logger.error(
-                        f"QM job for {self.component_id} failed to start or produce initial values: {e}"
-                    )
-                    raise
+        if validate_running:
+            try:
+                handle = self.qm_job.result_handles.get("all_streams_combined")
+                handle.wait_for_values(1)
+                logger.info(f"QM job for {self.component_id} started successfully.")
+            except Exception as e:
+                logger.error(
+                    f"QM job for {self.component_id} failed to start or produce initial values: {e}"
+                )
+                raise
 
     def _process_fetched_results(self, fetched_qua_results: Tuple) -> np.ndarray:
         """

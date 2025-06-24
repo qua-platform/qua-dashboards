@@ -60,6 +60,13 @@ class VideoModeComponent(BaseComponent):
     # objects (base image + annotations).
     VIEWER_DATA_STORE_SUFFIX = "viewer-data-store"
 
+    # SUFFIX for the dcc.Store that holds the data that describes
+    # transient UI state needed for visualisation in the shared viewer, such as 
+    # selected point to move, selected point for line, flag for showing labels.
+    # Content: A dictionary `{"selected_point_to_move" = str, "selected_point_for_line" = str, "show_labels" = bool}`
+    # This is used for updating the annotations in the figure: highlighting selected points, showing labels.
+    VIEWER_UI_STATE_STORE_SUFFIX = "viewer-ui-state-store"
+
     # SUFFIX for the dcc.Store that holds configuration updates for the shared viewer's layout.
     # Content: A dictionary of Plotly layout updates (e.g., `{'clickmode': 'event+select'}`).
     # These updates are applied to the figure's layout.
@@ -231,6 +238,11 @@ class VideoModeComponent(BaseComponent):
                 data={"key": "live_data", "version": None},
             ),
             dcc.Store(
+                id=self._get_store_id(self.VIEWER_UI_STATE_STORE_SUFFIX),
+                #data = {'selected_point_to_move': None, 'selected_point_for_line': None, 'show_labels': True},
+                data = {},
+            ),
+            dcc.Store(
                 id=self._get_store_id(self.VIEWER_LAYOUT_CONFIG_STORE_SUFFIX), data={}
             ),
         ]
@@ -298,10 +310,14 @@ class VideoModeComponent(BaseComponent):
             VideoModeComponent.VIEWER_DATA_STORE_SUFFIX: self._get_store_id(
                 self.VIEWER_DATA_STORE_SUFFIX
             ),
+            VideoModeComponent.VIEWER_UI_STATE_STORE_SUFFIX: self._get_store_id(
+                self.VIEWER_UI_STATE_STORE_SUFFIX,
+            ),
         }
         # Shared viewer stores that tab controllers will write to
         shared_viewer_store_ids_for_tabs = {
             "viewer_data_store": self._get_store_id(self.VIEWER_DATA_STORE_SUFFIX),
+            "viewer_ui_state_store": self._get_store_id(self.VIEWER_UI_STATE_STORE_SUFFIX),
             "layout_config_store": self._get_store_id(
                 self.VIEWER_LAYOUT_CONFIG_STORE_SUFFIX
             ),
@@ -310,6 +326,7 @@ class VideoModeComponent(BaseComponent):
         self.shared_viewer.register_callbacks(
             app,
             viewer_data_store_id=shared_viewer_store_ids_for_tabs["viewer_data_store"],
+            viewer_ui_state_store_id=shared_viewer_store_ids_for_tabs["viewer_ui_state_store"],
             layout_config_store_id=shared_viewer_store_ids_for_tabs[
                 "layout_config_store"
             ],
@@ -474,6 +491,11 @@ class VideoModeComponent(BaseComponent):
                 allow_duplicate=True,
             ),
             Output(
+                self._get_store_id(self.VIEWER_UI_STATE_STORE_SUFFIX),
+                "data",
+                allow_duplicate=True,
+            ),            
+            Output(
                 self._get_store_id(self.VIEWER_LAYOUT_CONFIG_STORE_SUFFIX),
                 "data",
                 allow_duplicate=True,
@@ -485,7 +507,7 @@ class VideoModeComponent(BaseComponent):
         def handle_tab_switch(new_active_tab_value: str) -> Tuple[Any, Any]:
             if not self.tab_controllers or not new_active_tab_value:
                 logger.warning("Tab switch triggered with no tabs or no new value.")
-                return no_update, no_update
+                return no_update, no_update, no_update
 
             # Only call deactivate if the tab actually changed from a known previous one
             if ctx.triggered_id and self._active_tab_value != new_active_tab_value:
@@ -512,7 +534,7 @@ class VideoModeComponent(BaseComponent):
                 logger.warning(
                     f"No tab controller found for tab value: {new_active_tab_value}"
                 )
-                return no_update, no_update
+                return no_update, no_update, no_update
 
             active_tc.is_active = True
 
@@ -522,6 +544,9 @@ class VideoModeComponent(BaseComponent):
             viewer_data_update = store_updates_from_tab.get(
                 self.VIEWER_DATA_STORE_SUFFIX, no_update
             )
+            viewer_ui_state_update = store_updates_from_tab.get(
+                self.VIEWER_UI_STATE_STORE_SUFFIX, no_update
+            )            
             layout_config_update = store_updates_from_tab.get(
                 self.VIEWER_LAYOUT_CONFIG_STORE_SUFFIX, no_update
             )
@@ -538,7 +563,7 @@ class VideoModeComponent(BaseComponent):
                         "version": self._current_live_data_version,
                     }
 
-            return viewer_data_update, layout_config_update
+            return viewer_data_update, viewer_ui_state_update, layout_config_update
 
     def save(self, results_key: str) -> Dict[str, Any]:
         image_data = data_registry.get_data(results_key)

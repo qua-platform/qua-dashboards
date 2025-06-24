@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import plotly.graph_objects as go
 import xarray as xr
@@ -117,7 +117,6 @@ class SharedViewerComponent(BaseComponent):
 
         try:
             self._current_figure = xarray_to_plotly(base_image_data)
-            # TODO: Add annotations to the figure
         except Exception as e:
             logger.error(
                 f"SharedViewer ({self.component_id}): Error converting "
@@ -127,7 +126,7 @@ class SharedViewerComponent(BaseComponent):
             self._current_figure = self._get_default_figure()
         return self._current_figure
 
-    def _create_figure_from_static_data(self, static_data_object: dict) -> go.Figure:
+    def _create_figure_from_static_data(self, static_data_object: dict, viewer_ui_state_input: dict) -> go.Figure:
         """
         Creates a Plotly figure from a static data compound object.
 
@@ -168,7 +167,8 @@ class SharedViewerComponent(BaseComponent):
             )
 
         if isinstance(annotations_data, dict):
-            overlay_traces = generate_annotation_traces(annotations_data)
+            overlay_traces = generate_annotation_traces(annotations_data, viewer_ui_state_input)
+            #overlay_traces = generate_annotation_traces(annotations_data, viewer_ui_state_input["selected_point_to_move"], viewer_ui_state_input["selected_point_for_line"])
             for trace_dict in overlay_traces:
                 if isinstance(trace_dict, dict):
                     fig.add_trace(go.Scatter(**trace_dict))
@@ -190,6 +190,7 @@ class SharedViewerComponent(BaseComponent):
         self,
         app: Dash,
         viewer_data_store_id: Dict[str, str],
+        viewer_ui_state_store_id: Dict[str, Any],
         layout_config_store_id: Dict[str, str],
     ) -> None:
         """Registers Dash callbacks for the SharedViewerComponent.
@@ -204,15 +205,18 @@ class SharedViewerComponent(BaseComponent):
             f"Registering callbacks for SharedViewerComponent '{self.component_id}'"
         )
 
+        ### TO DO: INCORPORATE VIEWER UI STATE STORE
         @app.callback(
             Output(self._get_id(self._MAIN_GRAPH_ID_SUFFIX), "figure"),
             Input(viewer_data_store_id, "data"),
+            Input(viewer_ui_state_store_id, "data"),
             Input(layout_config_store_id, "data"),
             State(self._get_id(self._MAIN_GRAPH_ID_SUFFIX), "figure"),
             prevent_initial_call=True,  # Prevent update on initial app load if stores are empty
         )
         def update_shared_viewer_graph(
             viewer_data_ref: Optional[Dict[str, Any]],
+            viewer_ui_state_input: Optional[Dict[str, Any]],
             layout_updates_input: Optional[Dict[str, Any]],
             current_fig_state_dict: Optional[Dict[str, Any]],
         ) -> go.Figure:
@@ -254,7 +258,7 @@ class SharedViewerComponent(BaseComponent):
                         f"SharedViewer ({self.component_id}): Processing static data "
                         f"for key '{data_key}'."
                     )
-                    fig_to_display = self._create_figure_from_static_data(data_object)
+                    fig_to_display = self._create_figure_from_static_data(data_object,viewer_ui_state_input)
                 else:
                     logger.warning(
                         f"SharedViewer ({self.component_id}): Unrecognized data key "

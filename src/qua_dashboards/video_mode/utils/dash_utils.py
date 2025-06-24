@@ -44,6 +44,7 @@ def xarray_to_plotly(da: xr.DataArray):
             y=y_coord.values,
             colorscale="plasma",
             colorbar=dict(title=zaxis_label),
+            zorder=0,
         )
     )
     fig.update_layout(

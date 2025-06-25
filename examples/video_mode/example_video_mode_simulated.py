@@ -109,20 +109,22 @@ def get_video_mode_component() -> VideoModeComponent:
     # Arguments for the function that renders the capacitance CSD
     unit = 'mV'
     factor_mV_to_V = 1e-3
-    span_x = 4.4
-    span_y = 4.2
+    span_x = 4.4*3
+    span_y = 4.2*3
+    #span_x = 14
+    #span_y = 20
     points_x = 50
     points_y = 50
 
     args_generate_CSD = {
-            "plane_axes": np.array([[0,0,-1,1,0,0],[1,-1,0,0,0,0]]), # vectors spanning the cut in voltage space
-            "target_state": [3,2,3,2,5,5],  # target state for transition
-            "target_transition": [-1,1,-1,1,0,0], #target transition from target state, here transition to [2,3,2,3,5,5]
+            "plane_axes": np.array([[1,0,0,0,0,0],[0,1,0,0,0,0]]), # vectors spanning the cut in voltage space
+            "target_state": [1,1,0,0,5,5],  # target state for transition
+            "target_transition": [-1,1,0,0,0,0], #target transition from target state, here transition to [2,3,2,3,5,5]
             "x_voltages": np.linspace(-span_x/2., span_x/2., points_x)*factor_mV_to_V, #voltage range for x-axis, originally: np.linspace(-0.0022, 0.0018, 100)
             "y_voltages": np.linspace(-span_y/2., span_y/2., points_y)*factor_mV_to_V, #voltage range for y-axis, originally: np.linspace(-0.0021, 0.0019, 100)
-            "compute_polytopes": True, #compute the corners of constant occupation
-            "compensate_sensors": True, #compensate the sensor signals
-            "use_virtual_gates": True, #use the virtual gates
+            "compute_polytopes": False, #compute the corners of constant occupation
+            "compensate_sensors": False, #compensate the sensor signals
+            "use_virtual_gates": False, #use the virtual gates
             "use_sensor_signal": True, #use the sensor signals     
     }
 
@@ -152,9 +154,11 @@ def get_video_mode_component() -> VideoModeComponent:
         y_axis=y_axis,
         experiment = experiment,
         args_rendering = args_generate_CSD,
+        conversion_factor_unit_to_volt=factor_mV_to_V,
+        SNR=20,  # Signal-to-noise ratio on simulated images
         acquire_time=0.03,  # Simulated delay (seconds) for acquiring one raw frame.
         num_software_averages=5,  # Number of raw frames to average for display.
-        acquisition_interval_s=0.1,  # Target time (seconds) between acquiring raw frames.
+        acquisition_interval_s=0.5,  # Target time (seconds) between acquiring raw frames.
     )
 
     # Instantiate the VideoModeComponent.

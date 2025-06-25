@@ -136,7 +136,9 @@ class SweepAxis(BaseUpdatableComponent):
         if "span" in parameters and self.span != parameters["span"]:
             self.span = parameters["span"]
             flags |= ModifiedFlags.PARAMETERS_MODIFIED
+            flags |= ModifiedFlags.PLOT_PARAMETERS_MODIFIED
         if "points" in parameters and self.points != parameters["points"]:
             self.points = parameters["points"]
             flags |= ModifiedFlags.PARAMETERS_MODIFIED
+            flags |= ModifiedFlags.PLOT_PARAMETERS_MODIFIED
         return flags

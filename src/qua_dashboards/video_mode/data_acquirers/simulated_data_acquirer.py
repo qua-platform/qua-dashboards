@@ -31,6 +31,8 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
         y_axis: SweepAxis,
         experiment: Experiment,
         args_rendering: dict[str, Any],
+        conversion_factor_unit_to_volt: float,
+        SNR: float = 20, # signal-to-noise ratio
         component_id: str = "simulated-data-acquirer",
         acquire_time: float = 0.05,  # Simulate 50ms acquisition time per frame
         # Other parameters like num_software_averages, acquisition_interval_s
@@ -44,6 +46,7 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
             x_axis: The X sweep axis.
             y_axis: The Y sweep axis.
             args_rendering: The arguments used for the rendering function of the QDarts simulator.
+            SNR: Signal-to-noise ratio used for adding noise to the simulated image.
             acquire_time: Simulated time in seconds to 'acquire' one raw data frame.
             **kwargs: Additional arguments for Base2DDataAcquirer, including
                 num_software_averages and acquisition_interval_s for
@@ -52,8 +55,10 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
         self.acquire_time: float = acquire_time
         self.experiment: Experiment = experiment
         self.args_rendering: dict[str, Any] = args_rendering
+        self.conversion_factor_unit_to_volt: float = conversion_factor_unit_to_volt
+        self.SNR: float = SNR
         self.simulated_image: np.ndarray = None
-        self._first_acquisition: bool = True
+        self._plot_parameters_changed: bool = True
         logger.debug(
             f"Initializing SimulatedDataAcquirer (ID: {component_id}) with "
             f"acquire_time: {self.acquire_time}s"
@@ -72,29 +77,45 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
             A 2D numpy array of simulated float values between 0 and 1, with
             dimensions (y_axis.points, x_axis.points).
         """
-        if self._first_acquisition:
-            self._first_acquisition = False
-            _ , _ , _ , _ , results , _ = self.experiment.generate_CSD(**self.args_rendering)  # generate the image only once!
+        # First acquisition and when parameters changed
+        if self._plot_parameters_changed:
+
+            logger.debug(
+                f"SimulatedDataAcquirer (ID: {self.component_id}): "
+                f"Generating simulated data for {self.y_axis.points}x{self.x_axis.points}"
+            )
+
+            # Ensure y_axis.points and x_axis.points are positive integers
+            if self.y_axis.points <= 0 or self.x_axis.points <= 0:
+                logger.warning(
+                    f"SimulatedDataAcquirer (ID: {self.component_id}): Invalid points "
+                    f"({self.y_axis.points}x{self.x_axis.points}). Returning empty array."
+                )
+                return np.array([[]])  # Return a 2D empty array to avoid downstream errors
+
+            # Generate the simulated image          
+            logger.info("Generating simulated data")
+            _ , _ , _ , _ , sensor_signalexp , _ = self.experiment.generate_CSD(**self.args_rendering)
             # In case of several sensors, just show the image of the first one
-            if results.ndim == 3:
-                self.simulated_image = results[:,:,0]
+            if sensor_signalexp.ndim == 3:
+                self.simulated_image = sensor_signalexp[:,:,0]
             else:
-                self.simulated_image = results
+                self.simulated_image = sensor_signalexp
+            
+            self._plot_parameters_changed = False
+
+        # After first acquisition
         else:
             sleep(self.acquire_time)
-        logger.debug(
-            f"SimulatedDataAcquirer (ID: {self.component_id}): "
-            f"Generating simulated data for {self.y_axis.points}x{self.x_axis.points}"
-        )
-        # Ensure y_axis.points and x_axis.points are positive integers
-        if self.y_axis.points <= 0 or self.x_axis.points <= 0:
-            logger.warning(
-                f"SimulatedDataAcquirer (ID: {self.component_id}): Invalid points "
-                f"({self.y_axis.points}x{self.x_axis.points}). Returning empty array."
-            )
-            return np.array([[]])  # Return a 2D empty array to avoid downstream errors
 
-        return self.simulated_image
+        # Add uniformly distributed noise to the simulated image 
+        logger.info(f"Add noise to the image (SNR = {self.SNR})")
+        mean_signal = np.mean(self.simulated_image)
+        factor = np.sqrt(12)*mean_signal/self.SNR
+        logger.info(f"factor: {factor}")
+        noise = np.random.rand(self.y_axis.points, self.x_axis.points)*factor
+
+        return self.simulated_image + noise
 
 
     def get_dash_components(self, include_subcomponents: bool = True) -> List[html.Div]:
@@ -144,10 +165,32 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
             ModifiedFlags indicating what aspects of the component were changed.
         """
         flags = super().update_parameters(parameters)
+        logger.info(f"parameters: {parameters}")
+        #parameters: {'simulated-data-acquirer': {'num_software_averages': 5, 'acquire-time': 1}, 'x-axis': {'span': 4.4, 'points': 50}, 'y-axis': {'span': 4.2, 'points': 50}}
+
+        if flags & ModifiedFlags.PLOT_PARAMETERS_MODIFIED:
+            logger.debug("PLOT parameters were modified!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            
+            # Update the rendering arguments
+            logger.info("Updating the rendering arguments")
+            span_x = parameters["x-axis"]["span"]
+            points_x = parameters["x-axis"]["points"]
+            span_y = parameters["y-axis"]["span"]
+            points_y = parameters["y-axis"]["points"]            
+            self.args_rendering["x_voltages"] = np.linspace(-span_x/2., span_x/2., points_x)*self.conversion_factor_unit_to_volt
+            self.args_rendering["y_voltages"] = np.linspace(-span_y/2., span_y/2., points_y)*self.conversion_factor_unit_to_volt
+            
+            # Clear history as plotting parameters change
+            with self._data_lock:  
+                self._data_history_raw.clear()
+                self._latest_processed_data = None
+            
+            self._plot_parameters_changed = True
 
         # Check if parameters for this specific component_id are present
         if self.component_id in parameters:
             params = parameters[self.component_id]
+            logger.debug(f"params: {params}")
             if "acquire-time" in params:
                 new_acquire_time = float(params["acquire-time"])
                 if self.acquire_time != new_acquire_time and new_acquire_time >= 0:
@@ -163,5 +206,7 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
                         f"Invalid acquire_time ({new_acquire_time}s) received. Not updated."
                     )
             # TO DO: Include change of span and number of points --> simulate new image
+
+        
 
         return flags

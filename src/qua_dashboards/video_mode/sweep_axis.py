@@ -28,8 +28,8 @@ class SweepAxis(BaseUpdatableComponent):
     def __init__(
         self,
         name: str,
-        span: float,
-        points: int,
+        span: BasicParameter,
+        points: BasicParameter,
         label: Optional[str] = None,
         units: Optional[str] = None,
         offset_parameter: Optional[BasicParameter] = None,
@@ -40,12 +40,30 @@ class SweepAxis(BaseUpdatableComponent):
             component_id = f"{name}-axis"
         super().__init__(component_id=component_id)
         self.name = name
-        self.span = span
-        self.points = points
+        #self.span = span
+        self._span = span
+        self._points = points
         self.label = label
         self.units = units
         self.offset_parameter = offset_parameter
         self.attenuation = attenuation
+
+        
+    @property
+    def span(self) -> float:
+        return self._span._value
+
+    @span.setter
+    def span(self, val: float):
+        self._span._value = val
+
+    @property
+    def points(self):
+        return self._points._value
+
+    @points.setter
+    def points(self, val):
+        self._points._value = val
 
     @property
     def sweep_values(self):

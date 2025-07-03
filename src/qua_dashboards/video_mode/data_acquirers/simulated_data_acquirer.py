@@ -76,8 +76,39 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
             component_id=component_id, x_axis=x_axis, y_axis=y_axis, **kwargs
         )    
 
-    def get_voltage_control_component(self, voltage_parameters) -> VoltageControlComponent:
+    # def get_voltage_control_component(self, voltage_parameters) -> VoltageControlComponent:
+    #     self.voltage_parameters = voltage_parameters
+    #     logger.debug(f"voltage_parameters: {self.voltage_parameters}!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+    #     logger.debug(f"get voltage parameter x: {self.voltage_parameters[0].get()}")
+    #     logger.debug(f"get voltage parameter y: {self.voltage_parameters[1].get()}")
+
+    #     # Get the VoltageControlComponent
+    #     voltage_controller = VoltageControlComponent(
+    #         component_id="voltage_control",
+    #         voltage_parameters=voltage_parameters,
+    #     )
+
+    #     return voltage_controller
+    
+    def get_voltage_control_component(self) -> VoltageControlComponent:
+        self.m = self.experiment.tunneling_sim.boundaries(self.args_rendering["state_hint_lower_left"]).point_inside  # initial guess for m
+        self._initial_m = copy.deepcopy(self.m)  # Store the initial m value
+        self.args_rendering["m"] = self.m
+        logger.debug(f"initial m: {self.m}!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        # ABSOLUT
+        voltage_parameters = [
+           BasicParameter("vg1", "Gate 1 (x)", "mV", initial_value=self.m[0] * 1./self.conversion_factor_unit_to_volt),
+           BasicParameter("vg2", "Gate 2 (y)", "mV", initial_value=self.m[1] * 1./self.conversion_factor_unit_to_volt),
+           BasicParameter("vg3", "Sensor Gate", "mV", initial_value=self.m[2] * 1./self.conversion_factor_unit_to_volt)
+        ]
+        # RELATIVE
+        # voltage_parameters = [
+        #     BasicParameter("vg1", "Gate 1 (x)", "mV", 0),
+        #     BasicParameter("vg2", "Gate 2 (y)", "mV", 0),
+        #     BasicParameter("vg3", "Sensor Gate", "mV", 0)
+        # ]         
         self.voltage_parameters = voltage_parameters
+        self._last_voltage_parameters = copy.deepcopy(voltage_parameters)  # Store the initial voltage parameters
         logger.debug(f"voltage_parameters: {self.voltage_parameters}!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         logger.debug(f"get voltage parameter x: {self.voltage_parameters[0].get()}")
         logger.debug(f"get voltage parameter y: {self.voltage_parameters[1].get()}")
@@ -133,12 +164,12 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
         if self._first_acquisition:
             logger.debug("First acquisition, generating simulated image")
             self._first_acquisition = False
-            self._last_voltage_parameters = copy.deepcopy(self.voltage_parameters)  # Store the initial voltage parameters
-            self.m = self.experiment.tunneling_sim.boundaries(self.args_rendering["state_hint_lower_left"]).point_inside  # initial guess for m
-            self._initial_m = copy.deepcopy(self.m)  # Store the initial m value
-            self.args_rendering["m"] = self.m
+            #self._last_voltage_parameters = copy.deepcopy(self.voltage_parameters)  # Store the initial voltage parameters
+            #self.m = self.experiment.tunneling_sim.boundaries(self.args_rendering["state_hint_lower_left"]).point_inside  # initial guess for m
+            #self._initial_m = copy.deepcopy(self.m)  # Store the initial m value
+            #self.args_rendering["m"] = self.m
             #logger.debug(f"Initial m: {self.m} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-            #logger.debug(f"args_rendering: {self.args_rendering} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            logger.debug(f"args_rendering: {self.args_rendering} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
             generate_simulated_image()
 
         # Check if voltage parameters changed
@@ -156,15 +187,20 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
             if voltage_parameters_changed:
                 #logger.debug("Voltage parameters changed")
                 self._last_voltage_parameters = copy.deepcopy(self.voltage_parameters)  # Update the last voltage parameters
-                #self.m[0] = self._last_voltage_parameters[0].get() * self.conversion_factor_unit_to_volt
-                #self.m[1] = self._last_voltage_parameters[1].get() * self.conversion_factor_unit_to_volt
-                self.m = copy.deepcopy(self._initial_m)  # Reset m to the initial value
-                self.m[0] += self._last_voltage_parameters[0].get() * self.conversion_factor_unit_to_volt
-                self.m[1] += self._last_voltage_parameters[1].get() * self.conversion_factor_unit_to_volt
-                self.m[2] += self._last_voltage_parameters[2].get() * self.conversion_factor_unit_to_volt  # Assuming a third voltage parameter for the sensor gate
-                self.args_rendering["m"] = self.m  # Use the current m value
+                # RELATIVE
+                # self.m = copy.deepcopy(self._initial_m)  # Reset m to the initial value
+                # self.m[0] += self._last_voltage_parameters[0].get() * self.conversion_factor_unit_to_volt
+                # self.m[1] += self._last_voltage_parameters[1].get() * self.conversion_factor_unit_to_volt
+                # self.m[2] += self._last_voltage_parameters[2].get() * self.conversion_factor_unit_to_volt  # Assuming a third voltage parameter for the sensor gate
+                # self.args_rendering["m"] = self.m  # Use the current m value
+                # ABSOLUTE
+                self.m = copy.deepcopy(self.m)   # IT DOESN'T WORK WITHOUT DEEP COPY - WHY???
+                self.m[0] = self._last_voltage_parameters[0].get() * self.conversion_factor_unit_to_volt
+                self.m[1] = self._last_voltage_parameters[1].get() * self.conversion_factor_unit_to_volt
+                self.m[2] = self._last_voltage_parameters[2].get() * self.conversion_factor_unit_to_volt  # Assuming a third voltage parameter for the sensor gate
+                self.args_rendering["m"] = self.m
                 #logger.debug(f"Updated m: {self.m} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-                #logger.debug(f"args_rendering: {self.args_rendering} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+                logger.debug(f"args_rendering: {self.args_rendering} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
                 # Clear the data history
                 with self._data_lock:  
                     self._data_history_raw.clear()

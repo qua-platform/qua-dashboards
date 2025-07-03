@@ -60,7 +60,8 @@ class VirtualGateInnerLoopAction(InnerLoopAction):
         y_element: The QUAM Channel object along the y-axis; defined also within the VirtualGateSet
         readout_pulse: The QUAM Pulse object to measure.
         pre_measurement_delay: The optional delay before the measurement.
-        ramp_rate: The ramp rate for voltage changes (optional).
+        ramp_rate: Th
+        e ramp rate for voltage changes (optional).
         use_dBm: Whether to use dBm for amplitude (optional).
     """
 
@@ -105,27 +106,30 @@ class VirtualGateInnerLoopAction(InnerLoopAction):
     
 
     def set_dc_offsets(self, x: QuaVariableFloat, y: QuaVariableFloat):
+        if self.gateset.layers:
+            tgt = self.gateset.layers[-1].target_gates
+            src = self.gateset.layers[0].source_gates
+            x_idx = tgt.index(self.x_elem.name)
+            y_idx = tgt.index(self.y_elem.name)
+            x_v = src[x_idx]
+            y_v = src[y_idx]
+            levels = {x_v: x, y_v:y}
+        else: 
+            levels = {self.x_elem.name : x, self.y_elem.name: y}
+
+        
         if self.ramp_rate > 0:
             if getattr(self.x_elem, "sticky", None) is None:
                 raise RuntimeError("Ramp rate is not supported for non-sticky elements")
             if getattr(self.y_elem, "sticky", None) is None:
                 raise RuntimeError("Ramp rate is not supported for non-sticky elements")
-            levels = {self.x_elem.name : x, self.y_elem.name: y}
-            self.perform_ramp(levels=levels)
+            raise NotImplementedError('Please set ramp_rate to 0 and use a low OPX span')
+            #self.perform_ramp(levels=levels)
 
         else: 
-            if self.gateset.layers:
-                tgt = self.gateset.layers[-1].target_gates
-                src = self.gateset.layers[0].source_gates
-                x_idx = tgt.index(self.x_elem.name)
-                y_idx = tgt.index(self.y_elem.name)
-                x_v = src[x_idx]
-                y_v = src[y_idx]
-                levels = {x_v: x, y_v:y}
-            else: 
-                levels = {self.x_elem.name : x, self.y_elem.name: y}
-
-            self.sequence.step_to_level(levels, duration = 100)
+            phys = self.gateset.resolve_voltages(levels)
+            for gate_name, qua_V in phys.items():
+                set_dc_offset(gate_name, "single", qua_V)
 
     def __call__(
         self, x: QuaVariableFloat, y: QuaVariableFloat

@@ -42,7 +42,7 @@ from quam.components import (
     StickyChannelAddon,
     InOutMWChannel, 
 )
-from qua_dashboards.video_mode.inner_loop_actions.multi_basic_inner_loop_action import VirtualGateInnerLoopAction
+from qua_dashboards.video_mode.inner_loop_actions.virtual_gating_inner_loop_action import VirtualGateInnerLoopAction
 from qua_dashboards.voltage_control.GateSet_Voltage_Control import GateSetControl
 from quam_builder.architecture.quantum_dots.voltage_sequence.gate_set import QdacGateSet
 from quam_builder.architecture.quantum_dots.virtual_gates.virtual_gate_set import VirtualGateSet, VirtualQdacGateSet
@@ -161,8 +161,8 @@ qm = qmm.open_qm(config, close_other_machines=True)
 x_offset = BasicParameter(name="X Voltage Offset", initial_value=0.0)
 y_offset = BasicParameter(name="Y Voltage Offset", initial_value=0.0)
 
-x_span = BasicParameter(name="X span", initial_value=0.06)
-y_span = BasicParameter(name="Y span", initial_value=0.03)
+x_span = BasicParameter(name="X span", initial_value=0.05)
+y_span = BasicParameter(name="Y span", initial_value=0.05)
 
 x_resolution = BasicParameter(name="X points", initial_value=101)
 y_resolution = BasicParameter(name="Y points", initial_value=101)
@@ -182,7 +182,8 @@ inner_loop_action = VirtualGateInnerLoopAction(
     x_element = machine.channels['ch1'], 
     y_element = machine.channels['ch2'],
     gateset=machine.gate_set,
-    ramp_rate = 0,
+    ramp_rate = 0, #Keep at 0 for the moment. Ramping supported soon
+                    #Keep the span low too, to avoid killing device
     readout_pulse=readout_pulse
 )
 

@@ -258,6 +258,13 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
             if component.component_id in parameters:
                 component_params = parameters[component.component_id]
                 flags |= component.update_parameters(component_params)
+
+        if flags & ModifiedFlags.PLOT_PARAMETERS_MODIFIED:
+            logger.debug("PLOT parameters were modified!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            # Clear history as plotting parameters change
+            with self._data_lock:  
+                self._data_history_raw.clear()
+                self._latest_processed_data = None
                 
         return flags
 

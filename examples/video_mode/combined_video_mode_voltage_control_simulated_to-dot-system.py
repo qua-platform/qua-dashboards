@@ -1,36 +1,7 @@
 """
-Example Script: Video Mode with SimulatedDataAcquirer for a four dot transition with 2 sensors
+Example Script: 
+Video Mode with SimulatedDataAcquirer for a two dot system with one sensor, and voltage control
 
-This script demonstrates how to use the VideoModeComponent with a SimulatedDataAcquirer.
-The data is simulated using the QDarts package.
-This setup is ideal for simulating and testing video mode dashboards without needing
-a live connection to an OPX or other hardware. It allows you to understand the
-dashboard's functionality, test UI interactions, and develop custom components
-in a controlled environment.
-
-Core Components Used:
-- SweepAxis: Defines the parameters for each axis in the 2D scan (name, label,
-             units, span, number of points).
-- SimulatedDataAcquirer: A data acquirer that generates simulated data based on QDarts for the 2D scan,
-                         simulating a real data acquisition process.
-- VideoModeComponent: The main Dash component that orchestrates the video mode
-                      display, taking a data acquirer as input and rendering
-                      the live plot and controls.
-- build_dashboard: A utility function from qua_dashboards.core to construct
-                   a Dash application layout with the provided components.
-
-How to Run:
-1. Ensure you have `qua-dashboards` and its dependencies installed.
-   (e.g., `pip install qua-dashboards`)
-2. Save this script as a Python file (e.g., `run_random_video_mode.py`).
-3. Run the script from your terminal: `python run_random_video_mode.py`
-4. Open your web browser and navigate to `http://127.0.0.1:8050/` (or the
-   address shown in your terminal).
-
-You should see a dashboard titled "Video Mode Simulation (Simulated Data)"
-displaying a 2D plot that updates with new simulated data periodically. You will
-also have controls to adjust the parameters of the X and Y axes (Span and Points)
-and the SimulatedDataAcquirer (Software Averages, Simulated Acquire Time).
 """
 
 from qua_dashboards.core import build_dashboard
@@ -42,6 +13,10 @@ from qua_dashboards.video_mode import (
 )
 from qdarts.experiment import Experiment
 import numpy as np
+
+from qua_dashboards.voltage_control import VoltageControlComponent
+from qua_dashboards.utils import BasicParameter
+
 
 def get_video_mode_component() -> VideoModeComponent:
     """
@@ -56,32 +31,25 @@ def get_video_mode_component() -> VideoModeComponent:
     # Define the system
 
     #All capacitances are given in aF
-    N = 6 #number of dots   
+    N = 3 #number of dots   
     C_DD=20* np.eye((N))/2 #The self-capacitance of each dot, NOTE: factor of 2 due to symmetrization
     C_DD[0,1] = 10 #capacitance between dot 0 and dot 1 (Left double dot) 
-    C_DD[2,3] = 7 #capacitance between dot 3 and dot 4 (Right double dot)
 
-    C_DD[0,4] = 1.6 #capacitance between sensor dot 4 and dot 0
-    C_DD[1,4] = 1.4 #capacitance between sensor dot 4 and dot 1
-    C_DD[2,5] = 1.4 #capacitance between sensor dot 5 and dot 2
-    C_DD[3,5] = 2 #capacitance between sensor dot 5 and dot 3
-    C_DD[1,2] = 6 #capacitance between the middle dots 2 and dot 3
+    C_DD[0,2] = 1.6 #capacitance between sensor dot 4 and dot 0
+    C_DD[1,2] = 1.4 #capacitance between sensor dot 4 and dot 1
     C_DD = C_DD + C_DD.T
 
     C_DG=11*np.eye(N) #dot-to-gate capacitances 
     #cross-capacitances
-    C_DG[0,1] = 1.5 #dot 0 from dot 1
-    C_DG[1,0] = 1.2 #dot 1 from dot 0
-    C_DG[2,3] = 1.3 #dot 2 from dot 3
-    C_DG[3,2] = 1.4 #dot 3 from dot 3
+    C_DG[0,1] = 1.5 #dot 0 from gate 1
+    C_DG[1,0] = 1.2 #dot 1 from gate 0
+    # TO DO: Eine Spalte mehr für barrier gate  
 
     # Definition of the tunnel couplings in eV 
     # NOTE: we use the convention that tc is the energy gap at avoided crossing H = tc/2 sx
     tunnel_couplings = np.zeros((N,N))
     tunnel_couplings[0,1] = 50*1e-6
     tunnel_couplings[1,0] = 50*1e-6
-    tunnel_couplings[2,3] = 60*1e-6
-    tunnel_couplings[3,2] = 60*1e-6
 
     # Experiment configurations
     capacitance_config = {
@@ -96,8 +64,8 @@ def get_video_mode_component() -> VideoModeComponent:
             "energy_range_factor": 5,  #energy scale for the Hamiltonian generation. NOTE: Smaller -> faster but less accurate computation 
     }
     sensor_config = {
-            "sensor_dot_indices": [4,5],  #Indices of the sensor dots
-            "sensor_detunings": [-0.0005,-0.0005],  #Detuning of the sensor dots
+            "sensor_dot_indices": [2],  #Indices of the sensor dots
+            "sensor_detunings": [-0.0005],  #Detuning of the sensor dots
             "noise_amplitude": {"fast_noise": 0.5*1e-6, "slow_noise": 1e-8}, #Noise amplitude for the sensor dots in eV
             "peak_width_multiplier": 15,  #Width of the sensor peaks in the units of thermal broadening m *kB*T/0.61.
     }
@@ -108,17 +76,15 @@ def get_video_mode_component() -> VideoModeComponent:
     # Arguments for the function that renders the capacitance CSD
     unit = 'mV'
     factor_mV_to_V = 1e-3
-    span_x = 4.4*3
-    span_y = 4.2*3
-    #span_x = 14
-    #span_y = 20
+    span_x = 14
+    span_y = 20
     points_x = 50
     points_y = 50
 
-    P=np.zeros((6,2))
+    P=np.zeros((3,2))
     P[0,0]=1
     P[1,1]=1
-    state_hint_lower_left = [1,1,0,0,3,3]
+    state_hint_lower_left = [1,1,3]
 
     args_sensor_scan_2D = {
         "P": P,
@@ -126,21 +92,21 @@ def get_video_mode_component() -> VideoModeComponent:
         "maxV": [ span_x/2.*factor_mV_to_V, span_y/2.*factor_mV_to_V],
         "resolution": [points_x,points_y],
         "state_hint_lower_left": state_hint_lower_left,
-        "cache": True,
+        "cache": False,  # Do not cache the results
         "insitu_axis": None,
     }
 
-    args_generate_CSD = {
-        "plane_axes": np.array([[1,0,0,0,0,0],[0,1,0,0,0,0]]), # vectors spanning the cut in voltage space
-        "target_state": [1,1,0,0,5,5],  # target state for transition
-        "target_transition": [-1,1,0,0,0,0], #target transition from target state, here transition to [2,3,2,3,5,5]
-        "x_voltages": np.linspace(-span_x/2., span_x/2., points_x)*factor_mV_to_V, #voltage range for x-axis, originally: np.linspace(-0.0022, 0.0018, 100)
-        "y_voltages": np.linspace(-span_y/2., span_y/2., points_y)*factor_mV_to_V, #voltage range for y-axis, originally: np.linspace(-0.0021, 0.0019, 100)
-        "compute_polytopes": False, #compute the corners of constant occupation
-        "compensate_sensors": False, #compensate the sensor signals
-        "use_virtual_gates": False, #use the virtual gates
-        "use_sensor_signal": True, #use the sensor signals     
-    }
+    # args_generate_CSD = {
+    #     "plane_axes": np.array([[1,0,0],[0,1,0]]), # vectors spanning the cut in voltage space
+    #     "target_state": [1,1,5],  # target state for transition
+    #     "target_transition": [-1,1,0], #target transition from target state, here transition to [2,3,2,3,5,5]
+    #     "x_voltages": np.linspace(-span_x/2., span_x/2., points_x)*factor_mV_to_V, #voltage range for x-axis, originally: np.linspace(-0.0022, 0.0018, 100)
+    #     "y_voltages": np.linspace(-span_y/2., span_y/2., points_y)*factor_mV_to_V, #voltage range for y-axis, originally: np.linspace(-0.0021, 0.0019, 100)
+    #     "compute_polytopes": False, #compute the corners of constant occupation
+    #     "compensate_sensors": False, #compensate the sensor signals
+    #     "use_virtual_gates": False, #use the virtual gates
+    #     "use_sensor_signal": True, #use the sensor signals     
+    # }
 
     # Define the X-axis for the 2D scan.
     x_axis = SweepAxis(
@@ -163,12 +129,12 @@ def get_video_mode_component() -> VideoModeComponent:
     # Instantiate the SimulatedDataAcquirer.
     # This acquirer simulates data fetching by generating random 2D arrays.
     simulated_acquirer = SimulatedDataAcquirer(
-        component_id="simulated-data-acquirer",  # Unique ID for Dash elements.
+        component_id="simulated-data-acquirer",  # Unique ID for Dash elements. 
         x_axis=x_axis,
         y_axis=y_axis,
         experiment = experiment,
-        args_rendering = args_generate_CSD,
-        #args_rendering = args_sensor_scan_2D,
+        #args_rendering = args_generate_CSD,
+        args_rendering = args_sensor_scan_2D,
         conversion_factor_unit_to_volt=factor_mV_to_V,
         SNR=20,  # Signal-to-noise ratio on simulated images
         acquire_time=0.1,  # Simulated delay (seconds) for acquiring one raw frame.
@@ -187,6 +153,19 @@ def get_video_mode_component() -> VideoModeComponent:
     return video_mode_component
 
 
+def get_voltage_control_component(video_mode_component) -> VoltageControlComponent:
+    initial_value_0 = 0
+    initial_value_1 = 0
+    initial_value_2 = 0
+    voltage_parameters = [
+        BasicParameter("vg1", "Gate 1 (x)", "mV", initial_value=initial_value_0),
+        BasicParameter("vg2", "Gate 2 (y)", "mV", initial_value=initial_value_1),
+        BasicParameter("vg3", "Sensor Gate", "mV", initial_value=initial_value_2),
+    ]
+    voltage_controller = video_mode_component.data_acquirer.get_voltage_control_component(voltage_parameters)
+    return voltage_controller
+
+
 def main() -> None:
     """
     Sets up logging, creates the VideoModeComponent, builds the dashboard,
@@ -202,10 +181,16 @@ def main() -> None:
         f"VideoModeComponent instance created: {video_mode_component.component_id}"
     )
 
+    # Get the VoltageControlComponent
+    voltage_control_component = get_voltage_control_component(video_mode_component)
+    logger.info(
+        f"VoltageControlComponent instance created: {voltage_control_component.component_id}"
+    )  
+
     logger.info("Building the dashboard...")
     # Use build_dashboard to create the Dash app layout.
     app = build_dashboard(
-        components=[video_mode_component],  # List of dashboard components to include.
+        components=[video_mode_component,voltage_control_component],  # List of dashboard components to include.
         title="Video Mode Simulation (QDarts)",  # Browser window title.
     )
 

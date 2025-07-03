@@ -21,6 +21,8 @@ def main():
     y_axis = video_mode_component.data_acquirer.y_axis
     x_axis.offset_parameter = voltage_control_component.voltage_parameters[0]
     y_axis.offset_parameter = voltage_control_component.voltage_parameters[1]
+    #logger.debug(f"offset parameter x-axis: {x_axis.offset_parameter}")
+    #logger.debug(f"voltage parameter 0: {voltage_control_component.voltage_parameters[0].get()}")
 
     app = build_dashboard(
         components=[video_mode_component, voltage_control_component],

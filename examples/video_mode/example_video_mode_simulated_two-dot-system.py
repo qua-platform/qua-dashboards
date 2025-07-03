@@ -1,5 +1,5 @@
 """
-Example Script: Video Mode with SimulatedDataAcquirer for a four dot transition with 2 sensors
+Example Script: Video Mode with SimulatedDataAcquirer for a two dot system with one sensor
 
 This script demonstrates how to use the VideoModeComponent with a SimulatedDataAcquirer.
 The data is simulated using the QDarts package.
@@ -56,32 +56,24 @@ def get_video_mode_component() -> VideoModeComponent:
     # Define the system
 
     #All capacitances are given in aF
-    N = 6 #number of dots   
+    N = 3 #number of dots   
     C_DD=20* np.eye((N))/2 #The self-capacitance of each dot, NOTE: factor of 2 due to symmetrization
     C_DD[0,1] = 10 #capacitance between dot 0 and dot 1 (Left double dot) 
-    C_DD[2,3] = 7 #capacitance between dot 3 and dot 4 (Right double dot)
 
-    C_DD[0,4] = 1.6 #capacitance between sensor dot 4 and dot 0
-    C_DD[1,4] = 1.4 #capacitance between sensor dot 4 and dot 1
-    C_DD[2,5] = 1.4 #capacitance between sensor dot 5 and dot 2
-    C_DD[3,5] = 2 #capacitance between sensor dot 5 and dot 3
-    C_DD[1,2] = 6 #capacitance between the middle dots 2 and dot 3
+    C_DD[0,2] = 1.6 #capacitance between sensor dot 4 and dot 0
+    C_DD[1,2] = 1.4 #capacitance between sensor dot 4 and dot 1
     C_DD = C_DD + C_DD.T
 
     C_DG=11*np.eye(N) #dot-to-gate capacitances 
     #cross-capacitances
     C_DG[0,1] = 1.5 #dot 0 from dot 1
     C_DG[1,0] = 1.2 #dot 1 from dot 0
-    C_DG[2,3] = 1.3 #dot 2 from dot 3
-    C_DG[3,2] = 1.4 #dot 3 from dot 3
 
     # Definition of the tunnel couplings in eV 
     # NOTE: we use the convention that tc is the energy gap at avoided crossing H = tc/2 sx
     tunnel_couplings = np.zeros((N,N))
     tunnel_couplings[0,1] = 50*1e-6
     tunnel_couplings[1,0] = 50*1e-6
-    tunnel_couplings[2,3] = 60*1e-6
-    tunnel_couplings[3,2] = 60*1e-6
 
     # Experiment configurations
     capacitance_config = {
@@ -96,8 +88,8 @@ def get_video_mode_component() -> VideoModeComponent:
             "energy_range_factor": 5,  #energy scale for the Hamiltonian generation. NOTE: Smaller -> faster but less accurate computation 
     }
     sensor_config = {
-            "sensor_dot_indices": [4,5],  #Indices of the sensor dots
-            "sensor_detunings": [-0.0005,-0.0005],  #Detuning of the sensor dots
+            "sensor_dot_indices": [2],  #Indices of the sensor dots
+            "sensor_detunings": [-0.0005],  #Detuning of the sensor dots
             "noise_amplitude": {"fast_noise": 0.5*1e-6, "slow_noise": 1e-8}, #Noise amplitude for the sensor dots in eV
             "peak_width_multiplier": 15,  #Width of the sensor peaks in the units of thermal broadening m *kB*T/0.61.
     }
@@ -115,10 +107,10 @@ def get_video_mode_component() -> VideoModeComponent:
     points_x = 50
     points_y = 50
 
-    P=np.zeros((6,2))
+    P=np.zeros((3,2))
     P[0,0]=1
     P[1,1]=1
-    state_hint_lower_left = [1,1,0,0,3,3]
+    state_hint_lower_left = [1,1,3]
 
     args_sensor_scan_2D = {
         "P": P,
@@ -131,9 +123,9 @@ def get_video_mode_component() -> VideoModeComponent:
     }
 
     args_generate_CSD = {
-        "plane_axes": np.array([[1,0,0,0,0,0],[0,1,0,0,0,0]]), # vectors spanning the cut in voltage space
-        "target_state": [1,1,0,0,5,5],  # target state for transition
-        "target_transition": [-1,1,0,0,0,0], #target transition from target state, here transition to [2,3,2,3,5,5]
+        "plane_axes": np.array([[1,0,0],[0,1,0]]), # vectors spanning the cut in voltage space
+        "target_state": [1,1,5],  # target state for transition
+        "target_transition": [-1,1,0], #target transition from target state, here transition to [2,3,2,3,5,5]
         "x_voltages": np.linspace(-span_x/2., span_x/2., points_x)*factor_mV_to_V, #voltage range for x-axis, originally: np.linspace(-0.0022, 0.0018, 100)
         "y_voltages": np.linspace(-span_y/2., span_y/2., points_y)*factor_mV_to_V, #voltage range for y-axis, originally: np.linspace(-0.0021, 0.0019, 100)
         "compute_polytopes": False, #compute the corners of constant occupation
@@ -167,8 +159,8 @@ def get_video_mode_component() -> VideoModeComponent:
         x_axis=x_axis,
         y_axis=y_axis,
         experiment = experiment,
-        args_rendering = args_generate_CSD,
-        #args_rendering = args_sensor_scan_2D,
+        #args_rendering = args_generate_CSD,
+        args_rendering = args_sensor_scan_2D,
         conversion_factor_unit_to_volt=factor_mV_to_V,
         SNR=20,  # Signal-to-noise ratio on simulated images
         acquire_time=0.1,  # Simulated delay (seconds) for acquiring one raw frame.

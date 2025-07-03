@@ -134,21 +134,23 @@ class RandomDataAcquirer(Base2DDataAcquirer):
         flags = super().update_parameters(parameters)
 
         # Check if parameters for this specific component_id are present
-        if self.component_id in parameters:
-            params = parameters[self.component_id]
-            if "acquire-time" in params:
-                new_acquire_time = float(params["acquire-time"])
-                if self.acquire_time != new_acquire_time and new_acquire_time >= 0:
-                    self.acquire_time = new_acquire_time
-                    flags |= ModifiedFlags.PARAMETERS_MODIFIED
-                    logger.debug(
-                        f"RandomDataAcquirer (ID: {self.component_id}): "
-                        f"Updated acquire_time to {self.acquire_time}s"
-                    )
-                elif new_acquire_time < 0:
-                    logger.warning(
-                        f"RandomDataAcquirer (ID: {self.component_id}): "
-                        f"Invalid acquire_time ({new_acquire_time}s) received. Not updated."
-                    )
+        if self.component_id not in parameters:
+            return flags
+
+        params = parameters[self.component_id]
+        if "acquire-time" in params:
+            new_acquire_time = float(params["acquire-time"])
+            if self.acquire_time != new_acquire_time and new_acquire_time >= 0:
+                self.acquire_time = new_acquire_time
+                flags |= ModifiedFlags.PARAMETERS_MODIFIED
+                logger.debug(
+                    f"RandomDataAcquirer (ID: {self.component_id}): "
+                    f"Updated acquire_time to {self.acquire_time}s"
+                )
+            elif new_acquire_time < 0:
+                logger.warning(
+                    f"RandomDataAcquirer (ID: {self.component_id}): "
+                    f"Invalid acquire_time ({new_acquire_time}s) received. Not updated."
+                )
 
         return flags

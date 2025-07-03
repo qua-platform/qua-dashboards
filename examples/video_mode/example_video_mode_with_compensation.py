@@ -45,6 +45,7 @@ from quam.components import (
 
 from qua_dashboards.core import build_dashboard
 from qua_dashboards.utils import setup_logging, BasicParameter
+from qua_dashboards.video_mode.inner_loop_actions.multi_basic_inner_loop_action import VirtualGateInnerLoopAction
 from qua_dashboards.video_mode import (
     SweepAxis,
     OPXDataAcquirer,
@@ -52,7 +53,13 @@ from qua_dashboards.video_mode import (
     BasicInnerLoopAction,
     VideoModeComponent,
 )
-
+from qua_dashboards.voltage_control.GateSet_Voltage_Control import GateSetControl
+from quam_builder.architecture.quantum_dots.voltage_sequence.gate_set import QdacGateSet
+from quam_builder.architecture.quantum_dots.virtual_gates import (
+    VirtualGateSet, 
+    VirtualisationLayer
+)
+from quam_builder.hardware.quam_channel import QdacOpxChannel, QdacOpxReadout
 
 logger = setup_logging(__name__)
 
@@ -81,6 +88,13 @@ machine.channels["ch2"] = SingleChannel(
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
     operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
 )
+
+channels = {machine.channels['ch1'].name: machine.channels['ch1'].get_reference(),
+            machine.channels['ch2'].name: machine.channels['ch2'].get_reference(), }
+
+layer1 = VirtualisationLayer(source_gates = ['vch1', 'vch2'], target_gates=['ch1', 'ch2'], 
+                             matrix = np.eye(2))
+machine.gateset = VirtualGateSet(id = 'Plungers', channels = channels, layers = [layer1])
 
 
 # Define the readout pulse and the channel used for measurement
@@ -116,9 +130,7 @@ config = machine.generate_config()
 
 # Open a connection to the Quantum Machine (QM)
 # This prepares the OPX with the generated configuration.
-
-
-# qm = qmm.open_qm(config, close_other_machines=True)
+qm = qmm.open_qm(config, close_other_machines=True)
 
 
 # %% Configure Video Mode Components
@@ -137,13 +149,20 @@ y_resolution = BasicParameter(name="Y points", initial_value=101)
 
 # Define the action to be performed at each point in the QUA scan (inner loop).
 # BasicInnerLoopAction sets DC offsets on two elements and performs a measurement.
-inner_loop_action = BasicInnerLoopAction(
-    x_element=machine.channels["ch1"],  # QUAM element for X-axis voltage
-    y_element=machine.channels["ch2"],  # QUAM element for Y-axis voltage
-    readout_pulse=readout_pulse,  # QUAM readout pulse to use for measurement
-    # ramp_rate=1_000,                  # Optional: Voltage ramp rate (V/s)
-    use_dBm=True,  # If true, readout amplitude is in dBm
+inner_loop_action = VirtualGateInnerLoopAction(
+    x_element = machine.channels['ch1'], 
+    y_element = machine.channels['ch2'],
+    gateset=machine.gateset,
+    ramp_rate = 0,
+    readout_pulse=readout_pulse
 )
+# inner_loop_action = BasicInnerLoopAction(
+#     x_element=machine.channels["ch1"],  # QUAM element for X-axis voltage
+#     y_element=machine.channels["ch2"],  # QUAM element for Y-axis voltage
+#     readout_pulse=readout_pulse,  # QUAM readout pulse to use for measurement
+#     # ramp_rate=1_000,                  # Optional: Voltage ramp rate (V/s)
+#     use_dBm=True,  # If true, readout amplitude is in dBm
+# )
 
 # Select the scan mode (how the 2D grid is traversed in QUA)
 # Options include: RasterScan, SpiralScan, SwitchRasterScan
@@ -191,9 +210,7 @@ logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
 # Run the Dash server.
 # `host="0.0.0.0"` makes it accessible on your network.
 # `use_reloader=False` is often recommended for stability with background threads.
-
-
-# app.run(debug=True, host="127.0.0.1", port=8050, use_reloader=False)
+app.run(debug=True, host="127.0.0.1", port=8050, use_reloader=False)
 
 
 # %% --- Debugging Sections (Optional) ---
@@ -207,34 +224,34 @@ logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
 
 # # DEBUG: Test QUA program simulation
 # # This simulates the QUA program execution without running on the actual OPX.
-try:
-    prog = data_acquirer.generate_qua_program()
-    simulation_config = SimulationConfig(duration=10000)  # Duration in clock cycles (4ns)
-    job = qmm.simulate(config, prog, simulation_config)
-    simulated_samples = job.get_simulated_samples()
-    con1 = simulated_samples.con1
+# try:
+#     prog = data_acquirer.generate_qua_program()
+#     simulation_config = SimulationConfig(duration=10000)  # Duration in clock cycles (4ns)
+#     job = qmm.simulate(config, prog, simulation_config)
+#     simulated_samples = job.get_simulated_samples()
+#     con1 = simulated_samples.con1
 
-    plt.figure(figsize=(10, 5))
-    con1.plot(analog_ports=["1", "2"], digital_ports=[]) # Specify ports to plot
-    plt.title("Simulated Analog Output (Ports 1 & 2)")
-    plt.show()
+#     plt.figure(figsize=(10, 5))
+#     con1.plot(analog_ports=["1", "2"], digital_ports=[]) # Specify ports to plot
+#     plt.title("Simulated Analog Output (Ports 1 & 2)")
+#     plt.show()
 
-    # Plot X vs Y voltage trajectory from simulation
-    plt.figure()
-    plt.plot(con1.analog["1"], con1.analog["2"])
-    plt.title("Simulated X-Y Voltage Trajectory")
-    plt.xlabel("Voltage X (simulated)")
-    plt.ylabel("Voltage Y (simulated)")
-    plt.grid(True)
-    plt.show()
+#     # Plot X vs Y voltage trajectory from simulation
+#     plt.figure()
+#     plt.plot(con1.analog["1"], con1.analog["2"])
+#     plt.title("Simulated X-Y Voltage Trajectory")
+#     plt.xlabel("Voltage X (simulated)")
+#     plt.ylabel("Voltage Y (simulated)")
+#     plt.grid(True)
+#     plt.show()
 
-    # Plot the scan pattern used by the scan_mode
-    plt.figure()
-    data_acquirer.scan_mode.plot_scan(
-        data_acquirer.x_axis.points, data_acquirer.y_axis.points
-    )
-    plt.title("Scan Mode Pattern")
-    plt.show()
+#     # Plot the scan pattern used by the scan_mode
+#     plt.figure()
+#     data_acquirer.scan_mode.plot_scan(
+#         data_acquirer.x_axis.points, data_acquirer.y_axis.points
+#     )
+#     plt.title("Scan Mode Pattern")
+#     plt.show()
 
-except Exception as e:
-    logger.error(f"Error during QUA simulation: {e}")
+# except Exception as e:
+#     logger.error(f"Error during QUA simulation: {e}")

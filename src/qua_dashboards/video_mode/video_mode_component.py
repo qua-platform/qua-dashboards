@@ -3,10 +3,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import dash_bootstrap_components as dbc
 
-from dash import Dash, Input, Output, State, dcc, html, ctx, no_update
+from dash import Dash, Input, Output, State, dcc, html, ctx, no_update, exceptions
 from dash.development.base_component import Component
 from dash.exceptions import PreventUpdate
-
+from qua_dashboards.voltage_control.gate_selection_UI import get_gate_selection_ui
 from qua_dashboards.core import BaseComponent
 from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import (
     BaseDataAcquirer,
@@ -570,3 +570,167 @@ class VideoModeComponent(BaseComponent):
         except ImportError:
             pass
         return save_data(results)
+
+
+
+
+class VideoModeComponent_with_GateSet(VideoModeComponent):
+    def __init__(self, *args, gateset, inner_loop_action, **kwargs): 
+        super().__init__(*args, **kwargs)
+        self.gateset = gateset
+        self.inner_loop_action = inner_loop_action
+
+    def get_layout(self) -> Component:
+        """Generates the Dash layout for the VideoModeComponent."""
+        logger.debug(f"Generating layout for VideoModeComponent '{self.component_id}'")
+
+        tabs_children = []
+        if not self.tab_controllers:
+            tabs_children.append(
+                dcc.Tab(
+                    label="No Tabs Configured",
+                    value="no-tabs-dummy",
+                    children=[
+                        html.Div(
+                            "Please provide or configure tab controllers.",
+                            style={"padding": "20px", "textAlign": "center"},
+                        )
+                    ],
+                )
+            )
+        else:
+            for tc in self.tab_controllers:
+                tabs_children.append(
+                    dcc.Tab(
+                        label=tc.get_tab_label(),
+                        value=tc.get_tab_value(),
+                        id=self._get_id(f"tab-ctrl-wrapper-{tc.get_tab_value()}"),
+                        children=[
+                            html.Div(
+                                tc.get_layout(),  # type: ignore
+                                style={"padding": "10px"},
+                                className="tab-controller-content-wrapper",
+                            )
+                        ],
+                        # selected_className="dash-tab--selected",
+                        className="dash-tab",
+                    )
+                )
+
+        left_panel_controls = dcc.Tabs(
+            id=self._get_id(self._TABS_ID_SUFFIX),
+            value=self._active_tab_value,
+            children=tabs_children,
+            className="mb-3",
+            # persistence=True, # Optional: persist active tab
+            # persistence_type="session",
+        )
+
+        # --- Save Button Row (for future extensibility, use dbc.Row with one button for now) ---
+        bottom_left_row = dbc.Row(
+            [
+                dbc.Col(
+                    dbc.Button(
+                        "Save",
+                        id=self._get_id("save-button"),
+                        color="success",
+                        className="me-2",
+                    ),
+                    width=3,
+                ),
+            ],
+            className="mb-3 g-2 justify-content-start",
+        )
+
+        right_panel_viewer = self.shared_viewer.get_layout()
+
+        shared_stores_for_layout = [
+            dcc.Store(
+                id=self._get_store_id(self.LATEST_PROCESSED_DATA_STORE_SUFFIX),
+                data=None,
+            ),
+            dcc.Store(
+                id=self._get_store_id(self.VIEWER_DATA_STORE_SUFFIX),
+                data={"key": "live_data", "version": None},
+            ),
+            dcc.Store(
+                id=self._get_store_id(self.VIEWER_LAYOUT_CONFIG_STORE_SUFFIX), data={}
+            ),
+        ]
+
+        main_layout = dbc.Container(
+            fluid=True,
+            children=[
+                html.Div(id="dummy-output", style={"display": "none"}),
+                get_gate_selection_ui(self.gateset),
+                html.Div(
+                    id=self._get_id(self._MAIN_STATUS_ALERT_ID_SUFFIX), className="mb-2"
+                ),
+                dcc.Store(id="selected-sweep-channels"),
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                left_panel_controls,
+                                bottom_left_row,  # Insert buttons (save, ...)
+                            ],
+                            width=12,
+                            lg=4,
+                            className="mb-3 mb-lg-0",
+                            style={
+                                "maxHeight": "calc(100vh - 70px)",
+                                "overflowY": "auto",
+                            },
+                        ),
+                        dbc.Col(
+                            right_panel_viewer,
+                            width=12,
+                            lg=8,
+                            style={
+                                "maxHeight": "calc(100vh - 70px)",
+                                "overflowY": "hidden",  # Graph usually handles its own scroll
+                            },
+                        ),
+                    ],
+                    className="g-3",  # Gutters
+                ),
+                dcc.Interval(
+                    id=self._get_id(self._DATA_POLLING_INTERVAL_ID_SUFFIX),
+                    interval=self.data_polling_interval_ms,
+                    n_intervals=0,
+                    disabled=False,  # Initially disabled, enabled by acquirer status
+                ),
+                *shared_stores_for_layout,
+            ],
+            style={"paddingTop": "10px"},
+        )
+        return main_layout
+    
+    def register_callbacks(self, app, **kwargs):
+        # Register parent callbacks first!
+        super().register_callbacks(app, **kwargs)
+        # Now register your new callback
+        @app.callback(
+            Output("selected-sweep-channels", "data"),
+            Input("set-sweep-channels", "n_clicks"),
+            State("sweep-x-channel", "value"),
+            State("sweep-y-channel", "value"),
+            prevent_initial_call=True,
+        )
+        def store_selected_sweep_channels(n_clicks, x, y):
+            if n_clicks:
+                return {"x": x, "y": y}
+            return no_update
+        
+        @app.callback(
+            Output("dummy-output", "children"),  # or anything to trigger a refresh
+            Input("selected-sweep-channels", "data"),
+            prevent_initial_call=True,
+        )
+        def update_sweep_channels(selected):
+            if selected is None:
+                raise exceptions.PreventUpdate
+            # Assume you have access to video_mode_component/inner_loop_action
+            self.inner_loop_action.x_elem = self.gateset.channels[selected["x"]]
+            self.inner_loop_action.y_elem = self.gateset.channels[selected["y"]]
+            return ""

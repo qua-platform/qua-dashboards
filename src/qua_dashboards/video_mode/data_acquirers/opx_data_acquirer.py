@@ -2,6 +2,10 @@ import logging
 import time
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
+from quam_builder.architecture.quantum_dots.voltage_sequence.gate_set import QdacGateSet
+from quam_builder.architecture.quantum_dots.virtual_gates.virtual_gate_set import VirtualQdacGateSet
+
+
 import numpy as np
 from qm import QuantumMachinesManager, Program
 from qm.jobs.running_qm_job import RunningQmJob
@@ -31,7 +35,7 @@ from qua_dashboards.video_mode.inner_loop_actions.inner_loop_action import (
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["OPXDataAcquirer"]
+__all__ = ["OPXDataAcquirer", "OPXQDACDataAcquirer"]
 
 
 class OPXDataAcquirer(Base2DDataAcquirer):
@@ -363,3 +367,64 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             except Exception as e:
                 logger.warning(f"Error halting QM job for {self.component_id}: {e}")
         super().stop_acquisition()
+
+
+class OPXQDACDataAcquirer(OPXDataAcquirer):
+    """Exact same as the OPXDataAcquirer, but ensures that the OPX offsets are set to 0"""
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        x_vals = np.array(self.x_axis.sweep_values_unattenuated)
+        y_vals = np.array(self.y_axis.sweep_values_unattenuated)
+
+        ## Ensure that the values sent to the OPX are centred around 0
+        self.x_bias = float(x_vals.mean())
+        self.y_bias = float(y_vals.mean())
+        self.x_axis.sweep_values_unattenuated = (x_vals - self.x_bias).tolist()
+        self.y_axis.sweep_values_unattenuated = (y_vals - self.y_bias).tolist()
+
+        ## Extract the actual offsets inputted by the user
+        self.x_offset = float(self.x_axis.offset_parameter._value)
+        self.y_offset = float(self.y_axis.offset_parameter._value)
+
+
+# from itertools import product
+
+# class MultiAxisScan:
+#     """ 
+#     Made to supplement any DataAcquirer to turn the 2D code into an N-dimensional sweep for cross-compensated sweeping
+    
+#     """
+#     def generate_qua_program(self):
+
+#         tuples = list(self.scan_mode.scan(
+#             x_vals = None, y_vals = None
+#         ))
+
+#         M = len(tuples)
+
+#         with program() as prog:
+#             stream = declare_stream()
+#             with infinite_loop_():
+#                 self.qua_inner_loop_action.initial_action()
+
+#                 for point in tuples:
+#                     qua_variables = []
+#                     for val in point: 
+#                         qv = declare(fixed)
+#                         assign(qv, val)
+#                         qua_variables.append(qv)
+#                     meas = self.qua_inner_loop_action(*qua_variables)
+#                     save(meas, stream)
+
+#                 self.qua_inner_loop_action.final_action()
+#             with stream_processing():
+#                 stream.buffer(M).save('all_streams_combined')
+
+#         self.qua_program = prog
+#         return prog
+    
+
+# class MultiAxisQdacOpxAcquirer(MultiAxisScan, OPXQDACDataAcquirer):
+#     def __init__(self, *, gateset, scan_mode, **kwargs):
+#         super().__init__(gateset = gateset, scan_mode = scan_mode, **kwargs)
+

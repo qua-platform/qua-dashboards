@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 
 from dash import Dash
 from dash.development.base_component import Component
@@ -28,8 +28,8 @@ class SweepAxis(BaseUpdatableComponent):
     def __init__(
         self,
         name: str,
-        span: BasicParameter,
-        points: BasicParameter,
+        span: Union[BasicParameter, float],
+        points: Union[BasicParameter, int],
         label: Optional[str] = None,
         units: Optional[str] = None,
         offset_parameter: Optional[BasicParameter] = None,
@@ -40,15 +40,34 @@ class SweepAxis(BaseUpdatableComponent):
             component_id = f"{name}-axis"
         super().__init__(component_id=component_id)
         self.name = name
-        #self.span = span
-        self._span = span
-        self._points = points
+        # #self.span = span
+        # self._span = span
+        # self._points = points
         self.label = label
         self.units = units
         self.offset_parameter = offset_parameter
         self.attenuation = attenuation
+        self._override_unattenuated: np.ndarray | None = None
 
-        
+        if isinstance(span, BasicParameter):
+            self._span = span
+        else:
+            self._span = BasicParameter(
+                name = f'{name}_span',
+                label = label or name,
+                units = units or '',
+                initial_value = span
+            )
+        if isinstance(points, BasicParameter):
+            self._points = points
+        else:
+            self._points = BasicParameter(
+                name = f'{name}_points', 
+                label = label or name,
+                units = units or '',
+                initial_value = points
+            )
+            
     @property
     def span(self) -> float:
         return self._span._value
@@ -73,7 +92,14 @@ class SweepAxis(BaseUpdatableComponent):
     @property
     def sweep_values_unattenuated(self):
         """Returns axis sweep values without attenuation."""
+        if self._override_unattenuated is not None: 
+            return self._override_unattenuated
         return self.sweep_values * 10 ** (self.attenuation / 20)
+
+    @sweep_values_unattenuated.setter
+    def sweep_values_unattenuated(self, values:list[float] | np.ndarray):
+        self._override_unattenuated = np.array(values)
+
 
     @property
     def sweep_values_with_offset(self):

@@ -255,10 +255,12 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
                     )
 
         for component in self.get_components():
+            if component is self:
+                continue
+
             if component.component_id in parameters:
-                component_params = parameters[component.component_id]
-                flags |= component.update_parameters(component_params)
-                
+                flags |= component.update_parameters(parameters)
+
         return flags
 
     def get_dash_components(self, include_subcomponents: bool = True) -> List[Any]:

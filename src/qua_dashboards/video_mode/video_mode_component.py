@@ -400,10 +400,13 @@ class VideoModeComponent(BaseComponent):
             ),
             Input(self._get_id(self._DATA_POLLING_INTERVAL_ID_SUFFIX), "n_intervals"),
             State(self._get_store_id(self.VIEWER_DATA_STORE_SUFFIX), "data"),
+            State(self._get_id(self._TABS_ID_SUFFIX), "value"),
             prevent_initial_call=True,
         )
         def handle_data_polling(
-            _n_intervals: int, current_viewer_data_ref: Optional[Dict[str, str]]
+            _n_intervals: int,
+            current_viewer_data_ref: Optional[Dict[str, str]],
+            active_tab_value: Optional[str],
         ) -> Tuple[Any, Any, Any]:
             if not ctx.triggered_id:
                 raise PreventUpdate
@@ -450,14 +453,12 @@ class VideoModeComponent(BaseComponent):
                 }
                 latest_processed_data_ref_for_store = data_reference
 
-                current_viewer_key = (
-                    current_viewer_data_ref.get("key")
-                    if current_viewer_data_ref
-                    else None
-                )
-                if current_viewer_key == data_registry.LIVE_DATA_KEY:
-                    viewer_primary_data_ref_update = data_reference
+                for tab_controller in self.tab_controllers:
+                    if not isinstance(tab_controller, LiveViewTabController):
+                        continue
 
+                    if tab_controller.get_tab_value() == active_tab_value:
+                        viewer_primary_data_ref_update = data_reference
             return (
                 latest_processed_data_ref_for_store,
                 viewer_primary_data_ref_update,

@@ -149,18 +149,17 @@ class BasicInnerLoopAction(InnerLoopAction):
 
         additional_components = [
             create_input_field(
-                id={"type": self.component_id, "index": "readout_frequency"},
+                id=self._get_id("readout_frequency"),
                 label="Readout frequency",
                 value=self.readout_pulse.channel.intermediate_frequency,
+                input_style={"width": "200px"},
                 units="Hz",
-                step=20e3,
             ),
             create_input_field(
-                id={"type": self.component_id, "index": "readout_duration"},
+                id=self._get_id("readout_duration"),
                 label="Readout duration",
                 value=self.readout_pulse.length,
                 units="ns",
-                input_style={"width": "200px"},
                 step=10,
             ),
         ]
@@ -168,7 +167,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         if self.use_dBm:
             additional_components.append(
                 create_input_field(
-                    id={"type": self.component_id, "index": "readout_power"},
+                    id=self._get_id("readout_power"),
                     label="Readout power",
                     value=unit.volts2dBm(self.readout_pulse.amplitude),
                     units="dBm",
@@ -177,7 +176,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         else:
             additional_components.append(
                 create_input_field(
-                    id={"type": self.component_id, "index": "readout_amplitude"},
+                    id=self._get_id("readout_amplitude"),
                     label="Readout amplitude",
                     value=self.readout_pulse.amplitude,
                     units="V",
@@ -190,11 +189,10 @@ class BasicInnerLoopAction(InnerLoopAction):
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
         """Update the data acquirer's attributes based on the input values."""
-        try:
-            params = parameters[self.component_id]
-        except KeyError:
-            print(f"Inner loop action parameters: {list(parameters.keys())}")
-            raise
+        if self.component_id not in parameters:
+            return ModifiedFlags.NONE
+
+        params = parameters[self.component_id]
 
         flags = ModifiedFlags.NONE
         if (

@@ -137,11 +137,10 @@ class SweepAxis(BaseUpdatableComponent):
 
         params = parameters[self.component_id]
 
-        # X-axis
         if "span" in params and self.span != params["span"]:
             self.span = params["span"]
-            flags |= ModifiedFlags.PARAMETERS_MODIFIED
+            flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
         if "points" in params and self.points != params["points"]:
             self.points = params["points"]
-            flags |= ModifiedFlags.PARAMETERS_MODIFIED
+            flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
         return flags

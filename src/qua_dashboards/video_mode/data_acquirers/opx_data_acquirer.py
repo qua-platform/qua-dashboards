@@ -195,7 +195,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         if validate_running:
             try:
                 handle = self.qm_job.result_handles.get("all_streams_combined")
-                handle.wait_for_values(1)
+                handle.wait_for_values(1, timeout=20)
                 logger.info(f"QM job for {self.component_id} started successfully.")
             except Exception as e:
                 logger.error(
@@ -258,6 +258,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             self._compilation_flags = ModifiedFlags.NONE
         elif self._compilation_flags & ModifiedFlags.PROGRAM_MODIFIED:
             logger.info(f"Program recompile triggered for {self.component_id}.")
+            self.qua_program = None  # Clear the program to force a re-generation
             self.execute_program()
             self._compilation_flags = ModifiedFlags.NONE
 

@@ -14,6 +14,7 @@ from dash import (
 )
 
 from qua_dashboards.core import BaseComponent, ParameterProtocol
+from qua_dashboards.utils import CallbackParameter
 
 from .voltage_control_row import VoltageControlRow, format_voltage
 
@@ -36,9 +37,14 @@ class VoltageControlComponent(BaseComponent):
         voltage_parameters: Sequence[ParameterProtocol],
         update_interval_ms: int = 1000,
         layout_columns: int = 3,
+        callback_on_param_change = None
+        
     ):
         super().__init__(component_id=component_id)
         self.voltage_parameters = voltage_parameters
+        #wrap parameters to trigger callbacks on change.
+        if callback_on_param_change is not None:
+            self.voltage_parameters = [CallbackParameter(param, callback_on_param_change) for param in self.voltage_parameters]
         self.update_interval_ms = update_interval_ms
 
         self._initial_values_loaded = False  # To ensure first update populates values

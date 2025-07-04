@@ -7,18 +7,19 @@ __all__ = ["BasicParameter"]
 
 
 class BasicParameter:
-    def __init__(self, name:str, label:Optional[str]=None, units:str="V", initial_value:float=0.0):
+    def __init__(self, name:str, label:Optional[str]=None, units:str="V", initial_value:float=0.0, delay:float = 0.0):
         self.name = name
         self.label = label if label is not None else name
         self.latest_value = initial_value
         self._value = initial_value
         self.unit = units
+        self.delay = delay
         logging.debug(
             f"{self.name} initialized with value {self.latest_value} {self.unit}"
         )
 
     def get(self):
-        time.sleep(0.2)  # Simulate a 200ms delay
+        time.sleep(self.delay)  # Simulate delay, used for examples
         self.latest_value = self._value
         logging.debug(f"Getting {self.name}: {self.latest_value} {self.unit}")
         return self.latest_value

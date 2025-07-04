@@ -101,7 +101,8 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
         voltage_parameters = [
            BasicParameter("vg1", "Gate 1 (x)", "mV", initial_value=self.m[0] * 1./self.conversion_factor_unit_to_volt),
            BasicParameter("vg2", "Gate 2 (y)", "mV", initial_value=self.m[1] * 1./self.conversion_factor_unit_to_volt),
-           BasicParameter("vg3", "Sensor Gate", "mV", initial_value=self.m[2] * 1./self.conversion_factor_unit_to_volt)
+           BasicParameter("vg3", "Sensor Gate", "mV", initial_value=self.m[2] * 1./self.conversion_factor_unit_to_volt),
+           BasicParameter("vg4", "Barrier Gate", "mV", initial_value=self.m[3] * 1./self.conversion_factor_unit_to_volt)
         ]
         # RELATIVE
         # voltage_parameters = [
@@ -180,11 +181,12 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
             self._last_voltage_parameters is not None):
             voltage_parameters_changed = self.voltage_parameters[0].get() != self._last_voltage_parameters[0].get() or \
                                         self.voltage_parameters[1].get() != self._last_voltage_parameters[1].get() or \
-                                        self.voltage_parameters[2].get() != self._last_voltage_parameters[2].get()  # Assuming a third voltage parameter for the sensor gate
+                                        self.voltage_parameters[2].get() != self._last_voltage_parameters[2].get() or \
+                                        self.voltage_parameters[3].get() != self._last_voltage_parameters[3].get()
             logger.debug(f"voltage_parameters_changed: {voltage_parameters_changed} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         else:
             voltage_parameters_changed = False
-            
+
         # Plot and/or voltage parameters changed
         if voltage_parameters_changed or self._plot_parameters_changed:
             #logger.debug("Plot or voltage parameters changed, generating new simulated image")
@@ -198,13 +200,14 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
                 # self.m = copy.deepcopy(self._initial_m)  # Reset m to the initial value
                 # self.m[0] += self._last_voltage_parameters[0].get() * self.conversion_factor_unit_to_volt
                 # self.m[1] += self._last_voltage_parameters[1].get() * self.conversion_factor_unit_to_volt
-                # self.m[2] += self._last_voltage_parameters[2].get() * self.conversion_factor_unit_to_volt  # Assuming a third voltage parameter for the sensor gate
+                # self.m[2] += self._last_voltage_parameters[2].get() * self.conversion_factor_unit_to_volt
                 # self.args_rendering["m"] = self.m  # Use the current m value
                 # ABSOLUTE
                 self.m = copy.deepcopy(self.m)   # IT DOESN'T WORK WITHOUT DEEP COPY - WHY???
                 self.m[0] = self._last_voltage_parameters[0].get() * self.conversion_factor_unit_to_volt
                 self.m[1] = self._last_voltage_parameters[1].get() * self.conversion_factor_unit_to_volt
-                self.m[2] = self._last_voltage_parameters[2].get() * self.conversion_factor_unit_to_volt  # Assuming a third voltage parameter for the sensor gate
+                self.m[2] = self._last_voltage_parameters[2].get() * self.conversion_factor_unit_to_volt
+                self.m[3] = self._last_voltage_parameters[3].get() * self.conversion_factor_unit_to_volt
                 self.args_rendering["m"] = self.m
                 #logger.debug(f"Updated m: {self.m} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
                 logger.debug(f"args_rendering: {self.args_rendering} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")

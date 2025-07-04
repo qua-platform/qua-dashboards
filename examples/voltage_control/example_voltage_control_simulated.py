@@ -16,20 +16,23 @@ def define_gates_simple():
     ]
 
 
-def get_voltage_control_component():
+def get_voltage_control_component(callback=None):
     """Returns a VoltageControlComponent with demo gates."""
     voltage_parameters = define_gates_simple()
     voltage_controller = VoltageControlComponent(
         component_id="v_ctrl",
         voltage_parameters=voltage_parameters,
+        callback_on_param_change = callback
     )
     return voltage_controller
 
+def example_callback(parameter):
+    print("Parameter", parameter.name, "was changed to value", parameter.get_latest())
 
 def main():
     logger = setup_logging(__name__)
     logger.info("Starting Voltage Control dashboard (Simple demo mode)")
-    component = get_voltage_control_component()
+    component = get_voltage_control_component(callback=example_callback)
     app = build_dashboard(
         components=[component],
         title="Voltage Control Dashboard (Simple Demo)",

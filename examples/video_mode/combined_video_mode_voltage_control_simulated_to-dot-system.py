@@ -153,18 +153,6 @@ def get_video_mode_component() -> VideoModeComponent:
     return video_mode_component
 
 
-# def get_voltage_control_component(video_mode_component) -> VoltageControlComponent:
-#     initial_value_0 = 0
-#     initial_value_1 = 0
-#     initial_value_2 = 0
-#     voltage_parameters = [
-#         BasicParameter("vg1", "Gate 1 (x)", "mV", initial_value=initial_value_0),
-#         BasicParameter("vg2", "Gate 2 (y)", "mV", initial_value=initial_value_1),
-#         BasicParameter("vg3", "Sensor Gate", "mV", initial_value=initial_value_2),
-#     ]
-#     voltage_controller = video_mode_component.data_acquirer.get_voltage_control_component(voltage_parameters)
-#     return voltage_controller
-
 def get_voltage_control_component(video_mode_component) -> VoltageControlComponent:
     voltage_controller = video_mode_component.data_acquirer.get_voltage_control_component()
     return voltage_controller

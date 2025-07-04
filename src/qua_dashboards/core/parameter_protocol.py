@@ -11,6 +11,9 @@ __all__ = ["ParameterProtocol"]
 class ParameterProtocol(Protocol):
     """
     A protocol defining the expected interface for a generic parameter.
+    
+    This protocol follows exactly the semantics and names of qcodes.parameters.Parameter and therefore
+    any function expecting a class of this protocol is compatible with QCodes Parameters.
     """
 
     @property
@@ -24,7 +27,7 @@ class ParameterProtocol(Protocol):
         ...
 
     @property
-    def units(self) -> str:
+    def unit(self) -> str:
         """
         A string indicating the physical units of the parameter (e.g.,
         "V", "mV", "Hz").
@@ -33,7 +36,12 @@ class ParameterProtocol(Protocol):
 
     def get_latest(self) -> float:
         """
-        Returns the latest known or actual value of the parameter.
+        Returns the latest known chached, or actual value of the parameter.
+        """
+        ...
+    def get(self) -> float:
+        """
+        Queries the current value of the parameter.
         """
         ...
 

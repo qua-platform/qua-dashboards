@@ -178,13 +178,13 @@ y_resolution = BasicParameter(name="Y points", initial_value=101)
 #     use_dBm=True,  # If true, readout amplitude is in dBm
 # )
 
-inner_loop_action = VirtualGateInnerLoopAction(
+inner_loop_action = BasicInnerLoopAction(
     x_element = machine.channels['ch1'], 
     y_element = machine.channels['ch2'],
-    gateset=machine.gate_set,
     ramp_rate = 0, #Keep at 0 for the moment. Ramping supported soon
                     #Keep the span low too, to avoid killing device
-    readout_pulse=readout_pulse
+    readout_pulse=readout_pulse, 
+    use_dBm = False
 )
 
 # Select the scan mode (how the 2D grid is traversed in QUA)

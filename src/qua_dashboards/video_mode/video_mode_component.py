@@ -2,6 +2,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 import dash_bootstrap_components as dbc
+from qua_dashboards.core import BaseUpdatableComponent, ModifiedFlags
 
 from dash import Dash, Input, Output, State, dcc, html, ctx, no_update, exceptions
 from dash.development.base_component import Component
@@ -407,7 +408,6 @@ class VideoModeComponent(BaseComponent):
         ) -> Tuple[Any, Any, Any]:
             if not ctx.triggered_id:
                 raise PreventUpdate
-
             acquirer_response = self.data_acquirer.get_latest_data()
             data_object = acquirer_response.get("data")
             error = acquirer_response.get("error")
@@ -579,6 +579,14 @@ class VideoModeComponent_with_GateSet(VideoModeComponent):
         super().__init__(*args, **kwargs)
         self.gateset = gateset
         self.inner_loop_action = inner_loop_action
+        self._x_default_span,  self._x_default_pts = (
+            self.data_acquirer.x_axis.span,
+            self.data_acquirer.x_axis.points,
+        )
+        self._y_default_span,  self._y_default_pts = (
+            self.data_acquirer.y_axis.span,
+            self.data_acquirer.y_axis.points,
+        )
 
     def get_layout(self) -> Component:
         """Generates the Dash layout for the VideoModeComponent."""
@@ -661,7 +669,8 @@ class VideoModeComponent_with_GateSet(VideoModeComponent):
         main_layout = dbc.Container(
             fluid=True,
             children=[
-                html.Div(id="dummy-output", style={"display": "none"}),
+                html.Div(id="dummy-trigger-channel", style={"display": "none"}),
+                html.Div(id="dummy-trigger-axes", style={"display": "none"}),
                 get_gate_selection_ui(self.gateset),
                 html.Div(
                     id=self._get_id(self._MAIN_STATUS_ALERT_ID_SUFFIX), className="mb-2"
@@ -723,7 +732,7 @@ class VideoModeComponent_with_GateSet(VideoModeComponent):
             return no_update
         
         @app.callback(
-            Output("dummy-output", "children"),  # or anything to trigger a refresh
+            Output("dummy-trigger-channel", "children"),  # or anything to trigger a refresh
             Input("selected-sweep-channels", "data"),
             prevent_initial_call=True,
         )
@@ -734,3 +743,65 @@ class VideoModeComponent_with_GateSet(VideoModeComponent):
             self.inner_loop_action.x_elem = self.gateset.channels[selected["x"]]
             self.inner_loop_action.y_elem = self.gateset.channels[selected["y"]]
             return ""
+
+        @app.callback(
+            Output("dummy-trigger-axes", "children"),
+            [
+                # X axis span & points
+                Input(self.data_acquirer.x_axis._get_id("span"),   "value"),
+                Input(self.data_acquirer.x_axis._get_id("points"), "value"),
+                # Y axis span & points
+                Input(self.data_acquirer.y_axis._get_id("span"),   "value"),
+                Input(self.data_acquirer.y_axis._get_id("points"), "value"),
+            ],
+            prevent_initial_call=True,
+        )
+        def _on_axis_change(x_span, x_pts, y_span, y_pts):
+            # Update the Python objects
+            self.data_acquirer.x_axis.span   = x_span
+            self.data_acquirer.x_axis.points = x_pts
+            self.data_acquirer.y_axis.span   = y_span
+            self.data_acquirer.y_axis.points = y_pts
+
+            # Mark the QUA program as needing a recompile
+            self.data_acquirer._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
+
+            # Return anything; we just need to fire the downstream graph
+            return ""
+        
+
+        @app.callback(
+            # Output(self.data_acquirer.x_axis._get_id("header"), "children"),
+            Output(f"{self.data_acquirer.x_axis.component_id}-header-text", "children"),
+            Input("sweep-x-channel", "value"),
+        )
+        def _update_x_header(new_gate):
+            return new_gate.upper()
+
+        # update the Y-axis card header when the Y dropdown changes
+        @app.callback(
+            # Output(self.data_acquirer.y_axis._get_id("header"), "children"),
+            Output(f"{self.data_acquirer.y_axis.component_id}-header-text", "children"),
+
+            Input("sweep-y-channel", "value"),
+        )
+        def _update_y_header(new_gate):
+            return new_gate.upper()
+        
+        @app.callback(
+            Output(self.data_acquirer.x_axis._get_id("span"), "value"),
+            Output(self.data_acquirer.x_axis._get_id("points"), "value"),
+            Input("sweep-x-channel", "value"),
+            prevent_initial_call=True,
+        )
+        def _reset_x_axis(_):
+            return self._x_default_span, self._x_default_pts
+
+        @app.callback(
+            Output(self.data_acquirer.y_axis._get_id("span"), "value"),
+            Output(self.data_acquirer.y_axis._get_id("points"), "value"),
+            Input("sweep-y-channel", "value"),
+            prevent_initial_call=True,
+        )
+        def _reset_y_axis(_):
+            return self._y_default_span, self._y_default_pts

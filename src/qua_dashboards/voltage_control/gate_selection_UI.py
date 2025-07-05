@@ -1,26 +1,10 @@
-import html
-from dash import dcc
+
+from dash import dcc, html
 import dash_bootstrap_components as dbc
 
-# def get_gate_selection_ui(gateset):
-#     options = [{"label": k, "value": k} for k in gateset.channels.keys()]
-#     return html.Div([
-#         html.Label("Select X sweep gate"),
-#         dcc.Dropdown(
-#             id="gate-sweep-x",
-#             options=options,
-#             value=options[0]["value"],
-#             clearable=False,
-#         ),
-#         html.Label("Select Y sweep gate"),
-#         dcc.Dropdown(
-#             id="gate-sweep-y",
-#             options=options,
-#             value=options[1]["value"] if len(options) > 1 else options[0]["value"],
-#             clearable=False,
-#         ),
-#         dcc.Store(id="gate-sweep-selection"),
-#     ], style={"marginBottom": 20})
+
+
+
 
 def get_gate_selection_ui(gateset):
     # List of all possible gate/channel names

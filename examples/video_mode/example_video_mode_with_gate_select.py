@@ -1,5 +1,5 @@
 """
-Example Script: Video Mode with OPX
+Example Script: Video Mode with OPX with DC Offsets provided by the QDAC
 
 This script demonstrates how to use the VideoModeComponent with an OPXDataAcquirer
 to perform live 2D scans on a quantum device. It sets up a QUA program to sweep
@@ -40,12 +40,16 @@ from quam.components import (
     InOutSingleChannel,
     pulses,
     StickyChannelAddon,
-    InOutMWChannel
+    InOutMWChannel, 
 )
+from qua_dashboards.video_mode.inner_loop_actions.virtual_gating_inner_loop_action import VirtualGateInnerLoopAction
+from qua_dashboards.voltage_control.GateSet_Voltage_Control import GateSetControl
+from quam_builder.architecture.quantum_dots.voltage_sequence.gate_set import QdacGateSet
+from quam_builder.architecture.quantum_dots.virtual_gates.virtual_gate_set import VirtualGateSet, VirtualQdacGateSet
+from quam_builder.hardware.quam_channel import QdacOpxChannel, QdacOpxReadout
 
 from qua_dashboards.core import build_dashboard
 from qua_dashboards.utils import setup_logging, BasicParameter
-from qua_dashboards.video_mode.inner_loop_actions.multi_basic_inner_loop_action import VirtualGateInnerLoopAction
 from qua_dashboards.video_mode import (
     SweepAxis,
     OPXDataAcquirer,
@@ -53,13 +57,9 @@ from qua_dashboards.video_mode import (
     BasicInnerLoopAction,
     VideoModeComponent,
 )
-from qua_dashboards.voltage_control.GateSet_Voltage_Control import GateSetControl
-from quam_builder.architecture.quantum_dots.voltage_sequence.gate_set import QdacGateSet
-from quam_builder.architecture.quantum_dots.virtual_gates import (
-    VirtualGateSet, 
-    VirtualisationLayer
-)
-from quam_builder.hardware.quam_channel import QdacOpxChannel, QdacOpxReadout
+from qua_dashboards.video_mode.video_mode_component import VideoModeComponent_with_GateSet
+
+from qua_dashboards.video_mode.data_acquirers.opx_data_acquirer import OPXQDACDataAcquirer
 
 logger = setup_logging(__name__)
 
@@ -67,6 +67,12 @@ lffem1 = 3
 lffem2 = 5
 mwfem = 1
 
+from qcodes_contrib_drivers.drivers.QDevil import QDAC2
+
+qdac_addr = "172.16.33.101"
+qdac = QDAC2.QDac2(
+    "QDAC", visalib="@py", address=f"TCPIP::{qdac_addr}::5025::SOCKET"
+)
 
 
 # %% Create QUAM Machine Configuration and Connect to Quantum Machines Manager (QMM)
@@ -76,30 +82,43 @@ mwfem = 1
 # and generate the QUA configuration for the OPX.
 machine = BasicQuam()
 
-# Define the first DC voltage output channel (e.g., for X-axis sweep)
-machine.channels["ch1"] = SingleChannel(
-    opx_output=("con1", lffem1, 8),  # OPX controller and port
-    sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
-    operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
-)
-# Define the second DC voltage output channel (e.g., for Y-axis sweep)
-machine.channels["ch2"] = SingleChannel(
+
+machine.channels['ch1'] = QdacOpxChannel(
+    id = 'Plunger1',
+    qdac = qdac, 
+    qdac_channel = 1, 
+    qdac_unit = 'V',
     opx_output=("con1", lffem2, 6),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
     operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
+    couplings = {'Plunger2': 0.2, 'Plunger3': 0.15}
 )
 
-channels = {machine.channels['ch1'].name: machine.channels['ch1'].get_reference(),
-            machine.channels['ch2'].name: machine.channels['ch2'].get_reference(), }
+machine.channels['ch2'] = QdacOpxChannel(
+    id = 'Plunger2', 
+    qdac = qdac, 
+    qdac_channel = 2, 
+    qdac_unit = 'V',
+    opx_output=("con1", lffem1, 8),  # OPX controller and port
+    sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
+    operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
+    couplings = {'Plunger1': 0.2, 'Plunger3': 0.25}
+)
 
-layer1 = VirtualisationLayer(source_gates = ['vch1', 'vch2'], target_gates=['ch1', 'ch2'], 
-                             matrix = np.eye(2))
-machine.gateset = VirtualGateSet(id = 'Plungers', channels = channels, layers = [layer1])
-
+machine.channels['ch3'] = QdacOpxChannel(
+    id = 'Plunger3', 
+    qdac = qdac, 
+    qdac_channel = 3, 
+    qdac_unit = 'V',
+    opx_output=("con1", lffem1, 7),  # OPX controller and port
+    sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
+    operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
+    couplings = {'Plunger1': 0.15, 'Plunger2': 0.25}
+)
 
 # Define the readout pulse and the channel used for measurement
 
-readout_pulse = pulses.SquareReadoutPulse(id="readout", length=1500, amplitude=0.1)
+readout_pulse = pulses.SquareReadoutPulse(id="readout", length=1000, amplitude=0.1)
 machine.channels["ch1_readout"] = InOutSingleChannel(
     opx_output=("con1", lffem1, 1),  # Output for the readout pulse
     opx_input=("con1", lffem1, 1),  # Input for acquiring the measurement signal
@@ -108,17 +127,20 @@ machine.channels["ch1_readout"] = InOutSingleChannel(
     time_of_flight=32  # Assign the readout pulse to this channel
 )
 
-# from quam.components.ports.analog_inputs import MWFEMAnalogInputPort
-# from quam.components.ports.analog_outputs import MWFEMAnalogOutputPort
+readout_channel = QdacOpxReadout(opx_channel=machine.channels['ch1_readout'])
 
-# readout_pulse = pulses.SquareReadoutPulse(id="readout", length=1500, amplitude=0.1)
-# machine.channels["ch1_readout"] = InOutMWChannel(
-#     opx_output=MWFEMAnalogOutputPort("con1", mwfem, 1, band = 1, upconverter_frequency=1e9),  # Output for the readout pulse
-#     opx_input=MWFEMAnalogInputPort("con1", mwfem, 1, band = 1, downconverter_frequency=1e9),  # Input for acquiring the measurement signal
-#     intermediate_frequency=5e6,  # Set IF for the readout channel
-#     operations={"readout": readout_pulse},
-#     time_of_flight=32  # Assign the readout pulse to this channel
-# )
+channels = {machine.channels['ch1'].name: machine.channels['ch1'].get_reference(),
+            machine.channels['ch2'].name: machine.channels['ch2'].get_reference(),
+            machine.channels['ch3'].name: machine.channels['ch3'].get_reference() }
+
+readout = {'Resonator': readout_channel}
+machine.gate_set = VirtualQdacGateSet(id = 'Plungers', channels=channels, readout=readout)
+matrix = machine.gate_set.get_cross_capacitive_matrix()
+machine.gate_set.add_layer(
+    source_gates = ['vPlunger1', 'vPlunger2', 'vPlunger3'], 
+    target_gates = ['Plunger1', 'Plunger2', 'Plunger3'], 
+    matrix = matrix
+)
 
 # --- QMM Connection ---
 # Replace with your actual OPX host and cluster name
@@ -140,7 +162,7 @@ qm = qmm.open_qm(config, close_other_machines=True)
 x_offset = BasicParameter(name="X Voltage Offset", initial_value=0.0)
 y_offset = BasicParameter(name="Y Voltage Offset", initial_value=0.0)
 
-x_span = BasicParameter(name="X span", initial_value=0.03)
+x_span = BasicParameter(name="X span", initial_value=0.06)
 y_span = BasicParameter(name="Y span", initial_value=0.03)
 
 x_resolution = BasicParameter(name="X points", initial_value=101)
@@ -149,14 +171,7 @@ y_resolution = BasicParameter(name="Y points", initial_value=101)
 
 # Define the action to be performed at each point in the QUA scan (inner loop).
 # BasicInnerLoopAction sets DC offsets on two elements and performs a measurement.
-inner_loop_action = VirtualGateInnerLoopAction(
-    x_element = machine.channels['ch1'], 
-    y_element = machine.channels['ch2'],
-    gateset=machine.gateset,
-    ramp_rate = 0,
-    readout_pulse=readout_pulse
-)
-# inner_loop_action = BasicInnerLoopAction(
+# inner_loop_action = VirtualGateInnerLoopAction(
 #     x_element=machine.channels["ch1"],  # QUAM element for X-axis voltage
 #     y_element=machine.channels["ch2"],  # QUAM element for Y-axis voltage
 #     readout_pulse=readout_pulse,  # QUAM readout pulse to use for measurement
@@ -164,46 +179,65 @@ inner_loop_action = VirtualGateInnerLoopAction(
 #     use_dBm=True,  # If true, readout amplitude is in dBm
 # )
 
+inner_loop_action = VirtualGateInnerLoopAction(
+    x_element = machine.channels['ch1'], 
+    y_element = machine.channels['ch2'],
+    gateset=machine.gate_set,
+    ramp_rate = 0,
+    readout_pulse=readout_pulse
+)
+
+
+
 # Select the scan mode (how the 2D grid is traversed in QUA)
 # Options include: RasterScan, SpiralScan, SwitchRasterScan
 scan_mode = scan_modes.SwitchRasterScan()
 
 # Instantiate the OPXDataAcquirer.
 # This component handles the QUA program generation, execution, and data fetching.
-data_acquirer = OPXDataAcquirer(
+data_acquirer = OPXQDACDataAcquirer(
+    gateset = machine.gate_set,
     qmm=qmm,
     machine=machine,
     qua_inner_loop_action=inner_loop_action,
     scan_mode=scan_mode,
-    x_axis=SweepAxis("x", span=x_span, points=x_resolution, offset_parameter=x_offset),
-    y_axis=SweepAxis("y", span=y_span, points=y_resolution, offset_parameter=y_offset),
+    x_axis=SweepAxis(name = 'X', label = machine.channels['ch1'].name, span=x_span, points=x_resolution, offset_parameter=x_offset),
+    y_axis=SweepAxis(name = 'Y', label = machine.channels['ch2'].name, span=y_span, points=y_resolution, offset_parameter=y_offset),
     result_type="I",  # Specify the type of result to  display (e.g., "I", "Q", "amplitude", "phase")
 )
 
-# %% (Optional) Test: Run QUA program once and acquire data directly
-# This section can be used for a single acquisition test before launching the dashboard.
-# Comment out if you only want to run the live dashboard.
-# results = data_acquirer.perform_actual_acquisition()
-# print(f"Mean of results: {np.mean(np.abs(results))}")
+# # %% (Optional) Test: Run QUA program once and acquire data directly
+# # This section can be used for a single acquisition test before launching the dashboard.
+# # Comment out if you only want to run the live dashboard.
+# # results = data_acquirer.perform_actual_acquisition()
+# # print(f"Mean of results: {np.mean(np.abs(results))}")
 
-# plt.figure()
-# plt.pcolormesh(results)
-# plt.colorbar()
-# plt.title("Single Acquisition Test")
-# plt.show()
+# # plt.figure()
+# # plt.pcolormesh(results)
+# # plt.colorbar()
+# # plt.title("Single Acquisition Test")
+# # plt.show()
 
-# %% Run Video Mode Dashboard
+# # %% Run Video Mode Dashboard
 
-# Instantiate the main VideoModeComponent, providing the configured data_acquirer.
-video_mode_component = VideoModeComponent(
+# # Instantiate the main VideoModeComponent, providing the configured data_acquirer.
+# video_mode_component = VideoModeComponent(
+#     data_acquirer=data_acquirer,
+#     data_polling_interval_s=0.5,  # How often the dashboard polls for new data
+# )
+
+video_mode_component = VideoModeComponent_with_GateSet(
     data_acquirer=data_acquirer,
-    data_polling_interval_s=0.5,  # How often the dashboard polls for new data
+    data_polling_interval_s=0.5, 
+    gateset=machine.gate_set,
+    inner_loop_action=inner_loop_action
 )
 
-# Build the Dash application layout using the VideoModeComponent.
+
+gateset_control = GateSetControl(gateset=machine.gate_set)
 app = build_dashboard(
-    components=[video_mode_component],
-    title="OPX Video Mode Dashboard",  # Title for the web page
+    components=[video_mode_component, gateset_control],
+    title="Combined Dashboard",
 )
 
 logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
@@ -225,6 +259,7 @@ app.run(debug=True, host="127.0.0.1", port=8050, use_reloader=False)
 # # DEBUG: Test QUA program simulation
 # # This simulates the QUA program execution without running on the actual OPX.
 # try:
+
 #     prog = data_acquirer.generate_qua_program()
 #     simulation_config = SimulationConfig(duration=10000)  # Duration in clock cycles (4ns)
 #     job = qmm.simulate(config, prog, simulation_config)

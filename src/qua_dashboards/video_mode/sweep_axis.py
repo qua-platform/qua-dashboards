@@ -120,13 +120,18 @@ class SweepAxis(BaseUpdatableComponent):
         )
 
     def register_callbacks(self, app: Dash) -> None:
-        pass
+        # Delegate to the BasicParameter instances, which know how to hook into the
+        # Dash callback machinery and flip the ModifiedFlags for us.
+        self._span.register_callbacks(app)
+        self._points.register_callbacks(app)
 
     def create_axis_layout(
         self,
         min_span: float,
         max_span: Optional[float] = None,
     ):
+        header_id = self._get_id('header')
+
         if not self.name.replace("_", "").isalnum():
             raise ValueError(
                 f"Axis {self.name} must only contain alphanumeric characters and underscores."
@@ -138,7 +143,19 @@ class SweepAxis(BaseUpdatableComponent):
         return dbc.Col(
             dbc.Card(
                 [
-                    dbc.CardHeader(self.name.upper(), className="text-light"),
+                    #dbc.CardHeader(self.name.upper(), className="text-light"),
+                    # dbc.CardHeader(
+                    #     id=header_id,
+                    #     children=(self.label or self.name).upper(),
+                    #     className="text-light",
+                    # ),
+                    dbc.CardHeader(
+                        id= f"{self.component_id}-header-text",
+                        children=(self.label or self.name).upper(),
+                        className="text-light",
+                    ),
+                    
+                    
                     dbc.CardBody(
                         [
                             create_input_field(
@@ -184,8 +201,8 @@ class SweepAxis(BaseUpdatableComponent):
         # X-axis
         if "span" in params and self.span != params["span"]:
             self.span = params["span"]
-            flags |= ModifiedFlags.PARAMETERS_MODIFIED
+            flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
         if "points" in params and self.points != params["points"]:
             self.points = params["points"]
-            flags |= ModifiedFlags.PARAMETERS_MODIFIED
+            flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
         return flags

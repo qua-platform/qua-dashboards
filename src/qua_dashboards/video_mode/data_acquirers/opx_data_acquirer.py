@@ -373,20 +373,64 @@ class OPXQDACDataAcquirer(OPXDataAcquirer):
     """Exact same as the OPXDataAcquirer, but ensures that the OPX offsets are set to 0"""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        x_vals = np.array(self.x_axis.sweep_values_unattenuated)
-        y_vals = np.array(self.y_axis.sweep_values_unattenuated)
 
-        ## Ensure that the values sent to the OPX are centred around 0
-        self.x_bias = float(x_vals.mean())
-        self.y_bias = float(y_vals.mean())
-        self.x_axis.sweep_values_unattenuated = (x_vals - self.x_bias).tolist()
-        self.y_axis.sweep_values_unattenuated = (y_vals - self.y_bias).tolist()
+    def generate_qua_program(self):
+        raw_x = self.x_axis.sweep_values_unattenuated
+        raw_y = self.y_axis.sweep_values_unattenuated
+        x_bias = float(np.array(raw_x).mean())
+        y_bias = float(np.array(raw_y).mean())
+        x_qua_values = [float(v) - x_bias for v in raw_x]
+        y_qua_values = [float(v) - y_bias for v in raw_y]
+        
+        with program() as prog:
+            qua_streams = {var: declare_stream() for var in self.stream_vars}
 
-        ## Extract the actual offsets inputted by the user
-        self.x_offset = float(self.x_axis.offset_parameter._value)
-        self.y_offset = float(self.y_axis.offset_parameter._value)
+            with infinite_loop_():
+                self.qua_inner_loop_action.initial_action()
+                if self.initial_delay_s is not None and self.initial_delay_s > 0:
+                    wait(int(self.initial_delay_s * 1e9 / 4))
 
+                for x_qua_var, y_qua_var in self.scan_mode.scan(
+                    x_vals=x_qua_values,
+                    y_vals=y_qua_values,  # type: ignore
+                ):
+                    measured_qua_values = self.qua_inner_loop_action(
+                        x_qua_var, y_qua_var
+                    )
 
+                    if not isinstance(measured_qua_values, tuple):
+                        measured_qua_values = (measured_qua_values,)
+
+                    if len(measured_qua_values) != len(self.stream_vars):
+                        raise ValueError(
+                            f"Number of values returned by qua_inner_loop_action ({len(measured_qua_values)}) "
+                            f"does not match number of stream_vars ({len(self.stream_vars)})."
+                        )
+
+                    for var_name, qua_value_to_save in zip(
+                        self.stream_vars, measured_qua_values
+                    ):
+                        save(qua_value_to_save, qua_streams[var_name])
+
+                self.qua_inner_loop_action.final_action()
+
+            num_points_total = self.x_axis.points * self.y_axis.points
+            with stream_processing():
+                buffered_streams = {
+                    var: qua_streams[var].buffer(num_points_total)
+                    for var in self.stream_vars
+                }
+
+                combined_qua_stream = buffered_streams[self.stream_vars[0]]
+                for i in range(1, len(self.stream_vars)):
+                    combined_qua_stream = combined_qua_stream.zip(
+                        buffered_streams[self.stream_vars[i]]
+                    )  # type: ignore
+
+                combined_qua_stream.save("all_streams_combined")
+
+        self.qua_program = prog
+        return prog
 # from itertools import product
 
 # class MultiAxisScan:

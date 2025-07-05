@@ -1,5 +1,6 @@
 import logging
 import uuid
+import time
 from typing import Any, Dict, Union
 
 import dash_bootstrap_components as dbc
@@ -263,6 +264,16 @@ class LiveViewTabController(BaseTabController):
                     self._data_acquirer_instance.stop_acquisition()
                     button_text, button_color = "Start Acquisition", "success"
                     status_text, status_color = "STOPPED", "secondary"
+
+                    time.sleep(0.2)
+                    try: 
+                        # if (hasattr(self._data_acquirer_instance, "qm_job") 
+                        #     and self._data_acquirer_instance.qm_job is not None):
+                        self._data_acquirer_instance.qm_job.halt()
+                    except Exception: 
+                        pass
+
+
                 else:  # Was STOPPED, ERROR, or UNKNOWN
                     logger.info(
                         f"Attempting to start acquisition for "
@@ -311,7 +322,7 @@ class LiveViewTabController(BaseTabController):
         dynamic_states_ids = [
             State(component._get_id(ALL), "id") for component in all_acquirer_components
         ]
-
+        
         @app.callback(
             Output(
                 self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX),

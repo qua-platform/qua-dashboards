@@ -107,16 +107,18 @@ class VirtualGateInnerLoopAction(InnerLoopAction):
     
 
     def set_dc_offsets(self, x: QuaVariableFloat, y: QuaVariableFloat):
-        if self.gateset.layers:
-            tgt = self.gateset.layers[-1].target_gates
-            src = self.gateset.layers[0].source_gates
-            x_idx = tgt.index(self.x_elem.name)
-            y_idx = tgt.index(self.y_elem.name)
-            x_v = src[x_idx]
-            y_v = src[y_idx]
-            levels = {x_v: x, y_v:y}
-        else: 
-            levels = {self.x_elem.name : x, self.y_elem.name: y}
+        def resolve_through_layers(gate_name:str)->str:
+            for layer in reversed(self.gateset.layers):
+                if gate_name in layer.target_gates:
+                    idx = layer.target_gates.index(gate_name)
+                    gate_name = layer.source_gates[idx]
+            return gate_name
+        # if self.gateset.layers:
+        x_phys = resolve_through_layers(self.x_elem.name)
+        y_phys = resolve_through_layers(self.y_elem.name)
+        levels = {x_phys: x, y_phys:y}
+        # else: 
+        #     levels = {self.x_elem.name : x, self.y_elem.name: y}
 
         
         if self.ramp_rate > 0:

@@ -69,6 +69,10 @@ mwfem = 1
 
 from qcodes_contrib_drivers.drivers.QDevil import QDAC2
 
+try: 
+    qdac.close()
+except: 
+    pass
 qdac_addr = "172.16.33.101"
 qdac = QDAC2.QDac2(
     "QDAC", visalib="@py", address=f"TCPIP::{qdac_addr}::5025::SOCKET"
@@ -148,6 +152,11 @@ machine.gate_set.add_layer(
     source_gates = ['vPlunger1', 'vPlunger2', 'vPlunger3', 'vSensor1'], 
     target_gates = ['Plunger1', 'Plunger2', 'Plunger3', 'Sensor1'], 
     matrix = machine.gate_set.get_cross_capacitive_matrix()
+)
+machine.gate_set.add_layer(
+    source_gates = ['det_Plunger1','det_Plunger2','det_Plunger3','det_Sensor1'],
+    target_gates = ['vPlunger1','vPlunger2','vPlunger3','vSensor1'],
+    matrix      = np.eye(4)
 )
 
 # --- QMM Connection ---

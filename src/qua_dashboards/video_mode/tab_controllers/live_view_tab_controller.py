@@ -265,7 +265,7 @@ class LiveViewTabController(BaseTabController):
                     button_text, button_color = "Start Acquisition", "success"
                     status_text, status_color = "STOPPED", "secondary"
 
-                    time.sleep(0.2)
+                    time.sleep(2)
                     try: 
                         self._data_acquirer_instance.qm_job.halt()
                     except Exception: 

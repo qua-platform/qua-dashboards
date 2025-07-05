@@ -42,6 +42,7 @@ from quam.components import (
     StickyChannelAddon,
     InOutMWChannel, 
 )
+from dash import html, Output, Input
 from qua_dashboards.video_mode.inner_loop_actions.virtual_gating_inner_loop_action import VirtualGateInnerLoopAction
 from qua_dashboards.voltage_control.GateSet_Voltage_Control import GateSetControl
 from quam_builder.architecture.quantum_dots.voltage_sequence.gate_set import QdacGateSet
@@ -60,7 +61,7 @@ from qua_dashboards.video_mode import (
 from qua_dashboards.video_mode.video_mode_component import VideoModeComponent_with_GateSet
 
 from qua_dashboards.video_mode.data_acquirers.opx_data_acquirer import OPXQDACDataAcquirer
-
+from qua_dashboards.voltage_control.virtual_layer_UI import VirtualLayerEditor
 logger = setup_logging(__name__)
 
 lffem1 = 3
@@ -156,7 +157,7 @@ machine.gate_set.add_layer(
 machine.gate_set.add_layer(
     source_gates = ['det_Plunger1','det_Plunger2','det_Plunger3','det_Sensor1'],
     target_gates = ['vPlunger1','vPlunger2','vPlunger3','vSensor1'],
-    matrix      = np.eye(4)
+    matrix      = [[1,0.2,0,0], [0.2,1,0,0], [0,0,1,0], [0,0,0,1]]
 )
 
 # --- QMM Connection ---
@@ -185,17 +186,7 @@ y_span = BasicParameter(name="Y span", initial_value=0.03)
 x_resolution = BasicParameter(name="X points", initial_value=101)
 y_resolution = BasicParameter(name="Y points", initial_value=101)
 
-
 # Define the action to be performed at each point in the QUA scan (inner loop).
-# BasicInnerLoopAction sets DC offsets on two elements and performs a measurement.
-# inner_loop_action = VirtualGateInnerLoopAction(
-#     x_element=machine.channels["ch1"],  # QUAM element for X-axis voltage
-#     y_element=machine.channels["ch2"],  # QUAM element for Y-axis voltage
-#     readout_pulse=readout_pulse,  # QUAM readout pulse to use for measurement
-#     # ramp_rate=1_000,                  # Optional: Voltage ramp rate (V/s)
-#     use_dBm=True,  # If true, readout amplitude is in dBm
-# )
-
 inner_loop_action = VirtualGateInnerLoopAction(
     x_element = machine.channels['ch1'], 
     y_element = machine.channels['ch2'],
@@ -204,13 +195,11 @@ inner_loop_action = VirtualGateInnerLoopAction(
     readout_pulse=readout_pulse
 )
 
-
-
 # Select the scan mode (how the 2D grid is traversed in QUA)
 # Options include: RasterScan, SpiralScan, SwitchRasterScan
 scan_mode = scan_modes.SwitchRasterScan()
 
-# Instantiate the OPXDataAcquirer.
+# Instantiate the OPXQDACDataAcquirer.
 # This component handles the QUA program generation, execution, and data fetching.
 data_acquirer = OPXQDACDataAcquirer(
     gateset = machine.gate_set,
@@ -237,12 +226,6 @@ data_acquirer = OPXQDACDataAcquirer(
 
 # # %% Run Video Mode Dashboard
 
-# # Instantiate the main VideoModeComponent, providing the configured data_acquirer.
-# video_mode_component = VideoModeComponent(
-#     data_acquirer=data_acquirer,
-#     data_polling_interval_s=0.5,  # How often the dashboard polls for new data
-# )
-
 video_mode_component = VideoModeComponent_with_GateSet(
     data_acquirer=data_acquirer,
     data_polling_interval_s=0.5, 
@@ -250,12 +233,26 @@ video_mode_component = VideoModeComponent_with_GateSet(
     inner_loop_action=inner_loop_action
 )
 
+virtual_layer_ui = VirtualLayerEditor(machine.gate_set, component_id = 'VG_editor')
+
 
 gateset_control = GateSetControl(gateset=machine.gate_set)
 app = build_dashboard(
-    components=[video_mode_component, gateset_control],
+    components=[video_mode_component, gateset_control, ],
     title="Combined Dashboard",
 )
+
+#Live updating code for the Virtual Gating UI
+app.layout.children.append(
+    html.Div(id="VG_EDITOR_CONTAINER", children=virtual_layer_ui.get_layout()))
+@app.callback(
+    Output("VG_EDITOR_CONTAINER", "children"),
+    Input({"type": "LAYER_REFRESH", "index": "VG_editor"}, "data"),)
+def refresh_editor_layout(_):
+    return virtual_layer_ui.get_layout()
+virtual_layer_ui.register_callbacks(app)
+
+
 
 logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
 # Run the Dash server.
@@ -282,6 +279,8 @@ app.run(debug=True, host="127.0.0.1", port=8050, use_reloader=False)
 #     job = qmm.simulate(config, prog, simulation_config)
 #     simulated_samples = job.get_simulated_samples()
 #     con1 = simulated_samples.con1
+
+#     ### Fill in the string with the right port. f{FEM}-f{PORT} for the OPX1k
 
 #     plt.figure(figsize=(10, 5))
 #     con1.plot(analog_ports=["1", "2"], digital_ports=[]) # Specify ports to plot

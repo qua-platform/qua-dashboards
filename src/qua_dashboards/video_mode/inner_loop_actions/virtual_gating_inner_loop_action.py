@@ -131,10 +131,10 @@ class VirtualGateInnerLoopAction(InnerLoopAction):
             phys = self.gateset.resolve_voltages(levels)
             for gate_name, qua_V in phys.items():
                 set_dc_offset(gate_name, "single", qua_V)
-            for gate_name in phys:
-                self.gateset.channels[gate_name].play("step", amplitude_scale=0, duration = self.readout_pulse.length)
+            # for gate_name in phys:
+            #     self.gateset.channels[gate_name].play("step", amplitude_scale=0, duration = self.readout_pulse.length)
+            self.readout_pulse.channel.play("step", amplitude_scale=0, duration = self.readout_pulse.length)
                 
-
     def __call__(
         self, x: QuaVariableFloat, y: QuaVariableFloat
     ) -> Tuple[QuaVariableFloat, QuaVariableFloat]:

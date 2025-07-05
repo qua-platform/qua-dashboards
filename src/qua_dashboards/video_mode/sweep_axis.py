@@ -143,19 +143,11 @@ class SweepAxis(BaseUpdatableComponent):
         return dbc.Col(
             dbc.Card(
                 [
-                    #dbc.CardHeader(self.name.upper(), className="text-light"),
-                    # dbc.CardHeader(
-                    #     id=header_id,
-                    #     children=(self.label or self.name).upper(),
-                    #     className="text-light",
-                    # ),
                     dbc.CardHeader(
                         id= f"{self.component_id}-header-text",
                         children=(self.label or self.name).upper(),
                         className="text-light",
                     ),
-                    
-                    
                     dbc.CardBody(
                         [
                             create_input_field(

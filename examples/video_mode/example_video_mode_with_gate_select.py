@@ -91,7 +91,7 @@ machine.channels['ch1'] = QdacOpxChannel(
     opx_output=("con1", lffem2, 6),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
     operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
-    couplings = {'Plunger2': 0.2, 'Plunger3': 0.15}
+    couplings = {'Plunger2': 0.2, 'Plunger3': 0.15, 'Sensor1': 0.1}
 )
 
 machine.channels['ch2'] = QdacOpxChannel(
@@ -102,7 +102,7 @@ machine.channels['ch2'] = QdacOpxChannel(
     opx_output=("con1", lffem1, 8),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
     operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
-    couplings = {'Plunger1': 0.2, 'Plunger3': 0.25}
+    couplings = {'Plunger1': 0.2, 'Plunger3': 0.25, 'Sensor1': 0.15}
 )
 
 machine.channels['ch3'] = QdacOpxChannel(
@@ -113,33 +113,41 @@ machine.channels['ch3'] = QdacOpxChannel(
     opx_output=("con1", lffem1, 7),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
     operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
-    couplings = {'Plunger1': 0.15, 'Plunger2': 0.25}
+    couplings = {'Plunger1': 0.15, 'Plunger2': 0.25, 'Sensor1': 0.2}
 )
 
-# Define the readout pulse and the channel used for measurement
+
+
 
 readout_pulse = pulses.SquareReadoutPulse(id="readout", length=1000, amplitude=0.1)
-machine.channels["ch1_readout"] = InOutSingleChannel(
+# Define the readout pulse and the channel used for measurement
+machine.channels["ch1_readout"] = QdacOpxReadout(
+    id = 'Sensor1', 
+    qdac = qdac, 
+    qdac_channel = 4, 
+    qdac_unit = 'V',
     opx_output=("con1", lffem1, 1),  # Output for the readout pulse
     opx_input=("con1", lffem1, 1),  # Input for acquiring the measurement signal
-    intermediate_frequency=0,  # Set IF for the readout channel
-    operations={"readout": readout_pulse},
-    time_of_flight=32  # Assign the readout pulse to this channel
+    intermediate_frequency=200e6,  # Set IF for the readout channel
+    operations={"readout": readout_pulse, 
+                "step": pulses.SquarePulse(amplitude=0.1, length=1000)},
+    time_of_flight=32,  
+    couplings = {'Plunger1': 0.1, 'Plunger2': 0.15, 'Plunger3': 0.2}
 )
 
-readout_channel = QdacOpxReadout(opx_channel=machine.channels['ch1_readout'])
-
+### Right now, the .get_reference() is necessary to map the channels, but should be improved eventually 
 channels = {machine.channels['ch1'].name: machine.channels['ch1'].get_reference(),
             machine.channels['ch2'].name: machine.channels['ch2'].get_reference(),
-            machine.channels['ch3'].name: machine.channels['ch3'].get_reference() }
+            machine.channels['ch3'].name: machine.channels['ch3'].get_reference(),
+            machine.channels['ch1_readout'].name: machine.channels['ch1_readout'].get_reference()}
+readout = {'Resonator': machine.channels['ch1_readout'].get_reference()}
 
-readout = {'Resonator': readout_channel}
+
 machine.gate_set = VirtualQdacGateSet(id = 'Plungers', channels=channels, readout=readout)
-matrix = machine.gate_set.get_cross_capacitive_matrix()
 machine.gate_set.add_layer(
-    source_gates = ['vPlunger1', 'vPlunger2', 'vPlunger3'], 
-    target_gates = ['Plunger1', 'Plunger2', 'Plunger3'], 
-    matrix = matrix
+    source_gates = ['vPlunger1', 'vPlunger2', 'vPlunger3', 'vSensor1'], 
+    target_gates = ['Plunger1', 'Plunger2', 'Plunger3', 'Sensor1'], 
+    matrix = machine.gate_set.get_cross_capacitive_matrix()
 )
 
 # --- QMM Connection ---

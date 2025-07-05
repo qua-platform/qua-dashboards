@@ -267,8 +267,6 @@ class LiveViewTabController(BaseTabController):
 
                     time.sleep(0.2)
                     try: 
-                        # if (hasattr(self._data_acquirer_instance, "qm_job") 
-                        #     and self._data_acquirer_instance.qm_job is not None):
                         self._data_acquirer_instance.qm_job.halt()
                     except Exception: 
                         pass

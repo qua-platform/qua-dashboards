@@ -3,9 +3,6 @@ from dash import dcc, html
 import dash_bootstrap_components as dbc
 
 
-
-
-
 def get_gate_selection_ui(gateset):
     # List of all possible gate/channel names
     channel_names = list(gateset.channels.keys())

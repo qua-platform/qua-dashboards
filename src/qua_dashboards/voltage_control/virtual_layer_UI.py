@@ -2,7 +2,7 @@ import dash_bootstrap_components as dbc
 import dash
 from dash import html, dcc, Input, Output, State, ALL, no_update
 from dash.exceptions import PreventUpdate
-
+import numpy as np
 class VirtualLayerEditor:
     """
     A Dash‐style editor for adding a new virtualisation layer to a VirtualQdacGateSet.
@@ -78,7 +78,7 @@ class VirtualLayerEditor:
 
         return dbc.Card(
             [
-                dbc.CardHeader("Virtual Gate‐Set Layer Editor"),
+                dbc.CardHeader("Virtual Gate‐Set Layer Adder"),
                 dbc.CardBody(
                     [
                         header_row,
@@ -145,3 +145,82 @@ class VirtualLayerEditor:
                 app.logger.error(f"[vg-layer] Failed to add layer: {e}")
 
             return no_update, (refresh_val or 0) + 1
+
+from qua_dashboards.core import BaseComponent
+class VirtualLayerManager(BaseComponent):
+    def __init__(self,gateset,component_id = "VG_manager"):
+        super().__init__(component_id = component_id)
+        self.gateset = gateset
+        self.component_id = component_id
+    
+    def get_layout(self):
+        layers = [layer for layer in self.gateset.layers]
+
+        num_of_layers = len(layers)
+        options = [{"label":f"Layer {i+1}", "value":i} for i in range(num_of_layers)]
+        default = 0 if num_of_layers > 0 else None
+        return dbc.Card([
+            dbc.CardHeader("Edit Existing Virtual Gate Layers"),
+            dbc.CardBody([
+                dcc.Dropdown(
+                    id = f"{self.component_id}-layer-dropdown",
+                    options = options,
+                    value = default,
+                    clearable = False
+                ),
+                html.Div(id = f"{self.component_id}-layer-matrix-editor"),
+                dbc.Button("Apply Changes", id=f"{self.component_id}-apply-edit", color="primary", className="mt-2"),
+                html.Div(id=f"{self.component_id}-edit-output", style={"display": "none"})
+            ])
+        ])
+
+
+    def register_callbacks(self, app):
+        @app.callback(
+            Output(f"{self.component_id}-layer-matrix-editor", "children"), 
+            Input(f"{self.component_id}-layer-dropdown", "value")
+        )
+
+        def show_selected_layer(layer_idx):
+            if layer_idx is None: 
+                return "No Layer Selected"
+            layer = self.gateset.layers[layer_idx]
+            N = len(layer.source_gates)
+
+            header = [dbc.Col("", width=2)] + [dbc.Col(html.B(name), width=2) for name in layer.source_gates]
+            rows = []
+            for i, row_name in enumerate(layer.target_gates):
+                row = [dbc.Col(html.B(row_name), width=2)]
+                for j in range(N):
+                    row.append(dbc.Col(
+                        dcc.Input(
+                            id={'type': 'edit-matrix-cell', 'layer': layer_idx, 'row': i, 'col': j},
+                            type='number',
+                            value=layer.matrix[i][j]
+                        ),
+                        width=2
+                    ))
+                rows.append(dbc.Row(row))
+
+            return html.Div([
+                dbc.Row(header, className="mb-2"),
+                *rows
+            ])
+        
+
+        @app.callback(
+            Output(f"{self.component_id}-edit-output", "children"),
+            Input(f"{self.component_id}-apply-edit", "n_clicks"),
+            State(f"{self.component_id}-layer-dropdown", "value"), 
+            State({'type': 'edit-matrix-cell', 'layer': ALL, 'row': ALL, 'col': ALL}, 'value'),
+            prevent_initial_call=True
+        )
+        def apply_layer_changes(n_clicks, layer_idx, matrix_flat):
+            if not n_clicks:
+                raise dash.exceptions.PreventUpdate
+            
+            layer = self.gateset.layers[layer_idx]
+            length = len(layer.source_gates)
+            M = np.reshape(np.array(matrix_flat), (length, length)).tolist()
+            layer.matrix = M
+            return "Updated!"

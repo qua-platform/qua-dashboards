@@ -61,7 +61,7 @@ from qua_dashboards.video_mode import (
 from qua_dashboards.video_mode.video_mode_component import VideoModeComponent_with_GateSet
 
 from qua_dashboards.video_mode.data_acquirers.opx_data_acquirer import OPXQDACDataAcquirer
-from qua_dashboards.voltage_control.virtual_layer_UI import VirtualLayerEditor
+from qua_dashboards.voltage_control.virtual_layer_UI import VirtualLayerEditor, VirtualLayerManager
 logger = setup_logging(__name__)
 
 lffem1 = 3
@@ -234,11 +234,11 @@ video_mode_component = VideoModeComponent_with_GateSet(
 )
 
 virtual_layer_ui = VirtualLayerEditor(machine.gate_set, component_id = 'VG_editor')
-
+virtual_layer_editor = VirtualLayerManager(machine.gate_set, component_id = 'Existing Virtual Gate Editor')
 
 gateset_control = GateSetControl(gateset=machine.gate_set)
 app = build_dashboard(
-    components=[video_mode_component, gateset_control, ],
+    components=[video_mode_component, gateset_control, virtual_layer_editor],
     title="Combined Dashboard",
 )
 
@@ -251,7 +251,6 @@ app.layout.children.append(
 def refresh_editor_layout(_):
     return virtual_layer_ui.get_layout()
 virtual_layer_ui.register_callbacks(app)
-
 
 
 logger.info("Dashboard built. Starting Dash server on http://localhost:8050")

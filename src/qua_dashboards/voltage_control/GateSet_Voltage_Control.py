@@ -5,7 +5,7 @@ import dash_bootstrap_components as dbc
 from qua_dashboards.core import BaseUpdatableComponent
 
 class GateSetControl(BaseUpdatableComponent):
-    def __init__(self, gateset, component_id="gateset-control"):
+    def __init__(self, gateset, component_id="Gate-Set QDAC Offset Controller"):
         super().__init__(component_id=component_id)
         self.gateset = gateset
 

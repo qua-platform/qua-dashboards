@@ -67,7 +67,7 @@ class VideoModeComponent(BaseComponent):
     # Can also be an empty dictionary or dash.no_update.
     VIEWER_LAYOUT_CONFIG_STORE_SUFFIX = "viewer-layout-config-store"
 
-    DEFAULT_COMPONENT_ID = "video-mode-component"
+    DEFAULT_COMPONENT_ID = "Video Mode UI"
 
     def __init__(
         self,
@@ -615,12 +615,11 @@ class VideoModeComponent_with_GateSet(VideoModeComponent):
                         id=self._get_id(f"tab-ctrl-wrapper-{tc.get_tab_value()}"),
                         children=[
                             html.Div(
-                                tc.get_layout(),  # type: ignore
+                                tc.get_layout(),
                                 style={"padding": "10px"},
                                 className="tab-controller-content-wrapper",
                             )
                         ],
-                        # selected_className="dash-tab--selected",
                         className="dash-tab",
                     )
                 )
@@ -630,11 +629,8 @@ class VideoModeComponent_with_GateSet(VideoModeComponent):
             value=self._active_tab_value,
             children=tabs_children,
             className="mb-3",
-            # persistence=True, # Optional: persist active tab
-            # persistence_type="session",
         )
 
-        # --- Save Button Row (for future extensibility, use dbc.Row with one button for now) ---
         bottom_left_row = dbc.Row(
             [
                 dbc.Col(
@@ -681,7 +677,7 @@ class VideoModeComponent_with_GateSet(VideoModeComponent):
                         dbc.Col(
                             [
                                 left_panel_controls,
-                                bottom_left_row,  # Insert buttons (save, ...)
+                                bottom_left_row,  
                             ],
                             width=12,
                             lg=4,
@@ -697,17 +693,17 @@ class VideoModeComponent_with_GateSet(VideoModeComponent):
                             lg=8,
                             style={
                                 "maxHeight": "calc(100vh - 70px)",
-                                "overflowY": "hidden",  # Graph usually handles its own scroll
+                                "overflowY": "hidden",  
                             },
                         ),
                     ],
-                    className="g-3",  # Gutters
+                    className="g-3", 
                 ),
                 dcc.Interval(
                     id=self._get_id(self._DATA_POLLING_INTERVAL_ID_SUFFIX),
                     interval=self.data_polling_interval_ms,
                     n_intervals=0,
-                    disabled=False,  # Initially disabled, enabled by acquirer status
+                    disabled=False,  
                 ),
                 *shared_stores_for_layout,
             ],
@@ -716,9 +712,7 @@ class VideoModeComponent_with_GateSet(VideoModeComponent):
         return main_layout
     
     def register_callbacks(self, app, **kwargs):
-        # Register parent callbacks first!
         super().register_callbacks(app, **kwargs)
-        # Now register your new callback
         @app.callback(
             Output("selected-sweep-channels", "data"),
             Input("set-sweep-channels", "n_clicks"),
@@ -732,14 +726,13 @@ class VideoModeComponent_with_GateSet(VideoModeComponent):
             return no_update
         
         @app.callback(
-            Output("dummy-trigger-channel", "children"),  # or anything to trigger a refresh
+            Output("dummy-trigger-channel", "children"),
             Input("selected-sweep-channels", "data"),
             prevent_initial_call=True,
         )
         def update_sweep_channels(selected):
             if selected is None:
                 raise exceptions.PreventUpdate
-            # Assume you have access to video_mode_component/inner_loop_action
             self.inner_loop_action.x_elem = self.gateset.channels[selected["x"]]
             self.inner_loop_action.y_elem = self.gateset.channels[selected["y"]]
             return ""
@@ -747,26 +740,19 @@ class VideoModeComponent_with_GateSet(VideoModeComponent):
         @app.callback(
             Output("dummy-trigger-axes", "children"),
             [
-                # X axis span & points
                 Input(self.data_acquirer.x_axis._get_id("span"),   "value"),
                 Input(self.data_acquirer.x_axis._get_id("points"), "value"),
-                # Y axis span & points
                 Input(self.data_acquirer.y_axis._get_id("span"),   "value"),
                 Input(self.data_acquirer.y_axis._get_id("points"), "value"),
             ],
             prevent_initial_call=True,
         )
         def _on_axis_change(x_span, x_pts, y_span, y_pts):
-            # Update the Python objects
             self.data_acquirer.x_axis.span   = x_span
             self.data_acquirer.x_axis.points = x_pts
             self.data_acquirer.y_axis.span   = y_span
             self.data_acquirer.y_axis.points = y_pts
-
-            # Mark the QUA program as needing a recompile
             self.data_acquirer._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
-
-            # Return anything; we just need to fire the downstream graph
             return ""
         
 
@@ -805,3 +791,57 @@ class VideoModeComponent_with_GateSet(VideoModeComponent):
         )
         def _reset_y_axis(_):
             return self._y_default_span, self._y_default_pts
+        
+
+
+
+class VideoModeComponent_with_OPX_offset(VideoModeComponent_with_GateSet):
+    def __init__(self,*args,manual_offsets = False, **kwargs):
+        super().__init__(*args,**kwargs)
+        self.manual_offsets = manual_offsets
+        self.manual_x_offset = self.data_acquirer.x_axis.offset
+        self.manual_y_offset = self.data_acquirer.y_axis.offset
+
+    def get_layout(self):
+        base_layout = super().get_layout()
+        if self.manual_offsets:
+            offset_controls = dbc.Card([
+                dbc.CardHeader("OPX Offset Setter"),
+                dbc.CardBody([
+                    dbc.Row([
+                        dbc.Col("X Offset"),
+                        dbc.Col(dcc.Input(id = f"{self.component_id}-manual-x-offset", type = "number", value = self.manual_x_offset))
+                    ], className = "mb-2"),
+                    dbc.Row([
+                        dbc.Col("Y Offset"),
+                        dbc.Col(dcc.Input(id = f"{self.component_id}-manual-y-offset", type = "number", value = self.manual_y_offset))
+                    ]),
+                    dbc.Button("Apply Offsets", id = f"{self.component_id}-manual-offsets-apply", color = "primary", className = "mt-2")
+                ])
+            ])
+            base_layout.children.insert(0, offset_controls)
+
+        return base_layout
+    
+    def register_callbacks(self, app, **kwargs):
+        super().register_callbacks(app, **kwargs)
+        if self.manual_offsets:
+            @app.callback(
+                Output(f"{self.component_id}-dummy-trigger-axes", "children"),
+                Input(f"{self.component_id}-manual-offsets-apply", "n_clicks"),
+                State(f"{self.component_id}-manual-x-offset", "value"),
+                State(f"{self.component_id}-manual-y-offset", "value"),
+                prevent_initial_call=True
+            )
+            def update_manual_offsets(n_clicks, x, y):
+                if not n_clicks:
+                    raise PreventUpdate
+                self.manual_x_offset = x
+                self.manual_y_offset = y
+                self.data_acquirer.x_axis.offset = x
+                self.data_acquirer.y_axis.offset = y
+                self.data_acquirer._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
+                return ""
+
+
+

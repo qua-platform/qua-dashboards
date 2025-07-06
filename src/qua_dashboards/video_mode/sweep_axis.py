@@ -85,6 +85,14 @@ class SweepAxis(BaseUpdatableComponent):
         self._points._value = val
 
     @property
+    def offset(self):
+        return self.offset_parameter._value
+    
+    @offset.setter
+    def offset(self, val):
+        self.offset_parameter._value = val
+
+    @property
     def sweep_values(self):
         """Returns axis sweep values using span and points."""
         return np.linspace(-self.span / 2, self.span / 2, self.points)
@@ -120,10 +128,9 @@ class SweepAxis(BaseUpdatableComponent):
         )
 
     def register_callbacks(self, app: Dash) -> None:
-        # Delegate to the BasicParameter instances, which know how to hook into the
-        # Dash callback machinery and flip the ModifiedFlags for us.
         self._span.register_callbacks(app)
         self._points.register_callbacks(app)
+        self.offset_parameter.register_callbacks(app)
 
     def create_axis_layout(
         self,
@@ -196,5 +203,8 @@ class SweepAxis(BaseUpdatableComponent):
             flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
         if "points" in params and self.points != params["points"]:
             self.points = params["points"]
+            flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
+        if "offset" in params and self.span != params["offset"]:
+            self.offset = params["offset"]
             flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
         return flags

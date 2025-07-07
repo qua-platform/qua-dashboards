@@ -133,14 +133,15 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
 
             # Generate the simulated image          
             logger.info("Generating simulated data")
-            tsim = self.experiment.tunneling_sim
-            #sensor_signalexp = tsim.sensor_scan_2D(**self.args_rendering)
-            sensor_signalexp = tsim.sensor_scan_2D(P = self.args_rendering["P"],
-                                                   m = self.m,
+            state = self.experiment.tunneling_sim.poly_sim.find_state_of_voltage(v = self.m, 
+                                                                                 state_hint = self.args_rendering["state_hint_lower_left"])
+            sliced_sim = self.experiment.tunneling_sim.slice(P = self.args_rendering["P"], m = self.m)
+            sensor_signalexp = sliced_sim.sensor_scan_2D(P = np.eye(2),
+                                                   m = np.zeros(2),
                                                    minV = self.args_rendering["minV"],
                                                    maxV = self.args_rendering["maxV"],
-                                                   resolution = self.args_rendering["resolution"],   
-                                                   state_hint_lower_left = self.args_rendering["state_hint_lower_left"],
+                                                   resolution = self.args_rendering["resolution"],
+                                                   state_hint_lower_left = state,
                                                    cache = self.args_rendering["cache"],
                                                    insitu_axis = self.args_rendering["insitu_axis"])
 

@@ -42,10 +42,10 @@ from quam.components import (
     StickyChannelAddon,
     InOutMWChannel, 
 )
-from dash import html, Output, Input
+from dash import html, Output, Input, dcc
 from qua_dashboards.video_mode.inner_loop_actions.virtual_gating_inner_loop_action import VirtualGateInnerLoopAction
 from qua_dashboards.voltage_control.GateSet_Voltage_Control import GateSetControl
-from quam_builder.architecture.quantum_dots.voltage_sequence.gate_set import QdacGateSet
+from quam_builder.architecture.quantum_dots.voltage_sequence.gate_set import GateSetQuam
 from quam_builder.architecture.quantum_dots.virtual_gates.virtual_gate_set import VirtualGateSet, VirtualQdacGateSet
 from quam_builder.hardware.quam_channel import QdacOpxChannel, QdacOpxReadout
 
@@ -85,7 +85,7 @@ qdac = QDAC2.QDac2(
 # Initialize a basic QUAM machine object.
 # This object will be used to define the quantum hardware configuration (channels, pulses, etc.)
 # and generate the QUA configuration for the OPX.
-machine = BasicQuam()
+machine = GateSetQuam()
 
 
 machine.channels['ch1'] = QdacOpxChannel(
@@ -121,9 +121,6 @@ machine.channels['ch3'] = QdacOpxChannel(
     couplings = {'Plunger1': 0.15, 'Plunger2': 0.25, 'Sensor1': 0.2}
 )
 
-
-
-
 readout_pulse = pulses.SquareReadoutPulse(id="readout", length=1000, amplitude=0.1)
 # Define the readout pulse and the channel used for measurement
 machine.channels["ch1_readout"] = QdacOpxReadout(
@@ -146,7 +143,6 @@ channels = {machine.channels['ch1'].name: machine.channels['ch1'].get_reference(
             machine.channels['ch3'].name: machine.channels['ch3'].get_reference(),
             machine.channels['ch1_readout'].name: machine.channels['ch1_readout'].get_reference()}
 readout = {'Resonator': machine.channels['ch1_readout'].get_reference()}
-
 
 machine.gate_set = VirtualQdacGateSet(id = 'Plungers', channels=channels, readout=readout)
 machine.gate_set.add_layer(
@@ -230,7 +226,8 @@ video_mode_component = VideoModeComponent_with_GateSet(
     data_acquirer=data_acquirer,
     data_polling_interval_s=0.5, 
     gateset=machine.gate_set,
-    inner_loop_action=inner_loop_action
+    inner_loop_action=inner_loop_action,
+    machine = machine
 )
 
 virtual_layer_ui = VirtualLayerEditor(machine.gate_set, component_id = 'VG_editor')
@@ -238,19 +235,29 @@ virtual_layer_editor = VirtualLayerManager(machine.gate_set, component_id = 'Exi
 
 gateset_control = GateSetControl(gateset=machine.gate_set)
 app = build_dashboard(
-    components=[video_mode_component, gateset_control, virtual_layer_editor],
+    components=[video_mode_component, gateset_control],
     title="Combined Dashboard",
 )
 
 #Live updating code for the Virtual Gating UI
+
+app.layout.children.append(dcc.Store(id="vg-layer-refresh-trigger", data=0))
+app.layout.children.append(
+    html.Div(id="VG_MANAGER_CONTAINER", children=virtual_layer_editor.get_layout()))
 app.layout.children.append(
     html.Div(id="VG_EDITOR_CONTAINER", children=virtual_layer_ui.get_layout()))
 @app.callback(
     Output("VG_EDITOR_CONTAINER", "children"),
-    Input({"type": "LAYER_REFRESH", "index": "VG_editor"}, "data"),)
+    Input("vg-layer-refresh-trigger", "data"))
 def refresh_editor_layout(_):
     return virtual_layer_ui.get_layout()
+@app.callback(
+    Output("VG_MANAGER_CONTAINER", "children"),
+    Input("vg-layer-refresh-trigger", "data"),)
+def refresh_manager_layout(_):
+    return virtual_layer_editor.get_layout()
 virtual_layer_ui.register_callbacks(app)
+virtual_layer_editor.register_callbacks(app)
 
 
 logger.info("Dashboard built. Starting Dash server on http://localhost:8050")

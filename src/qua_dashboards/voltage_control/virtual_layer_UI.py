@@ -104,17 +104,18 @@ class VirtualLayerEditor:
         @app.callback(
             Output({"type": "LAYER_OUTPUT", "index": self.component_id}, "children"),
             Output({"type": "LAYER_REFRESH", "index": self.component_id}, "data"),
+            Output("vg-layer-refresh-trigger", "data"),
             Input(self.apply_button_id, "n_clicks"),
             State({"type": "vg-layer-col", "index": self.component_id, "col": ALL}, "value"),
             State(
                 {"type": "vg-layer-cell", "index": self.component_id, "row": ALL, "col": ALL},
                 "value",
             ),
-            State({"type": "LAYER_REFRESH", "index": self.component_id}, "data"),   # ← ADD THIS!
-
+            State({"type": "LAYER_REFRESH", "index": self.component_id}, "data"),
+            State("vg-layer-refresh-trigger", "data"),
             prevent_initial_call=True,
         )
-        def _apply_new_layer(n_clicks, col_names, cell_matrix, refresh_val):
+        def _apply_new_layer(n_clicks, col_names, cell_matrix, refresh_val, global_refresh):
             if not n_clicks:
                 raise PreventUpdate
 
@@ -144,7 +145,7 @@ class VirtualLayerEditor:
             except Exception as e:
                 app.logger.error(f"[vg-layer] Failed to add layer: {e}")
 
-            return no_update, (refresh_val or 0) + 1
+            return no_update, (refresh_val or 0) + 1, (global_refresh or 0) + 1
 
 from qua_dashboards.core import BaseComponent
 class VirtualLayerManager(BaseComponent):

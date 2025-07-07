@@ -575,7 +575,7 @@ class VideoModeComponent(BaseComponent):
 
 
 class VideoModeComponent_with_GateSet(VideoModeComponent):
-    def __init__(self, *args, gateset, inner_loop_action, **kwargs): 
+    def __init__(self, *args, gateset, inner_loop_action,machine, **kwargs): 
         super().__init__(*args, **kwargs)
         self.gateset = gateset
         self.inner_loop_action = inner_loop_action
@@ -587,6 +587,7 @@ class VideoModeComponent_with_GateSet(VideoModeComponent):
             self.data_acquirer.y_axis.span,
             self.data_acquirer.y_axis.points,
         )
+        self.machine = machine
 
     def get_layout(self) -> Component:
         """Generates the Dash layout for the VideoModeComponent."""
@@ -641,6 +642,15 @@ class VideoModeComponent_with_GateSet(VideoModeComponent):
                         className="me-2",
                     ),
                     width=3,
+                ),
+                dbc.Col(
+                    dbc.Button(
+                        "Save QUAM State",
+                        id=self._get_id("save-quam-button"),
+                        color="info",
+                        className="me-2",
+                    ),
+                    width=4,
                 ),
             ],
             className="mb-3 g-2 justify-content-start",
@@ -792,6 +802,28 @@ class VideoModeComponent_with_GateSet(VideoModeComponent):
         def _reset_y_axis(_):
             return self._y_default_span, self._y_default_pts
         
+        @app.callback(
+            Output(self._get_id(self._MAIN_STATUS_ALERT_ID_SUFFIX), "children", allow_duplicate=True),
+            Input(self._get_id("save-quam-button"), "n_clicks"),
+            prevent_initial_call=True,
+        )
+        def handle_save_quam_button(n_clicks):
+            if not n_clicks:
+                raise PreventUpdate
+            try:
+                self.machine.save()   # Or self.machine.save() if it's an attribute!
+                message = "QUAM state successfully saved."
+                color = "success"
+                print(message)
+            except Exception as e:
+                message = f"Failed to save QUAM state: {e}"
+                color = "danger"
+                print(message)
+            return dbc.Alert(
+                message,
+                color=color,
+                dismissable=True,
+    )
 
 
 

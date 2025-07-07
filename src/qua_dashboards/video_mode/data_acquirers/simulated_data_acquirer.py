@@ -67,9 +67,7 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
         self.m = None
         self._first_acquisition: bool = True
         self._plot_parameters_changed: bool = False
-        self._voltage_control_component: bool = False
-        # RELATIVE
-        # self._initial_m = None        
+        self._voltage_control_component: bool = False      
         logger.debug(
             f"Initializing SimulatedDataAcquirer (ID: {component_id}) with "
             f"acquire_time: {self.acquire_time}s"
@@ -81,11 +79,8 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
 
     def _initialize_m(self) -> None:
         """Initializes the m parameter and adds it to the rendering arguments."""
-        self.m = self.experiment.tunneling_sim.boundaries(self.args_rendering["state_hint_lower_left"]).point_inside
-        self.args_rendering["m"] = self.m
-        logger.debug(f"initial m: {self.m}!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        # RELATIVE
-        # self._initial_m = copy.deepcopy(self.m)  # Store the initial m value
+        self.m = copy.deepcopy(self.experiment.tunneling_sim.boundaries(self.args_rendering["state_hint_lower_left"]).point_inside)  # Deepcopy needed that self.m can be assigned to the voltage parameters later on without using a deepcopy there.
+        logger.debug(f"initial m: {self.m}")
 
 
     def get_voltage_control_component(self) -> VoltageControlComponent:
@@ -94,27 +89,14 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
         """ 
         self._voltage_control_component = True
         self._initialize_m()
-        # self.m = self.experiment.tunneling_sim.boundaries(self.args_rendering["state_hint_lower_left"]).point_inside  # initial guess for m
-        # self.args_rendering["m"] = self.m
-        # logger.debug(f"initial m: {self.m}!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        # ABSOLUT
         voltage_parameters = [
            BasicParameter("vg1", "Gate 1 (x)", "mV", initial_value=self.m[0] * 1./self.conversion_factor_unit_to_volt),
            BasicParameter("vg2", "Gate 2 (y)", "mV", initial_value=self.m[1] * 1./self.conversion_factor_unit_to_volt),
            BasicParameter("vg3", "Sensor Gate", "mV", initial_value=self.m[2] * 1./self.conversion_factor_unit_to_volt),
            BasicParameter("vg4", "Barrier Gate", "mV", initial_value=self.m[3] * 1./self.conversion_factor_unit_to_volt)
         ]
-        # RELATIVE
-        # voltage_parameters = [
-        #     BasicParameter("vg1", "Gate 1 (x)", "mV", 0),
-        #     BasicParameter("vg2", "Gate 2 (y)", "mV", 0),
-        #     BasicParameter("vg3", "Sensor Gate", "mV", 0)
-        # ]         
         self.voltage_parameters = voltage_parameters
         self._last_voltage_parameters = copy.deepcopy(voltage_parameters)  # Store the initial voltage parameters
-        logger.debug(f"voltage_parameters: {self.voltage_parameters}!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        logger.debug(f"get voltage parameter x: {self.voltage_parameters[0].get()}")
-        logger.debug(f"get voltage parameter y: {self.voltage_parameters[1].get()}")
 
         # Get the VoltageControlComponent
         voltage_controller = VoltageControlComponent(
@@ -152,7 +134,15 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
             # Generate the simulated image          
             logger.info("Generating simulated data")
             tsim = self.experiment.tunneling_sim
-            sensor_signalexp = tsim.sensor_scan_2D(**self.args_rendering)
+            #sensor_signalexp = tsim.sensor_scan_2D(**self.args_rendering)
+            sensor_signalexp = tsim.sensor_scan_2D(P = self.args_rendering["P"],
+                                                   m = self.m,
+                                                   minV = self.args_rendering["minV"],
+                                                   maxV = self.args_rendering["maxV"],
+                                                   resolution = self.args_rendering["resolution"],   
+                                                   state_hint_lower_left = self.args_rendering["state_hint_lower_left"],
+                                                   cache = self.args_rendering["cache"],
+                                                   insitu_axis = self.args_rendering["insitu_axis"])
 
             # In case of several sensors, just pick the first one
             if sensor_signalexp.ndim == 3:
@@ -164,16 +154,11 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
 
         # First acquisition  
         if self._first_acquisition:
-            logger.debug("First acquisition, generating simulated image")
+            logger.info("First acquisition, generating simulated image")
             self._first_acquisition = False
             if not self._voltage_control_component:
                 self._initialize_m()
-                # self.m = self.experiment.tunneling_sim.boundaries(self.args_rendering["state_hint_lower_left"]).point_inside  # initial guess for m
-                # self.args_rendering["m"] = self.m
-                # logger.debug(f"Initial m: {self.m} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-                # # RELATIVE
-                # # self._initial_m = copy.deepcopy(self.m)  # Store the initial m value
-            logger.debug(f"args_rendering: {self.args_rendering} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            logger.info(f"First acquisition, initial rendering arguments: {self.args_rendering}")
             generate_simulated_image()
 
         # Check if voltage parameters changed
@@ -183,34 +168,21 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
                                         self.voltage_parameters[1].get() != self._last_voltage_parameters[1].get() or \
                                         self.voltage_parameters[2].get() != self._last_voltage_parameters[2].get() or \
                                         self.voltage_parameters[3].get() != self._last_voltage_parameters[3].get()
-            logger.debug(f"voltage_parameters_changed: {voltage_parameters_changed} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            #logger.debug(f"voltage_parameters_changed: {voltage_parameters_changed} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         else:
             voltage_parameters_changed = False
 
         # Plot and/or voltage parameters changed
         if voltage_parameters_changed or self._plot_parameters_changed:
-            #logger.debug("Plot or voltage parameters changed, generating new simulated image")
             if self._plot_parameters_changed:
-                #logger.debug("Plot parameters changed")
                 self._plot_parameters_changed = False  # Do this here to PREVENT race conditions! It takes long to simulate the new image, and every change of plotting parameters would lead to race conditions.
             if voltage_parameters_changed:
-                #logger.debug("Voltage parameters changed")
                 self._last_voltage_parameters = copy.deepcopy(self.voltage_parameters)  # Update the last voltage parameters
-                # RELATIVE
-                # self.m = copy.deepcopy(self._initial_m)  # Reset m to the initial value
-                # self.m[0] += self._last_voltage_parameters[0].get() * self.conversion_factor_unit_to_volt
-                # self.m[1] += self._last_voltage_parameters[1].get() * self.conversion_factor_unit_to_volt
-                # self.m[2] += self._last_voltage_parameters[2].get() * self.conversion_factor_unit_to_volt
-                # self.args_rendering["m"] = self.m  # Use the current m value
-                # ABSOLUTE
-                self.m = copy.deepcopy(self.m)   # IT DOESN'T WORK WITHOUT DEEP COPY - WHY???
                 self.m[0] = self._last_voltage_parameters[0].get() * self.conversion_factor_unit_to_volt
                 self.m[1] = self._last_voltage_parameters[1].get() * self.conversion_factor_unit_to_volt
                 self.m[2] = self._last_voltage_parameters[2].get() * self.conversion_factor_unit_to_volt
                 self.m[3] = self._last_voltage_parameters[3].get() * self.conversion_factor_unit_to_volt
-                self.args_rendering["m"] = self.m
-                #logger.debug(f"Updated m: {self.m} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-                logger.debug(f"args_rendering: {self.args_rendering} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+                logger.info(f"Voltage parameters changed, rendering arguments updated: {self.args_rendering}")
                 # Clear the data history
                 with self._data_lock:  
                     self._data_history_raw.clear()
@@ -226,16 +198,13 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
         factor = np.sqrt(12)*mean_signal/self.SNR
         noise = np.random.rand(self.y_axis.points, self.x_axis.points)*factor
 
-        #logger.debug(f"Shape simulated image: {self.simulated_image.shape} !!!!!!!!!!!!!!!!!!!!!!!!!!")
-        #logger.debug(f"Shape noise: {noise.shape} !!!!!!!!!!!!!!!!!!!!!!!!!!")
-
         # Check if shape of axes still match the shape of the image
         if self.simulated_image.shape[0] != self.y_axis.points or self.simulated_image.shape[1] != self.x_axis.points:  # race conditions
             logger.warning("Axes resolution changed during rendering !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
             logger.info(f"signal shape: {self.simulated_image.shape}")
-            logger.info(f"y_points: {self.y_axis.points}")
-            logger.info(f"x_points: {self.x_axis.points}")
-            #logger.debug(f"flag plot parameters changed: {self._plot_parameters_changed}")
+            logger.info(f"(y_points x x_points): ({self.y_axis.points}x{self.x_axis.points}). Returning empty array.")
+            # logger.info(f"y_points: {self.y_axis.points}")
+            # logger.info(f"x_points: {self.x_axis.points}")
             return np.empty((self.y_axis.points, self.x_axis.points))  # Return a 2D empty array with the correct shape to avoid downstream errors
         else:
             return self.simulated_image + noise
@@ -289,8 +258,6 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
             ModifiedFlags indicating what aspects of the component were changed.
         """
         flags = super().update_parameters(parameters)
-        logger.info(f"parameters: {parameters}!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        #example:   parameters: {'simulated-data-acquirer': {'num_software_averages': 5, 'acquire-time': 1}, 'x-axis': {'span': 4.4, 'points': 50}, 'y-axis': {'span': 4.2, 'points': 50}}
 
         if flags & ModifiedFlags.PLOT_PARAMETERS_MODIFIED:
             # Update the rendering arguments

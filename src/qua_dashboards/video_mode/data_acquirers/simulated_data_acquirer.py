@@ -65,6 +65,7 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
         self.voltage_parameters: Sequence[ParameterProtocol] = None
         self._last_voltage_parameters: Sequence[ParameterProtocol] = None  
         self.m = None
+        self.sensor_number = 0
         self._first_acquisition: bool = True
         self._plot_parameters_changed: bool = False
         self._voltage_control_component: bool = False      
@@ -79,24 +80,46 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
 
     def _initialize_m(self) -> None:
         """Initializes the m parameter and adds it to the rendering arguments."""
-        self.m = copy.deepcopy(self.experiment.tunneling_sim.boundaries(self.args_rendering["state_hint_lower_left"]).point_inside)  # Deepcopy needed that self.m can be assigned to the voltage parameters later on without using a deepcopy there.
+        self.m = copy.deepcopy(self.experiment.tunneling_sim.boundaries(self.args_rendering["state_hint_lower_left"]).point_inside)  # Deepcopy needed that self.m does not have the same reference as polytope.point_inside
         logger.debug(f"initial m: {self.m}")
 
 
-    def get_voltage_control_component(self) -> VoltageControlComponent:
+    def get_voltage_control_component(self, labels, sensor_number = 0) -> VoltageControlComponent:
         """ Creates and returns a voltage control component for the simulated data acquirer.
             The voltage values are set to the initial guess for m.
+
+            Arguments:
+                Labels: They are used to set the names of the voltage parameters.
+                Sensor_number: Choice of sensor to show. Default is 0 (first sensor).
         """ 
+        logger.debug(f"Creating VoltageControlComponent with labels: {labels}")
+        
         self._voltage_control_component = True
         self._initialize_m()
-        voltage_parameters = [
-           BasicParameter("vg1", "Gate 1 (x)", "mV", initial_value=self.m[0] * 1./self.conversion_factor_unit_to_volt),
-           BasicParameter("vg2", "Gate 2 (y)", "mV", initial_value=self.m[1] * 1./self.conversion_factor_unit_to_volt),
-           BasicParameter("vg3", "Sensor Gate", "mV", initial_value=self.m[2] * 1./self.conversion_factor_unit_to_volt),
-           BasicParameter("vg4", "Barrier Gate", "mV", initial_value=self.m[3] * 1./self.conversion_factor_unit_to_volt)
-        ]
+
+        if labels != None and len(labels) == self.args_rendering["P"].shape[0]:
+            # If the number of labels matches the number of voltage parameters, use them
+            voltage_parameters = [
+                BasicParameter(f"vg{i+1}", label, "mV", initial_value=self.m[i] * 1./self.conversion_factor_unit_to_volt)
+                for i, label in enumerate(labels)
+            ]
+        else:
+            # If not, use default labels
+            logger.debug(f"Using default labels: Labels are None, or number of labels does not match number of voltage parameters.")
+            # If the number of labels matches the number of voltage parameters, use them
+            voltage_parameters = [
+                BasicParameter(f"vg{i+1}", f"vg{i+1}", "mV", initial_value=self.m[i] * 1./self.conversion_factor_unit_to_volt)
+                for i in range(self.args_rendering["P"].shape[0])
+            ]
+
         self.voltage_parameters = voltage_parameters
         self._last_voltage_parameters = copy.deepcopy(voltage_parameters)  # Store the initial voltage parameters
+
+        if sensor_number is not None and self.experiment.sensor_config["sensor_dot_indices"] is not None and 0 <= sensor_number < len(self.experiment.sensor_config["sensor_dot_indices"]) and type(sensor_number) is int:
+            self.sensor_number = sensor_number
+        else:
+            logger.debug(f"Using default sensor 0: No sensor number provided, or invalid sensor number.")
+            self.sensor_number = 0
 
         # Get the VoltageControlComponent
         voltage_controller = VoltageControlComponent(
@@ -137,17 +160,17 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
                                                                                  state_hint = self.args_rendering["state_hint_lower_left"])
             sliced_sim = self.experiment.tunneling_sim.slice(P = self.args_rendering["P"], m = self.m)
             sensor_signalexp = sliced_sim.sensor_scan_2D(P = np.eye(2),
-                                                   m = np.zeros(2),
-                                                   minV = self.args_rendering["minV"],
-                                                   maxV = self.args_rendering["maxV"],
-                                                   resolution = self.args_rendering["resolution"],
-                                                   state_hint_lower_left = state,
-                                                   cache = self.args_rendering["cache"],
-                                                   insitu_axis = self.args_rendering["insitu_axis"])
+                                                         m = np.zeros(2),
+                                                         minV = self.args_rendering["minV"],
+                                                         maxV = self.args_rendering["maxV"],
+                                                         resolution = self.args_rendering["resolution"],
+                                                         state_hint_lower_left = state,
+                                                         cache = self.args_rendering["cache"],
+                                                         insitu_axis = self.args_rendering["insitu_axis"])
 
-            # In case of several sensors, just pick the first one
+            # In case of several sensors, pick the sensor with the given sensor_number (default is 0)
             if sensor_signalexp.ndim == 3:
-                sensor_values = sensor_signalexp[:,:,0].T
+                sensor_values = sensor_signalexp[:,:,self.sensor_number].T
             else:
                 sensor_values = sensor_signalexp.T
 
@@ -165,11 +188,10 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
         # Check if voltage parameters changed
         if (self.voltage_parameters is not None and
             self._last_voltage_parameters is not None):
-            voltage_parameters_changed = self.voltage_parameters[0].get() != self._last_voltage_parameters[0].get() or \
-                                        self.voltage_parameters[1].get() != self._last_voltage_parameters[1].get() or \
-                                        self.voltage_parameters[2].get() != self._last_voltage_parameters[2].get() or \
-                                        self.voltage_parameters[3].get() != self._last_voltage_parameters[3].get()
-            #logger.debug(f"voltage_parameters_changed: {voltage_parameters_changed} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+                voltage_parameters_changed = any(
+                    vp.get() != last_vp.get()
+                    for vp, last_vp in zip(self.voltage_parameters, self._last_voltage_parameters)
+                )
         else:
             voltage_parameters_changed = False
 
@@ -179,11 +201,9 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
                 self._plot_parameters_changed = False  # Do this here to PREVENT race conditions! It takes long to simulate the new image, and every change of plotting parameters would lead to race conditions.
             if voltage_parameters_changed:
                 self._last_voltage_parameters = copy.deepcopy(self.voltage_parameters)  # Update the last voltage parameters
-                self.m[0] = self._last_voltage_parameters[0].get() * self.conversion_factor_unit_to_volt
-                self.m[1] = self._last_voltage_parameters[1].get() * self.conversion_factor_unit_to_volt
-                self.m[2] = self._last_voltage_parameters[2].get() * self.conversion_factor_unit_to_volt
-                self.m[3] = self._last_voltage_parameters[3].get() * self.conversion_factor_unit_to_volt
-                logger.info(f"Voltage parameters changed, rendering arguments updated: {self.args_rendering}")
+                for i in range(len(self.voltage_parameters)):
+                    self.m[i] = self.voltage_parameters[i].get() * self.conversion_factor_unit_to_volt
+                logger.info(f"Voltage parameters changed, m updated: {self.m}")
                 # Clear the data history
                 with self._data_lock:  
                     self._data_history_raw.clear()

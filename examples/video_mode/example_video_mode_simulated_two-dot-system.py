@@ -60,8 +60,8 @@ def get_video_mode_component() -> VideoModeComponent:
     C_DD=20* np.eye((N))/2 #The self-capacitance of each dot, NOTE: factor of 2 due to symmetrization
     C_DD[0,1] = 10 #capacitance between dot 0 and dot 1 (Left double dot) 
 
-    C_DD[0,2] = 1.6 #capacitance between sensor dot 4 and dot 0
-    C_DD[1,2] = 1.4 #capacitance between sensor dot 4 and dot 1
+    C_DD[0,2] = 1.6/2 #capacitance between sensor dot 4 and dot 0
+    C_DD[1,2] = 1.4/2 #capacitance between sensor dot 4 and dot 1
     C_DD = C_DD + C_DD.T
 
     C_DG=11*np.eye(N) #dot-to-gate capacitances 
@@ -100,10 +100,8 @@ def get_video_mode_component() -> VideoModeComponent:
     # Arguments for the function that renders the capacitance CSD
     unit = 'mV'
     factor_mV_to_V = 1e-3
-    span_x = 4.4*3
-    span_y = 4.2*3
-    #span_x = 14
-    #span_y = 20
+    span_x = 20
+    span_y = 20
     points_x = 50
     points_y = 50
 
@@ -120,18 +118,6 @@ def get_video_mode_component() -> VideoModeComponent:
         "state_hint_lower_left": state_hint_lower_left,
         "cache": True,
         "insitu_axis": None,
-    }
-
-    args_generate_CSD = {
-        "plane_axes": np.array([[1,0,0],[0,1,0]]), # vectors spanning the cut in voltage space
-        "target_state": [1,1,5],  # target state for transition
-        "target_transition": [-1,1,0], #target transition from target state, here transition to [2,3,2,3,5,5]
-        "x_voltages": np.linspace(-span_x/2., span_x/2., points_x)*factor_mV_to_V, #voltage range for x-axis, originally: np.linspace(-0.0022, 0.0018, 100)
-        "y_voltages": np.linspace(-span_y/2., span_y/2., points_y)*factor_mV_to_V, #voltage range for y-axis, originally: np.linspace(-0.0021, 0.0019, 100)
-        "compute_polytopes": False, #compute the corners of constant occupation
-        "compensate_sensors": False, #compensate the sensor signals
-        "use_virtual_gates": False, #use the virtual gates
-        "use_sensor_signal": True, #use the sensor signals     
     }
 
     # Define the X-axis for the 2D scan.
@@ -159,7 +145,6 @@ def get_video_mode_component() -> VideoModeComponent:
         x_axis=x_axis,
         y_axis=y_axis,
         experiment = experiment,
-        #args_rendering = args_generate_CSD,
         args_rendering = args_sensor_scan_2D,
         conversion_factor_unit_to_volt=factor_mV_to_V,
         SNR=20,  # Signal-to-noise ratio on simulated images

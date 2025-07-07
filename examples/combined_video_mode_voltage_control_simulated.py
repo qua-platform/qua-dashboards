@@ -1,36 +1,6 @@
 """
-Example Script: Video Mode with SimulatedDataAcquirer for a four dot transition with 2 sensors
-
-This script demonstrates how to use the VideoModeComponent with a SimulatedDataAcquirer.
-The data is simulated using the QDarts package.
-This setup is ideal for simulating and testing video mode dashboards without needing
-a live connection to an OPX or other hardware. It allows you to understand the
-dashboard's functionality, test UI interactions, and develop custom components
-in a controlled environment.
-
-Core Components Used:
-- SweepAxis: Defines the parameters for each axis in the 2D scan (name, label,
-             units, span, number of points).
-- SimulatedDataAcquirer: A data acquirer that generates simulated data based on QDarts for the 2D scan,
-                         simulating a real data acquisition process.
-- VideoModeComponent: The main Dash component that orchestrates the video mode
-                      display, taking a data acquirer as input and rendering
-                      the live plot and controls.
-- build_dashboard: A utility function from qua_dashboards.core to construct
-                   a Dash application layout with the provided components.
-
-How to Run:
-1. Ensure you have `qua-dashboards` and its dependencies installed.
-   (e.g., `pip install qua-dashboards`)
-2. Save this script as a Python file (e.g., `run_random_video_mode.py`).
-3. Run the script from your terminal: `python run_random_video_mode.py`
-4. Open your web browser and navigate to `http://127.0.0.1:8050/` (or the
-   address shown in your terminal).
-
-You should see a dashboard titled "Video Mode Simulation (Simulated Data)"
-displaying a 2D plot that updates with new simulated data periodically. You will
-also have controls to adjust the parameters of the X and Y axes (Span and Points)
-and the SimulatedDataAcquirer (Software Averages, Simulated Acquire Time).
+Example Script: 
+Video Mode with SimulatedDataAcquirer for a four dot transition with 2 sensors, and voltage control
 """
 
 from qua_dashboards.core import build_dashboard
@@ -40,6 +10,7 @@ from qua_dashboards.video_mode import (
     SimulatedDataAcquirer,
     VideoModeComponent,
 )
+from qua_dashboards.voltage_control import VoltageControlComponent
 from qdarts.experiment import Experiment
 import numpy as np
 
@@ -108,10 +79,8 @@ def get_video_mode_component() -> VideoModeComponent:
     # Arguments for the function that renders the capacitance CSD
     unit = 'mV'
     factor_mV_to_V = 1e-3
-    span_x = 4.4*3
-    span_y = 4.2*3
-    #span_x = 14
-    #span_y = 20
+    span_x = 20
+    span_y = 20
     points_x = 50
     points_y = 50
 
@@ -173,6 +142,10 @@ def get_video_mode_component() -> VideoModeComponent:
     )
     return video_mode_component
 
+def get_voltage_control_component(video_mode_component, labels, sensor_number) -> VoltageControlComponent:
+    voltage_controller = video_mode_component.data_acquirer.get_voltage_control_component(labels=labels, sensor_number=sensor_number)
+    return voltage_controller
+
 
 def main() -> None:
     """
@@ -189,10 +162,16 @@ def main() -> None:
         f"VideoModeComponent instance created: {video_mode_component.component_id}"
     )
 
+    # Get the VoltageControlComponent
+    voltage_control_component = get_voltage_control_component(video_mode_component, labels=None, sensor_number=2)
+    logger.info(
+        f"VoltageControlComponent instance created: {voltage_control_component.component_id}"
+    )  
+
     logger.info("Building the dashboard...")
     # Use build_dashboard to create the Dash app layout.
     app = build_dashboard(
-        components=[video_mode_component],  # List of dashboard components to include.
+        components=[video_mode_component,voltage_control_component],  # List of dashboard components to include.
         title="Video Mode Simulation (QDarts)",  # Browser window title.
     )
 

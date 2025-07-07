@@ -35,8 +35,8 @@ def get_video_mode_component() -> VideoModeComponent:
     C_DD=20* np.eye((N))/2 #The self-capacitance of each dot, NOTE: factor of 2 due to symmetrization
     C_DD[0,1] = 10 #capacitance between dot 0 and dot 1 (Left double dot) 
 
-    C_DD[0,2] = 1.6/2 #capacitance between sensor dot 4 and dot 0
-    C_DD[1,2] = 1.4/2 #capacitance between sensor dot 4 and dot 1
+    C_DD[0,2] = 1.6/2 #capacitance between sensor dot 2 and dot 0
+    C_DD[1,2] = 1.4/2 #capacitance between sensor dot 2 and dot 1
     C_DD = C_DD + C_DD.T
 
     # C_DG=11*np.eye(N) #dot-to-gate capacitances 
@@ -150,8 +150,8 @@ def get_video_mode_component() -> VideoModeComponent:
     return video_mode_component
 
 
-def get_voltage_control_component(video_mode_component) -> VoltageControlComponent:
-    voltage_controller = video_mode_component.data_acquirer.get_voltage_control_component()
+def get_voltage_control_component(video_mode_component, labels) -> VoltageControlComponent:
+    voltage_controller = video_mode_component.data_acquirer.get_voltage_control_component(labels=labels)
     return voltage_controller
 
 
@@ -171,7 +171,8 @@ def main() -> None:
     )
 
     # Get the VoltageControlComponent
-    voltage_control_component = get_voltage_control_component(video_mode_component)
+    labels = ["Gate 1 (x)", "Gate 2 (y)", "Sensor Gate", "Barrier Gate"]
+    voltage_control_component = get_voltage_control_component(video_mode_component, labels)
     logger.info(
         f"VoltageControlComponent instance created: {voltage_control_component.component_id}"
     )  

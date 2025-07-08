@@ -72,8 +72,7 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
         if self.experiment.sensor_config["sensor_dot_indices"] is not None and 0 <= sensor_number < len(self.experiment.sensor_config["sensor_dot_indices"]):
             self.sensor_number = sensor_number
         else:
-            logger.warning(f"Invalid sensor number: Use default sensor number 0")
-            self.sensor_number = 0    
+            raise ValueError(f"Invalid sensor number {sensor_number}.")
         logger.debug(
             f"Initializing SimulatedDataAcquirer (ID: {component_id}) with "
             f"acquire_time: {self.acquire_time}s"

@@ -2,7 +2,8 @@
 Example Script: Video Mode with SimulatedDataAcquirer for a four dot transition with 2 sensors
 
 This script demonstrates how to use the VideoModeComponent with a SimulatedDataAcquirer.
-The data is simulated using the QDarts package.
+The data is simulated using the QDarts package. No barrier gate is used in this example.
+
 This setup is ideal for simulating and testing video mode dashboards without needing
 a live connection to an OPX or other hardware. It allows you to understand the
 dashboard's functionality, test UI interactions, and develop custom components
@@ -108,10 +109,8 @@ def get_video_mode_component() -> VideoModeComponent:
     # Arguments for the function that renders the capacitance CSD
     unit = 'mV'
     factor_mV_to_V = 1e-3
-    span_x = 4.4*3
-    span_y = 4.2*3
-    #span_x = 14
-    #span_y = 20
+    span_x = 20
+    span_y = 20
     points_x = 50
     points_y = 50
 
@@ -161,6 +160,7 @@ def get_video_mode_component() -> VideoModeComponent:
         acquire_time=0.1,  # Simulated delay (seconds) for acquiring one raw frame.
         num_software_averages=5,  # Number of raw frames to average for display.
         acquisition_interval_s=0.5,  # Target time (seconds) between acquiring raw frames.
+        sensor_number=0,  # Pick the first of the two defined sensors (0 or 1).
     )
 
     # Instantiate the VideoModeComponent.

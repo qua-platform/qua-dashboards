@@ -1,6 +1,7 @@
 """
 Example Script: 
 Video Mode with SimulatedDataAcquirer for a four dot transition with 2 sensors, and voltage control
+No barrier gate is used in this example.
 """
 
 from qua_dashboards.core import build_dashboard
@@ -130,6 +131,7 @@ def get_video_mode_component() -> VideoModeComponent:
         acquire_time=0.1,  # Simulated delay (seconds) for acquiring one raw frame.
         num_software_averages=5,  # Number of raw frames to average for display.
         acquisition_interval_s=0.5,  # Target time (seconds) between acquiring raw frames.
+        sensor_number=1,  
     )
 
     # Instantiate the VideoModeComponent.
@@ -142,8 +144,8 @@ def get_video_mode_component() -> VideoModeComponent:
     )
     return video_mode_component
 
-def get_voltage_control_component(video_mode_component, labels, sensor_number) -> VoltageControlComponent:
-    voltage_controller = video_mode_component.data_acquirer.get_voltage_control_component(labels=labels, sensor_number=sensor_number)
+def get_voltage_control_component(video_mode_component, labels) -> VoltageControlComponent:
+    voltage_controller = video_mode_component.data_acquirer.get_voltage_control_component(labels=labels)
     return voltage_controller
 
 
@@ -163,7 +165,7 @@ def main() -> None:
     )
 
     # Get the VoltageControlComponent
-    voltage_control_component = get_voltage_control_component(video_mode_component, labels=None, sensor_number=2)
+    voltage_control_component = get_voltage_control_component(video_mode_component, labels=None)
     logger.info(
         f"VoltageControlComponent instance created: {voltage_control_component.component_id}"
     )  

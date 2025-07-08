@@ -69,7 +69,7 @@ def get_video_mode_component() -> VideoModeComponent:
     tunneling_config = {
             "tunnel_couplings": tunnel_couplings, #tunnel coupling matrix
             "temperature": 0.1,                   #temperature in Kelvin
-            "energy_range_factor": 5,  #energy scale for the Hamiltonian generation. NOTE: Smaller -> faster but less accurate computation 
+            "energy_range_factor": 1,  #energy scale for the Hamiltonian generation. NOTE: Smaller -> faster but less accurate computation 
             "barrier_levers": barrier_levers,  #barrier levels matrix
     }
 

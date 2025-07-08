@@ -39,6 +39,7 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
         SNR: float = 20, # signal-to-noise ratio
         component_id: str = "simulated-data-acquirer",
         acquire_time: float = 0.05,  # Simulate 50ms acquisition time per frame
+        sensor_number: int = 0,  # Default to first sensor
         # Other parameters like num_software_averages, acquisition_interval_s
         # are passed via **kwargs to Base2DDataAcquirer and then to BaseDataAcquirer.
         **kwargs: Any,
@@ -65,10 +66,14 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
         self.voltage_parameters: Sequence[ParameterProtocol] = None
         self._last_voltage_parameters: Sequence[ParameterProtocol] = None  
         self.m = None
-        self.sensor_number = 0
         self._first_acquisition: bool = True
         self._plot_parameters_changed: bool = False
-        self._voltage_control_component: bool = False      
+        self._voltage_control_component: bool = False
+        if self.experiment.sensor_config["sensor_dot_indices"] is not None and 0 <= sensor_number < len(self.experiment.sensor_config["sensor_dot_indices"]):
+            self.sensor_number = sensor_number
+        else:
+            logger.warning(f"Invalid sensor number: Use default sensor number 0")
+            self.sensor_number = 0    
         logger.debug(
             f"Initializing SimulatedDataAcquirer (ID: {component_id}) with "
             f"acquire_time: {self.acquire_time}s"
@@ -84,7 +89,7 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
         logger.debug(f"initial m: {self.m}")
 
 
-    def get_voltage_control_component(self, labels, sensor_number = 0) -> VoltageControlComponent:
+    def get_voltage_control_component(self, labels) -> VoltageControlComponent:
         """ Creates and returns a voltage control component for the simulated data acquirer.
             The voltage values are set to the initial guess for m.
 
@@ -97,7 +102,7 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
         self._voltage_control_component = True
         self._initialize_m()
 
-        if labels != None and len(labels) == self.args_rendering["P"].shape[0]:
+        if labels is not None and len(labels) == self.args_rendering["P"].shape[0]:
             # If the number of labels matches the number of voltage parameters, use them
             voltage_parameters = [
                 BasicParameter(f"vg{i+1}", label, "mV", initial_value=self.m[i] * 1./self.conversion_factor_unit_to_volt)
@@ -114,12 +119,6 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
 
         self.voltage_parameters = voltage_parameters
         self._last_voltage_parameters = copy.deepcopy(voltage_parameters)  # Store the initial voltage parameters
-
-        if sensor_number is not None and self.experiment.sensor_config["sensor_dot_indices"] is not None and 0 <= sensor_number < len(self.experiment.sensor_config["sensor_dot_indices"]) and type(sensor_number) is int:
-            self.sensor_number = sensor_number
-        else:
-            logger.debug(f"Using default sensor 0: No sensor number provided, or invalid sensor number.")
-            self.sensor_number = 0
 
         # Get the VoltageControlComponent
         voltage_controller = VoltageControlComponent(
@@ -164,9 +163,7 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
                                                          minV = self.args_rendering["minV"],
                                                          maxV = self.args_rendering["maxV"],
                                                          resolution = self.args_rendering["resolution"],
-                                                         state_hint_lower_left = state,
-                                                         cache = self.args_rendering["cache"],
-                                                         insitu_axis = self.args_rendering["insitu_axis"])
+                                                         state_hint_lower_left = state)
 
             # In case of several sensors, pick the sensor with the given sensor_number (default is 0)
             if sensor_signalexp.ndim == 3:
@@ -189,7 +186,7 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
         if (self.voltage_parameters is not None and
             self._last_voltage_parameters is not None):
                 voltage_parameters_changed = any(
-                    vp.get() != last_vp.get()
+                    vp.get_latest() != last_vp.get_latest()
                     for vp, last_vp in zip(self.voltage_parameters, self._last_voltage_parameters)
                 )
         else:
@@ -202,7 +199,7 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
             if voltage_parameters_changed:
                 self._last_voltage_parameters = copy.deepcopy(self.voltage_parameters)  # Update the last voltage parameters
                 for i in range(len(self.voltage_parameters)):
-                    self.m[i] = self.voltage_parameters[i].get() * self.conversion_factor_unit_to_volt
+                    self.m[i] = self.voltage_parameters[i].get_latest() * self.conversion_factor_unit_to_volt
                 logger.info(f"Voltage parameters changed, m updated: {self.m}")
                 # Clear the data history
                 with self._data_lock:  

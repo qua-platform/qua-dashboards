@@ -89,29 +89,33 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
         logger.debug(f"initial m: {self.m}")
 
 
-    def get_voltage_control_component(self, labels) -> VoltageControlComponent:
+    def get_voltage_control_component(self, labels = None) -> VoltageControlComponent:
         """ Creates and returns a voltage control component for the simulated data acquirer.
             The voltage values are set to the initial guess for m.
 
             Arguments:
-                Labels: They are used to set the names of the voltage parameters.
-                Sensor_number: Choice of sensor to show. Default is 0 (first sensor).
+                Labels: They are used to set the names of the voltage parameters. 
+                        Default is None, which means that the default labels are used.
         """ 
         logger.debug(f"Creating VoltageControlComponent with labels: {labels}")
         
         self._voltage_control_component = True
         self._initialize_m()
 
-        if labels is not None and len(labels) == self.args_rendering["P"].shape[0]:
-            # If the number of labels matches the number of voltage parameters, use them
+        if labels is not None and len(labels) is not self.args_rendering["P"].shape[0]:
+            raise ValueError(
+                f"Number of labels ({len(labels)}) does not match number of voltage parameters "
+                f"({self.args_rendering['P'].shape[0]})."
+            )
+
+        if labels is not None:
             voltage_parameters = [
                 BasicParameter(f"vg{i+1}", label, "mV", initial_value=self.m[i] * 1./self.conversion_factor_unit_to_volt)
                 for i, label in enumerate(labels)
             ]
         else:
-            # If not, use default labels
-            logger.debug(f"Using default labels: Labels are None, or number of labels does not match number of voltage parameters.")
-            # If the number of labels matches the number of voltage parameters, use them
+            # If no labels are provided, use default labels
+            logger.info(f"No labels are provided: default labels are used.")
             voltage_parameters = [
                 BasicParameter(f"vg{i+1}", f"vg{i+1}", "mV", initial_value=self.m[i] * 1./self.conversion_factor_unit_to_volt)
                 for i in range(self.args_rendering["P"].shape[0])

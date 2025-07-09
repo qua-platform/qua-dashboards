@@ -176,6 +176,9 @@ tmp_file.py
 
 # Virtual environments
 .venv
+.venv-simulated
 uv.lock
 
 video_mode_output
+
+settings.json

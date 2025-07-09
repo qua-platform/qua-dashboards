@@ -239,7 +239,6 @@ class VideoModeComponent(BaseComponent):
             ),
             dcc.Store(
                 id=self._get_store_id(self.VIEWER_UI_STATE_STORE_SUFFIX),
-                #data = {'selected_point_to_move': None, 'selected_point_for_line': None, 'show_labels': True},
                 data = {},
             ),
             dcc.Store(

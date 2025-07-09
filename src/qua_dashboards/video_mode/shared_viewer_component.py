@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 import plotly.graph_objects as go
 import xarray as xr
@@ -168,7 +168,6 @@ class SharedViewerComponent(BaseComponent):
 
         if isinstance(annotations_data, dict):
             overlay_traces = generate_annotation_traces(annotations_data, viewer_ui_state_input)
-            #overlay_traces = generate_annotation_traces(annotations_data, viewer_ui_state_input["selected_point_to_move"], viewer_ui_state_input["selected_point_for_line"])
             for trace_dict in overlay_traces:
                 if isinstance(trace_dict, dict):
                     fig.add_trace(go.Scatter(**trace_dict))
@@ -205,7 +204,6 @@ class SharedViewerComponent(BaseComponent):
             f"Registering callbacks for SharedViewerComponent '{self.component_id}'"
         )
 
-        ### TO DO: INCORPORATE VIEWER UI STATE STORE
         @app.callback(
             Output(self._get_id(self._MAIN_GRAPH_ID_SUFFIX), "figure"),
             Input(viewer_data_store_id, "data"),

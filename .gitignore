@@ -176,6 +176,7 @@ tmp_file.py
 
 # Virtual environments
 .venv
+.venv-simulated
 uv.lock
 
 # VS Code

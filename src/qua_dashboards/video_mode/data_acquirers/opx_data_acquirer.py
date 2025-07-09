@@ -104,6 +104,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self.initial_delay_s: Optional[float] = initial_delay_s
         self.qua_program: Optional[Program] = None
         self.qm_job: Optional[RunningQmJob] = None
+        self._compilation_flags: ModifiedFlags = ModifiedFlags.NONE
 
         self.result_type: str = result_type
         self._raw_qua_results: Dict[str, np.ndarray] = {}
@@ -167,39 +168,34 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self.qua_program = prog
         return prog
 
-    def _initialize_qm_and_program(self, force_recompile: bool = False) -> None:
-        if self.qm is None or self.qua_config != self.qm.get_config():  # type: ignore
-            logger.info(f"Opening QM for {self.component_id} with new/updated config.")
-            if self.qm is not None:
-                try:
-                    self.qm.close()
-                except Exception as e:
-                    logger.warning(f"Error closing previous QM instance: {e}")
-            self.qm = self.qmm.open_qm(self.qua_config)  # type: ignore
-            force_recompile = True
+    def initialize_qm(self):
+        if self.qm_job is not None:
+            try:
+                if self.qm_job.status == "running":
+                    logger.info(f"Halting existing QM job for {self.component_id}.")
+                    self.qm_job.halt()
+                self.qm_job = None
+            except Exception as e:
+                logger.warning(f"Error halting previous QM job: {e}")
 
-        if self.qua_program is None or force_recompile:
+        if self.qua_config is None:
+            self.qua_config = self.machine.generate_config()
+
+        if self.qm is None:
+            self.qm = self.qmm.open_qm(self.qua_config)  # type: ignore
+
+    def execute_program(self, validate_running: bool = True):
+        if self.qua_program is None:
             logger.info(f"Generating QUA program for {self.component_id}.")
             self.generate_qua_program()
 
-        if self.qm_job is None or self.qm_job.status != "running" or force_recompile:  # type: ignore
-            if self.qm_job is not None:
-                try:
-                    logger.info(f"Halting existing QM job for {self.component_id}.")
-                    self.qm_job.halt()
-                except Exception as e:
-                    logger.warning(f"Could not halt previous QM job: {e}")
+        logger.info(f"Executing QUA program for {self.component_id}.")
+        self.qm_job = self.qm.execute(self.qua_program)  # type: ignore
 
-            if self.qua_program is None:
-                self.generate_qua_program()
-
-            logger.info(f"Executing QUA program for {self.component_id}.")
-            self.qm_job = self.qm.execute(self.qua_program)  # type: ignore
-
+        if validate_running:
             try:
-                self.qm_job.result_handles.get(  # type: ignore[attr-defined]
-                    "all_streams_combined"
-                ).wait_for_values(1)
+                handle = self.qm_job.result_handles.get("all_streams_combined")
+                handle.wait_for_values(1, timeout=20)
                 logger.info(f"QM job for {self.component_id} started successfully.")
             except Exception as e:
                 logger.error(
@@ -256,11 +252,22 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         return output_data_2d
 
     def perform_actual_acquisition(self) -> np.ndarray:
+        if self._compilation_flags & ModifiedFlags.CONFIG_MODIFIED:
+            logger.info(f"Config regeneration triggered for {self.component_id}.")
+            self._regenerate_config_and_reopen_qm()
+            self._compilation_flags = ModifiedFlags.NONE
+        elif self._compilation_flags & ModifiedFlags.PROGRAM_MODIFIED:
+            logger.info(f"Program recompile triggered for {self.component_id}.")
+            self.qua_program = None  # Clear the program to force a re-generation
+            self.execute_program()
+            self._compilation_flags = ModifiedFlags.NONE
+
         if self.qm_job is None or self.qm_job.status != "running":
             logger.warning(
                 f"QM job for {self.component_id} is not running or None. Attempting to re-initialize."
             )
-            self._initialize_qm_and_program(force_recompile=True)
+            self.initialize_qm()
+            self.execute_program()
             if self.qm_job is None:
                 raise RuntimeError(
                     f"Failed to initialize QM job for {self.component_id}."
@@ -286,13 +293,11 @@ class OPXDataAcquirer(Base2DDataAcquirer):
     def _regenerate_config_and_reopen_qm(self) -> None:
         logger.info(f"Regenerating QUA config for {self.component_id} from machine.")
         self.qua_config = self.machine.generate_config()
-        self._initialize_qm_and_program(force_recompile=True)
+        self.initialize_qm()
+        self.execute_program()
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
         flags = super().update_parameters(parameters)
-
-        needs_program_recompile = bool(flags & ModifiedFlags.PARAMETERS_MODIFIED)
-        needs_config_regenerate = False
 
         if self.component_id in parameters:
             params = parameters[self.component_id]
@@ -300,36 +305,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 self.result_type = params["result-type"]
                 flags |= ModifiedFlags.PARAMETERS_MODIFIED
 
-        if hasattr(self.scan_mode, "update_parameters"):
-            scan_flags = self.scan_mode.update_parameters(parameters)
-            if scan_flags & ModifiedFlags.PROGRAM_MODIFIED:
-                needs_program_recompile = True
-            if scan_flags & ModifiedFlags.CONFIG_MODIFIED:
-                needs_config_regenerate = True
-            flags |= scan_flags
-
-        if hasattr(self.qua_inner_loop_action, "update_parameters"):
-            action_flags = self.qua_inner_loop_action.update_parameters(parameters)
-            if action_flags & ModifiedFlags.PROGRAM_MODIFIED:
-                needs_program_recompile = True
-            if action_flags & ModifiedFlags.CONFIG_MODIFIED:
-                needs_config_regenerate = True
-            flags |= action_flags
-
-        if flags & ModifiedFlags.PARAMETERS_MODIFIED and not (
-            needs_program_recompile or needs_config_regenerate
-        ):
-            pass
-
-        if needs_config_regenerate:
-            logger.info(f"Config regeneration triggered for {self.component_id}.")
-            self._regenerate_config_and_reopen_qm()
-            flags |= ModifiedFlags.CONFIG_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
-        elif needs_program_recompile:
-            logger.info(f"Program recompile triggered for {self.component_id}.")
-            self._initialize_qm_and_program(force_recompile=True)
-            flags |= ModifiedFlags.PROGRAM_MODIFIED
-
+        self._compilation_flags = flags
         return flags
 
     def get_dash_components(self, include_subcomponents: bool = True) -> List[Any]:

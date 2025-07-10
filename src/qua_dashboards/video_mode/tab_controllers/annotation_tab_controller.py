@@ -103,6 +103,10 @@ class AnnotationTabController(BaseTabController):
         self._selected_indices_for_line: List[str] = []
         self._next_point_id_counter: int = 0  # Reset when new base_image is loaded
         self._next_line_id_counter: int = 0  # Reset when new base_image is loaded
+        self._translate_all: Optional[Dict[str, Any]] = {
+            "translate": False,
+            "clicked_point": None,
+        }
         self._show_labels = ['points']
 
         logger.info(f"AnnotationTabController '{self.component_id}' initialized.")
@@ -158,6 +162,7 @@ class AnnotationTabController(BaseTabController):
         self._selected_indices_for_line = []
         self._next_point_id_counter = 0
         self._next_line_id_counter = 0
+        self._translate_all = {"translate": False, "clicked_point_x": None, "clicked_point_y": None}
         logger.debug(f"{self.component_id}: Transient annotation state reset.")
 
     def get_layout(self) -> html.Div:
@@ -171,6 +176,7 @@ class AnnotationTabController(BaseTabController):
             {"label": "Add/Move Points", "value": "point"},
             {"label": "Add Lines", "value": "line"},
             {"label": "Delete", "value": "delete"},
+            {"label": "Translate all points and lines", "value": "translate-all"},
         ]
 
         controls_layout = dbc.CardBody(
@@ -610,6 +616,26 @@ class AnnotationTabController(BaseTabController):
                 if len(current_annotations["lines"]) < original_len:
                     changed = True
         return changed
+    
+    def _handle_translate_all_mode_interaction(
+            self,
+            x: float,
+            y: float,
+    ) -> None:
+        """Handles graph interactions for 'translate all' mode. """
+        # After first click: True (turn translation mode on); after second click: False (turn translation mode off)
+        self._translate_all['translate'] = not self._translate_all['translate']
+
+        # Add the clicked point when translation mode is turned on
+        if self._translate_all['translate'] == True:
+            self._translate_all['clicked_point_x'] = x
+            self._translate_all['clicked_point_y'] = y
+        # Remove the clicked point when translation mode is turned off
+        else: 
+            self._translate_all['clicked_point_x'] = None
+            self._translate_all['clicked_point_y'] = None
+        logging.debug(f'_translate_all: {self._translate_all}')
+        return
 
     def _handle_hover_interaction(
         self,
@@ -618,32 +644,57 @@ class AnnotationTabController(BaseTabController):
         current_annotations: Dict[str, List[Dict[str, Any]]],
     ) -> bool:
         """Handles graph hover for 'point' move. Modifies current_annotations. Returns True if changed."""
-        if not (
-            mode == "point"
-            and self._selected_point_to_move.get("is_moving")
-            and self._selected_point_to_move.get("point_id") is not None
+        if not(
+            (
+                mode == "point"
+                and self._selected_point_to_move.get("is_moving")
+                and self._selected_point_to_move.get("point_id") is not None
+            )
+            or
+            (
+                mode=="translate-all"
+                and self._translate_all["translate"] == True
+            )
         ):
             return False
 
         points_list = current_annotations["points"]
-        point_id_to_move = self._selected_point_to_move["point_id"]
+        hover_point_info = hover_data["points"][0]
         changed = False
 
-        hover_point_info = hover_data["points"][0]
-        is_hover_on_annotation = hover_point_info.get(
-            "curveNumber", 0
-        ) > 0 and hover_point_info.get("name", "").startswith("annotations_")
+        if mode == "point":
+            point_id_to_move = self._selected_point_to_move["point_id"]
 
-        if not is_hover_on_annotation:  # Only move if hovering over the base heatmap
+            is_hover_on_annotation = hover_point_info.get(
+                "curveNumber", 0
+            ) > 0 and hover_point_info.get("name", "").startswith("annotations_")
+            
+            if not is_hover_on_annotation:  # Only move if hovering over the base heatmap
+                x_hover, y_hover = hover_point_info["x"], hover_point_info["y"]
+                for point in points_list:
+                    if point["id"] == point_id_to_move:
+                        if point["x"] != x_hover or point["y"] != y_hover:
+                            point["x"], point["y"] = x_hover, y_hover
+                            changed = True
+                        break
+                else:  # Point to move not found (e.g., deleted mid-drag)
+                    self._selected_point_to_move = {"is_moving": False, "point_id": None}
+        
+        elif mode == "translate-all":
+            # Compute the direction vector (hover point - clicked point)
             x_hover, y_hover = hover_point_info["x"], hover_point_info["y"]
+            x_clicked, y_clicked = self._translate_all["clicked_point_x"], self._translate_all["clicked_point_y"]
+            dx, dy = x_hover - x_clicked, y_hover - y_clicked
+
+            # Update the current annotations: Current coordinates + direction vector
             for point in points_list:
-                if point["id"] == point_id_to_move:
-                    if point["x"] != x_hover or point["y"] != y_hover:
-                        point["x"], point["y"] = x_hover, y_hover
-                        changed = True
-                    break
-            else:  # Point to move not found (e.g., deleted mid-drag)
-                self._selected_point_to_move = {"is_moving": False, "point_id": None}
+                point["x"], point["y"] = point["x"] + dx, point["y"] + dy
+                changed = True
+
+            # Update the clicked point
+            x_clicked, y_clicked = x_clicked + dx, y_clicked + dy
+            self._translate_all["clicked_point_x"], self._translate_all["clicked_point_y"] = x_clicked, y_clicked
+
         return changed
 
     def _register_graph_interaction_callback(
@@ -734,6 +785,10 @@ class AnnotationTabController(BaseTabController):
                 elif mode == "delete":
                     interaction_changed_data = self._handle_delete_mode_interaction(
                         x, y, clicked_annotation_point_id, annotations_copy
+                    )
+                elif mode == "translate-all":
+                    self._handle_translate_all_mode_interaction(
+                        x,y
                     )
             elif (
                 interaction_type == "hoverData"

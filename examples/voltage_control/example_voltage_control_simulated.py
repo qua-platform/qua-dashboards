@@ -9,10 +9,10 @@ from qua_dashboards.utils import setup_logging, BasicParameter
 def define_gates_simple():
     """Defines gates using SimpleVoltageSource for demo purposes."""
     return [
-        BasicParameter("vg1", "Gate 1", "V", initial_value=0, delay=0.2),
-        BasicParameter("vg2", "Gate 2", "V", initial_value=np.random.randn(), delay=0.2),
-        BasicParameter("vds", "Drain-Source", "V", initial_value=np.random.randn(), delay=0.2),
-        BasicParameter("vgs", "Gate-Source", "V", initial_value=np.random.randn(), delay=0.2),
+        BasicParameter("vg1", "Gate 1", "V", initial_value=0),
+        BasicParameter("vg2", "Gate 2", "V", initial_value=np.random.randn()),
+        BasicParameter("vds", "Drain-Source", "V", initial_value=np.random.randn()),
+        BasicParameter("vgs", "Gate-Source", "V", initial_value=np.random.randn()),
     ]
 
 
@@ -26,8 +26,8 @@ def get_voltage_control_component(callback=None):
     )
     return voltage_controller
 
-def example_callback(parameter):
-    print("Parameter", parameter.name, "was changed to value", parameter.get_latest())
+def example_callback(parameter, previous_value):
+    print("Parameter", parameter.name, "was changed from value ",previous_value," to value", parameter.get_latest())
 
 def main():
     logger = setup_logging(__name__)

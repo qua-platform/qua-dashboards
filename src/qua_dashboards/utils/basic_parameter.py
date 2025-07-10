@@ -2,24 +2,27 @@ import logging
 import time
 from typing import Callable, Optional, TYPE_CHECKING
 from qua_dashboards.core import ParameterProtocol
+import warnings
+
 
 __all__ = ["BasicParameter"]
 
 
 class BasicParameter:
-    def __init__(self, name:str, label:Optional[str]=None, units:str="V", initial_value:float=0.0, delay:float = 0.0):
+    def __init__(self, name:str, label:Optional[str]=None, unit:str="V", initial_value:float=0.0, units:Optional[str]=None):
         self.name = name
         self.label = label if label is not None else name
         self.latest_value = initial_value
         self._value = initial_value
-        self.unit = units
-        self.delay = delay
+        self.unit = unit
+        if units is not None:
+            logging.warning("The use of parameter 'units' is deprecated. Use 'unit' instead.")
+            self.unit = units
         logging.debug(
             f"{self.name} initialized with value {self.latest_value} {self.unit}"
         )
 
     def get(self):
-        time.sleep(self.delay)  # Simulate delay, used for examples
         self.latest_value = self._value
         logging.debug(f"Getting {self.name}: {self.latest_value} {self.unit}")
         return self.latest_value

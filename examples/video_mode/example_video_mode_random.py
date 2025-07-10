@@ -77,7 +77,7 @@ def get_video_mode_component() -> VideoModeComponent:
         y_axis=y_axis,
         acquire_time=0.03,  # Simulated delay (seconds) for acquiring one raw frame.
         num_software_averages=5,  # Number of raw frames to average for display.
-        acquisition_interval_s=0.1,  # Target time (seconds) between acquiring raw frames.
+        acquisition_interval_s=0.5,  # Target time (seconds) between acquiring raw frames.
     )
 
     # Instantiate the VideoModeComponent.

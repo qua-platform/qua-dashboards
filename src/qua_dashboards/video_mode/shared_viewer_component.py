@@ -257,6 +257,7 @@ class SharedViewerComponent(BaseComponent):
                         f"for key '{data_key}'."
                     )
                     fig_to_display = self._create_figure_from_static_data(data_object,viewer_ui_state_input)
+                    fig_to_display.update_layout(showlegend=False)
                 else:
                     logger.warning(
                         f"SharedViewer ({self.component_id}): Unrecognized data key "

@@ -179,6 +179,9 @@ tmp_file.py
 .venv-simulated
 uv.lock
 
-video_mode_output
-
 settings.json
+# VS Code
+.vscode
+
+# Saved data
+video_mode_output

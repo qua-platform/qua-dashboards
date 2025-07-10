@@ -2,9 +2,6 @@ import logging
 import time
 from typing import Callable, Optional, TYPE_CHECKING
 from qua_dashboards.core import ParameterProtocol
-import warnings
-
-
 __all__ = ["BasicParameter"]
 
 

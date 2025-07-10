@@ -177,11 +177,13 @@ tmp_file.py
 # Virtual environments
 .venv*
 .venv
-.venv*
+.venv-simulated
 uv.lock
 
+settings.json
+# VS Code
 .vscode
 
+# Saved data
 video_mode_output
 
-.vscode

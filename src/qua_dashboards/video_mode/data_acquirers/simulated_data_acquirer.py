@@ -87,7 +87,6 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
         self.m = copy.deepcopy(self.experiment.tunneling_sim.boundaries(self.args_rendering["state_hint_lower_left"]).point_inside)  # Deepcopy needed that self.m does not have the same reference as polytope.point_inside
         logger.debug(f"initial m: {self.m}")
 
-
     def get_voltage_control_component(self, labels = None) -> VoltageControlComponent:
         """ Creates and returns a voltage control component for the simulated data acquirer.
             The voltage values are set to the initial guess for m.
@@ -123,10 +122,27 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
         self.voltage_parameters = voltage_parameters
         self._last_voltage_parameters = copy.deepcopy(voltage_parameters)  # Store the initial voltage parameters
 
+        def callback(parameter, previous_value):
+            logger.info(f"Parameter {parameter.name} was changed from value {previous_value} to value {parameter.get_latest()}")
+            
+            # Update m 
+            self._last_voltage_parameters = copy.deepcopy(self.voltage_parameters)  # Update the last voltage parameters
+            for i in range(len(self.voltage_parameters)):
+                self.m[i] = self.voltage_parameters[i].get_latest() * self.conversion_factor_unit_to_volt
+            logger.info(f"Voltage parameters changed, m updated: {self.m}")
+            # Clear the data history
+            with self._data_lock:  
+                self._data_history_raw.clear()
+                self._latest_processed_data = None  
+            
+            # Set the flag that the plot parameters were changed
+            self._plot_parameters_changed = True  # This will trigger a new simulated image in perform_actual_acquisition()
+
         # Get the VoltageControlComponent
         voltage_controller = VoltageControlComponent(
             component_id="voltage_control",
-            voltage_parameters=voltage_parameters,
+            voltage_parameters=self.voltage_parameters,
+            callback_on_param_change=callback,  # Callback function to handle parameter changes
         )
 
         return voltage_controller
@@ -185,29 +201,9 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
             logger.info(f"First acquisition, initial rendering arguments: {self.args_rendering}")
             generate_simulated_image()
 
-        # Check if voltage parameters changed
-        if (self.voltage_parameters is not None and
-            self._last_voltage_parameters is not None):
-                voltage_parameters_changed = any(
-                    vp.get_latest() != last_vp.get_latest()
-                    for vp, last_vp in zip(self.voltage_parameters, self._last_voltage_parameters)
-                )
-        else:
-            voltage_parameters_changed = False
-
-        # Plot and/or voltage parameters changed
-        if voltage_parameters_changed or self._plot_parameters_changed:
-            if self._plot_parameters_changed:
-                self._plot_parameters_changed = False  # Do this here to PREVENT race conditions! It takes long to simulate the new image, and every change of plotting parameters would lead to race conditions.
-            if voltage_parameters_changed:
-                self._last_voltage_parameters = copy.deepcopy(self.voltage_parameters)  # Update the last voltage parameters
-                for i in range(len(self.voltage_parameters)):
-                    self.m[i] = self.voltage_parameters[i].get_latest() * self.conversion_factor_unit_to_volt
-                logger.info(f"Voltage parameters changed, m updated: {self.m}")
-                # Clear the data history
-                with self._data_lock:  
-                    self._data_history_raw.clear()
-                    self._latest_processed_data = None                
+        # Plot parameters changed (points, span, voltage parameters, etc.)
+        if self._plot_parameters_changed:
+            self._plot_parameters_changed = False # Do this here to PREVENT race conditions! It takes long to simulate the new image, and every change of plotting parameters would lead to race conditions.
             generate_simulated_image()
         
         else:

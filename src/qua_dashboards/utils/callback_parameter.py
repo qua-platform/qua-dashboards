@@ -40,7 +40,7 @@ class CallbackParameter:
     def set(self, value: float) -> None:
         old_value = self.parameter.get_latest()
         self.parameter.set(value)
-        self.callback(self.parameter,old_value)
+        self.callback(self.parameter,old_value)  # Calls the callback with the parameter and the old value every time set() is called!
         
 if TYPE_CHECKING:
     def check(parameter: ParameterProtocol, callback_on_set: Callable[[ParameterProtocol], None]):

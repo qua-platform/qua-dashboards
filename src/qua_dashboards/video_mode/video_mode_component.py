@@ -774,7 +774,6 @@ class VideoModeComponent_with_GateSet(VideoModeComponent):
         def _update_x_header(new_gate):
             return new_gate.upper()
 
-        # update the Y-axis card header when the Y dropdown changes
         @app.callback(
             # Output(self.data_acquirer.y_axis._get_id("header"), "children"),
             Output(f"{self.data_acquirer.y_axis.component_id}-header-text", "children"),
@@ -811,7 +810,7 @@ class VideoModeComponent_with_GateSet(VideoModeComponent):
             if not n_clicks:
                 raise PreventUpdate
             try:
-                self.machine.save()   # Or self.machine.save() if it's an attribute!
+                self.machine.save() 
                 message = "QUAM state successfully saved."
                 color = "success"
                 print(message)

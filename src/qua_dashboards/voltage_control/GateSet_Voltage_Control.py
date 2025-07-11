@@ -10,7 +10,6 @@ class GateSetControl(BaseUpdatableComponent):
         self.gateset = gateset
 
     def get_layout(self):
-        # build one input per channel
         inputs = []
         current = self.gateset.get_voltages()
         for ch in self.gateset.channels:
@@ -29,7 +28,6 @@ class GateSetControl(BaseUpdatableComponent):
                 ], className="mb-2")
             )
 
-        # Apply button + hidden Store
         return html.Div([
             dbc.Card([
                 dbc.CardHeader("Gate Voltages"),
@@ -41,7 +39,6 @@ class GateSetControl(BaseUpdatableComponent):
         ])
 
     def register_callbacks(self, app: dash.Dash):
-        # on Apply click, read all inputs and call apply_voltages
         states = [
             State(self._get_id(f"voltage-{ch}"), "value")
             for ch in self.gateset.channels
@@ -53,7 +50,6 @@ class GateSetControl(BaseUpdatableComponent):
             prevent_initial_call=True,
         )
         def _on_apply(n_clicks, *vals):
-            # map channel names → values
             volt_dict = {
                 ch: v for ch, v in zip(self.gateset.channels, vals)
             }

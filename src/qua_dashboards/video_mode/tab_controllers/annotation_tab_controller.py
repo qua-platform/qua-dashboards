@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 import re
 
 import dash
@@ -75,6 +75,7 @@ class AnnotationTabController(BaseTabController):
     _IMPORT_LIVE_FRAME_BUTTON_SUFFIX = "import-live-frame-button"
     _LOAD_FROM_DISK_BUTTON_SUFFIX = "load-from-disk-button"
     _LOAD_FROM_DISK_INPUT_SUFFIX = "load-from-disk-input"
+    _SHOW_LABELS_CHECKLIST_SUFFIX = "show-labels-checklist"
 
     def __init__(
         self,
@@ -102,6 +103,11 @@ class AnnotationTabController(BaseTabController):
         self._selected_indices_for_line: List[str] = []
         self._next_point_id_counter: int = 0  # Reset when new base_image is loaded
         self._next_line_id_counter: int = 0  # Reset when new base_image is loaded
+        self._translate_all: Optional[Dict[str, Any]] = {
+            "translate": False,
+            "clicked_point": None,
+        }
+        self._show_labels = ['points']
 
         logger.info(f"AnnotationTabController '{self.component_id}' initialized.")
 
@@ -156,15 +162,21 @@ class AnnotationTabController(BaseTabController):
         self._selected_indices_for_line = []
         self._next_point_id_counter = 0
         self._next_line_id_counter = 0
+        self._translate_all = {"translate": False, "clicked_point_x": None, "clicked_point_y": None}
         logger.debug(f"{self.component_id}: Transient annotation state reset.")
 
     def get_layout(self) -> html.Div:
         """Generates the Dash layout for the Annotation tab."""
         logger.debug(f"Generating layout for {self.component_id}")
+        checklist_options = [
+            {"label": "point labels", "value": "points"},  # For point labels
+            #{"label": "line labels", "value": "lines"},   # If we also want to introduce line labels            
+        ]
         radio_options = [
             {"label": "Add/Move Points", "value": "point"},
             {"label": "Add Lines", "value": "line"},
             {"label": "Delete", "value": "delete"},
+            {"label": "Translate all points and lines", "value": "translate-all"},
         ]
 
         controls_layout = dbc.CardBody(
@@ -206,6 +218,14 @@ class AnnotationTabController(BaseTabController):
                     className="g-2 mb-2",
                 ),
                 html.Hr(),
+                html.H6("Show labels"),
+                dbc.Checklist(
+                    id=self._get_id(self._SHOW_LABELS_CHECKLIST_SUFFIX),
+                    options = checklist_options,
+                    value = ["points"],
+                    className="mb-3 me-2",
+                ),
+                html.Hr(),                
                 dbc.RadioItems(
                     id=self._get_id(self._MODE_SELECTOR_SUFFIX),
                     options=radio_options,
@@ -292,10 +312,16 @@ class AnnotationTabController(BaseTabController):
             "key": data_registry.STATIC_DATA_KEY,
             "version": current_version,
         }
+        viewer_ui_state_store_payload = {
+            "selected_point_to_move": self._selected_point_to_move["point_id"],
+            "selected_point_for_line": self._selected_indices_for_line,
+            "show_labels": self._show_labels,
+        }
         layout_config_payload = {"clickmode": "event+select"}
 
         return {
             VideoModeComponent.VIEWER_DATA_STORE_SUFFIX: viewer_data_store_payload,
+            VideoModeComponent.VIEWER_UI_STATE_STORE_SUFFIX: viewer_ui_state_store_payload,
             VideoModeComponent.VIEWER_LAYOUT_CONFIG_STORE_SUFFIX: layout_config_payload,
         }
 
@@ -375,35 +401,72 @@ class AnnotationTabController(BaseTabController):
         viewer_data_store_id = orchestrator_stores[
             VideoModeComponent.VIEWER_DATA_STORE_SUFFIX
         ]
+        viewer_ui_state_store_id = orchestrator_stores[
+            VideoModeComponent.VIEWER_UI_STATE_STORE_SUFFIX
+        ]
         self._register_import_live_frame_callback(
-            app, latest_processed_data_store_id, viewer_data_store_id
+            app, latest_processed_data_store_id, viewer_data_store_id, viewer_ui_state_store_id
         )
         self._register_graph_interaction_callback(
-            app, shared_viewer_graph_id, viewer_data_store_id
+            app, shared_viewer_graph_id, viewer_data_store_id, viewer_ui_state_store_id
         )
-        self._register_clear_annotations_callback(app, viewer_data_store_id)
+        self._register_clear_annotations_callback(
+            app, viewer_data_store_id, viewer_ui_state_store_id
+        )
         self._register_load_from_disk_callback(
-            app, viewer_data_store_id, orchestrator_stores
+            app, viewer_data_store_id, orchestrator_stores, viewer_ui_state_store_id
         )
-        self._register_analysis_callback(app, viewer_data_store_id)
+        self._register_analysis_callback(
+            app, viewer_data_store_id
+        )
+        self._register_mode_change(
+            app, viewer_ui_state_store_id
+        )
+
+    def _register_mode_change(
+            self,
+            app:Dash,
+            viewer_ui_state_store_id: Dict[str, Any],
+    ) -> None:
+        """Callback to reset all selected points when changing the mode"""
+
+        @app.callback(
+            Output(viewer_ui_state_store_id, "data", allow_duplicate=True),
+            Input(self._get_id(self._MODE_SELECTOR_SUFFIX), "value"),
+            prevent_initial_call = True,
+        )
+        def _mode_change(
+            mode: str,
+        ) -> Dict[str, Any]:
+            # NOT self._reset_transient_state(), otherwise labels are reset!
+            self._selected_point_to_move = {"is_moving": False, "point_id": None}
+            self._selected_indices_for_line = []
+            viewer_ui_state_store_payload = {
+                "selected_point_to_move": self._selected_point_to_move["point_id"],
+                "selected_point_for_line": self._selected_indices_for_line,
+                "show_labels": self._show_labels,
+            }
+            return viewer_ui_state_store_payload
 
     def _register_import_live_frame_callback(
         self,
         app: Dash,
         latest_processed_data_store_id: Dict[str, str],
-        viewer_data_store_output_id: Dict[str, str],
+        viewer_data_store_id: Dict[str, str],
+        viewer_ui_state_store_id: Dict[str, Any],
     ) -> None:
         """Callback to import the current live frame as a static snapshot."""
 
         @app.callback(
-            Output(viewer_data_store_output_id, "data"),
+            Output(viewer_data_store_id, "data"),
+            Output(viewer_ui_state_store_id, "data"),
             Input(self._get_id(self._IMPORT_LIVE_FRAME_BUTTON_SUFFIX), "n_clicks"),
             State(latest_processed_data_store_id, "data"),
             prevent_initial_call=True,
         )
         def _import_live_frame(
             n_clicks: int, live_data_ref: Optional[Dict[str, Any]]
-        ) -> Dict[str, Any]:
+        ) -> Tuple[Dict[str, Any],Dict[str, Any]]:
             if live_data_ref is None:
                 logger.warning("Import Live Frame: No live data reference found.")
                 raise PreventUpdate
@@ -422,12 +485,18 @@ class AnnotationTabController(BaseTabController):
                 data_registry.STATIC_DATA_KEY, new_static_object
             )
             self._reset_transient_state()
+            viewer_ui_state_store_payload = {
+                "selected_point_to_move": self._selected_point_to_move["point_id"],
+                "selected_point_for_line": self._selected_indices_for_line,
+                "show_labels": self._show_labels,
+            }
+
             self._update_click_tolerance(base_image_data=base_image)
 
             logger.info(
                 f"{self.component_id}: Imported live frame. New static data version: {new_version}"
             )
-            return {"key": data_registry.STATIC_DATA_KEY, "version": new_version}
+            return {"key": data_registry.STATIC_DATA_KEY, "version": new_version}, viewer_ui_state_store_payload
 
     def _handle_point_mode_interaction(
         self,
@@ -547,6 +616,26 @@ class AnnotationTabController(BaseTabController):
                 if len(current_annotations["lines"]) < original_len:
                     changed = True
         return changed
+    
+    def _handle_translate_all_mode_interaction(
+            self,
+            x: float,
+            y: float,
+    ) -> None:
+        """Handles graph interactions for 'translate all' mode. """
+        # After first click: True (turn translation mode on); after second click: False (turn translation mode off)
+        self._translate_all['translate'] = not self._translate_all['translate']
+
+        # Add the clicked point when translation mode is turned on
+        if self._translate_all['translate'] == True:
+            self._translate_all['clicked_point_x'] = x
+            self._translate_all['clicked_point_y'] = y
+        # Remove the clicked point when translation mode is turned off
+        else: 
+            self._translate_all['clicked_point_x'] = None
+            self._translate_all['clicked_point_y'] = None
+        logging.debug(f'_translate_all: {self._translate_all}')
+        return
 
     def _handle_hover_interaction(
         self,
@@ -555,32 +644,57 @@ class AnnotationTabController(BaseTabController):
         current_annotations: Dict[str, List[Dict[str, Any]]],
     ) -> bool:
         """Handles graph hover for 'point' move. Modifies current_annotations. Returns True if changed."""
-        if not (
-            mode == "point"
-            and self._selected_point_to_move.get("is_moving")
-            and self._selected_point_to_move.get("point_id") is not None
+        if not(
+            (
+                mode == "point"
+                and self._selected_point_to_move.get("is_moving")
+                and self._selected_point_to_move.get("point_id") is not None
+            )
+            or
+            (
+                mode=="translate-all"
+                and self._translate_all["translate"] == True
+            )
         ):
             return False
 
         points_list = current_annotations["points"]
-        point_id_to_move = self._selected_point_to_move["point_id"]
+        hover_point_info = hover_data["points"][0]
         changed = False
 
-        hover_point_info = hover_data["points"][0]
-        is_hover_on_annotation = hover_point_info.get(
-            "curveNumber", 0
-        ) > 0 and hover_point_info.get("name", "").startswith("annotations_")
+        if mode == "point":
+            point_id_to_move = self._selected_point_to_move["point_id"]
 
-        if not is_hover_on_annotation:  # Only move if hovering over the base heatmap
+            is_hover_on_annotation = hover_point_info.get(
+                "curveNumber", 0
+            ) > 0 and hover_point_info.get("name", "").startswith("annotations_")
+            
+            if not is_hover_on_annotation:  # Only move if hovering over the base heatmap
+                x_hover, y_hover = hover_point_info["x"], hover_point_info["y"]
+                for point in points_list:
+                    if point["id"] == point_id_to_move:
+                        if point["x"] != x_hover or point["y"] != y_hover:
+                            point["x"], point["y"] = x_hover, y_hover
+                            changed = True
+                        break
+                else:  # Point to move not found (e.g., deleted mid-drag)
+                    self._selected_point_to_move = {"is_moving": False, "point_id": None}
+        
+        elif mode == "translate-all":
+            # Compute the direction vector (hover point - clicked point)
             x_hover, y_hover = hover_point_info["x"], hover_point_info["y"]
+            x_clicked, y_clicked = self._translate_all["clicked_point_x"], self._translate_all["clicked_point_y"]
+            dx, dy = x_hover - x_clicked, y_hover - y_clicked
+
+            # Update the current annotations: Current coordinates + direction vector
             for point in points_list:
-                if point["id"] == point_id_to_move:
-                    if point["x"] != x_hover or point["y"] != y_hover:
-                        point["x"], point["y"] = x_hover, y_hover
-                        changed = True
-                    break
-            else:  # Point to move not found (e.g., deleted mid-drag)
-                self._selected_point_to_move = {"is_moving": False, "point_id": None}
+                point["x"], point["y"] = point["x"] + dx, point["y"] + dy
+                changed = True
+
+            # Update the clicked point
+            x_clicked, y_clicked = x_clicked + dx, y_clicked + dy
+            self._translate_all["clicked_point_x"], self._translate_all["clicked_point_y"] = x_clicked, y_clicked
+
         return changed
 
     def _register_graph_interaction_callback(
@@ -588,13 +702,16 @@ class AnnotationTabController(BaseTabController):
         app: Dash,
         shared_viewer_graph_id: Dict[str, str],
         viewer_data_store_id: Dict[str, str],
+        viewer_ui_state_store_id: Dict[str, Any],
     ) -> None:
         """Callback to handle user interactions with the graph (clicks, hovers)."""
 
         @app.callback(
             Output(viewer_data_store_id, "data", allow_duplicate=True),
+            Output(viewer_ui_state_store_id, "data", allow_duplicate=True),
             Input(shared_viewer_graph_id, "clickData"),
             Input(shared_viewer_graph_id, "hoverData"),
+            Input(self._get_id(self._SHOW_LABELS_CHECKLIST_SUFFIX), "value"),
             State(self._get_id(self._MODE_SELECTOR_SUFFIX), "value"),
             State(viewer_data_store_id, "data"),  # Get current key and version
             prevent_initial_call=True,
@@ -602,9 +719,10 @@ class AnnotationTabController(BaseTabController):
         def _handle_graph_interactions(
             click_data: Optional[Dict[str, Any]],
             hover_data: Optional[Dict[str, Any]],
+            labels_list: List[str],
             mode: str,
             current_viewer_data_ref: Optional[Dict[str, str]],
-        ) -> Dict[str, Any]:
+        ) -> Tuple[Dict[str, Any],Dict[str, Any]]:
             if not self.is_active:
                 raise PreventUpdate
             elif (
@@ -668,6 +786,10 @@ class AnnotationTabController(BaseTabController):
                     interaction_changed_data = self._handle_delete_mode_interaction(
                         x, y, clicked_annotation_point_id, annotations_copy
                     )
+                elif mode == "translate-all":
+                    self._handle_translate_all_mode_interaction(
+                        x,y
+                    )
             elif (
                 interaction_type == "hoverData"
                 and hover_data
@@ -676,6 +798,18 @@ class AnnotationTabController(BaseTabController):
                 interaction_changed_data = self._handle_hover_interaction(
                     hover_data, mode, annotations_copy
                 )
+            elif (
+                interaction_type == "value"  # Checklist for showing labels
+            ):
+                self._show_labels = labels_list
+                logging.info(f"Callback triggered by checklist. Show labels: {self._show_labels}")
+
+            # Potential improvement: Only update viewer_ui_state_store_payload, if there are changes.
+            viewer_ui_state_store_payload = {
+                "selected_point_to_move": self._selected_point_to_move["point_id"],
+                "selected_point_for_line": self._selected_indices_for_line,
+                "show_labels": self._show_labels,
+            }
 
             if interaction_changed_data:
                 new_static_data_object = {
@@ -694,25 +828,31 @@ class AnnotationTabController(BaseTabController):
                 logger.debug(
                     f"{self.component_id}: Annotations updated. New version: {new_version}"
                 )
-                return {"key": data_registry.STATIC_DATA_KEY, "version": new_version}
+                return {"key": data_registry.STATIC_DATA_KEY, "version": new_version}, viewer_ui_state_store_payload
 
-            logger.debug("No changes to annotations, raising PreventUpdate")
-            raise PreventUpdate
+            else:
+                logger.debug("No changes to annotations") #, raising PreventUpdate")
+                #raise PreventUpdate
+                return dash.no_update, viewer_ui_state_store_payload
 
     def _register_clear_annotations_callback(
-        self, app: Dash, viewer_data_store_id: Dict[str, str]
+        self, 
+        app: Dash, 
+        viewer_data_store_id: Dict[str, str], 
+        viewer_ui_state_store_id: Dict[str, Any],
     ) -> None:
         """Callback to clear all current annotations."""
 
         @app.callback(
             Output(viewer_data_store_id, "data", allow_duplicate=True),
+            Output(viewer_ui_state_store_id, "data", allow_duplicate=True),
             Input(self._get_id(self._CLEAR_BUTTON_SUFFIX), "n_clicks"),
             State(viewer_data_store_id, "data"),
             prevent_initial_call=True,
         )
         def _clear_annotations(
             _n_clicks: int, current_viewer_data_ref: Optional[Dict[str, str]]
-        ) -> Dict[str, Any]:
+        ) -> Tuple[Dict[str, Any],Dict[str, Any]]:
             if (
                 not current_viewer_data_ref
                 or current_viewer_data_ref.get("key") != data_registry.STATIC_DATA_KEY
@@ -736,11 +876,16 @@ class AnnotationTabController(BaseTabController):
                 data_registry.STATIC_DATA_KEY, cleared_static_object
             )
             self._reset_transient_state()  # Also reset point/line ID counters
+            viewer_ui_state_store_payload = {
+                "selected_point_to_move": self._selected_point_to_move["point_id"],
+                "selected_point_for_line": self._selected_indices_for_line,
+                "show_labels": self._show_labels,
+            }
 
             logger.info(
                 f"{self.component_id}: Cleared annotations. New version: {new_version}"
             )
-            return {"key": data_registry.STATIC_DATA_KEY, "version": new_version}
+            return {"key": data_registry.STATIC_DATA_KEY, "version": new_version}, viewer_ui_state_store_payload
 
     def _register_analysis_callback(
         self, app: Dash, viewer_data_store_id: Dict[str, str]
@@ -777,6 +922,7 @@ class AnnotationTabController(BaseTabController):
         app: Dash,
         viewer_data_store_id: Dict[str, str],
         orchestrator_stores: Dict[str, Any],
+        viewer_ui_state_store_id: Dict[str, Any],
     ) -> None:
         from qua_dashboards.video_mode.video_mode_component import VideoModeComponent
 
@@ -786,6 +932,7 @@ class AnnotationTabController(BaseTabController):
 
         @app.callback(
             Output(viewer_data_store_id, "data", allow_duplicate=True),
+            Output(viewer_ui_state_store_id, "data", allow_duplicate=True),
             Output(main_status_alert_id, "children", allow_duplicate=True),
             Input(self._get_id(self._LOAD_FROM_DISK_BUTTON_SUFFIX), "n_clicks"),
             State(self._get_id(self._LOAD_FROM_DISK_INPUT_SUFFIX), "value"),
@@ -809,6 +956,12 @@ class AnnotationTabController(BaseTabController):
                 raise PreventUpdate
             new_version = data_registry.set_data(data_registry.STATIC_DATA_KEY, data)
             self._reset_transient_state()
+            viewer_ui_state_store_payload = {
+                "selected_point_to_move": self._selected_point_to_move["point_id"],
+                "selected_point_for_line": self._selected_indices_for_line,
+                "show_labels": self._show_labels,
+            }
+
             if data.get("base_image_data") is not None:
                 self._update_click_tolerance(base_image_data=data["base_image_data"])
             self._next_point_id_counter = len(
@@ -819,6 +972,7 @@ class AnnotationTabController(BaseTabController):
             )
             return (
                 {"key": data_registry.STATIC_DATA_KEY, "version": new_version},
+                viewer_ui_state_store_payload,
                 dbc.Alert(
                     f"Successfully loaded data for idx '{idx}'.",
                     color="success",

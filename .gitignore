@@ -175,6 +175,7 @@ tempCodeRunnerFile*
 tmp_file.py
 
 # Virtual environments
+.venv*
 .venv
 .venv-simulated
 uv.lock
@@ -185,3 +186,4 @@ settings.json
 
 # Saved data
 video_mode_output
+

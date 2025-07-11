@@ -17,6 +17,7 @@ class ModifiedFlags(Flag):
     PARAMETERS_MODIFIED = auto()
     PROGRAM_MODIFIED = auto()
     CONFIG_MODIFIED = auto()
+    PLOT_PARAMETERS_MODIFIED = auto()
 
 
 class BaseUpdatableComponent(BaseComponent, ABC):

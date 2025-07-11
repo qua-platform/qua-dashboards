@@ -37,7 +37,6 @@ class GateSetControl(BaseUpdatableComponent):
                     dbc.Button("Apply", id=self._get_id("apply"), color="primary"),
                 ])
             ]),
-            # ← this Store satisfies the callback Output
             dcc.Store(id=self._get_id("store"))
         ])
 
@@ -48,7 +47,7 @@ class GateSetControl(BaseUpdatableComponent):
             for ch in self.gateset.channels
         ]
         @app.callback(
-            Output(self._get_id("store"), "data"),           # ← must exist in layout
+            Output(self._get_id("store"), "data"), 
             Input(self._get_id("apply"), "n_clicks"),
             *states,
             prevent_initial_call=True,

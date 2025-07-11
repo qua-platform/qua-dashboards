@@ -240,7 +240,6 @@ app = build_dashboard(
 )
 
 #Live updating code for the Virtual Gating UI
-
 app.layout.children.append(dcc.Store(id="vg-layer-refresh-trigger", data=0))
 app.layout.children.append(
     html.Div(id="VG_MANAGER_CONTAINER", children=virtual_layer_editor.get_layout()))

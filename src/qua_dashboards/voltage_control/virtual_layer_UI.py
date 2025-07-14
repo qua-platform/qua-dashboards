@@ -154,6 +154,30 @@ class VirtualLayerManager(BaseComponent):
         self.gateset = gateset
         self.component_id = component_id
     
+    def _render_matrix_editor(self, layer_idx):
+        layer = self.gateset.layers[layer_idx]
+        N = len(layer.source_gates)
+        header = [dbc.Col("", width=2)] + [
+            dbc.Col(html.B(name), width=2) for name in layer.source_gates
+        ]
+        rows = []
+        for i, row_name in enumerate(layer.target_gates):
+            row = [dbc.Col(html.B(row_name), width=2)]
+            for j in range(N):
+                row.append(
+                    dbc.Col(
+                        dcc.Input(
+                            id={"type": "edit-matrix-cell", "layer": layer_idx, "row": i, "col": j},
+                            type="number",
+                            value=layer.matrix[i][j],
+                        ),
+                        width=2,
+                    )
+                )
+            rows.append(dbc.Row(row, className="mb-1"))
+        return html.Div([dbc.Row(header, className="mb-2"), *rows])
+
+
     def get_layout(self):
         layers = [layer for layer in self.gateset.layers]
 
@@ -170,7 +194,27 @@ class VirtualLayerManager(BaseComponent):
                     clearable = False
                 ),
                 html.Div(id = f"{self.component_id}-layer-matrix-editor"),
-                dbc.Button("Apply Changes", id=f"{self.component_id}-apply-edit", color="primary", className="mt-2"),
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            dbc.Button(
+                                "Apply Changes",
+                                id=f"{self.component_id}-apply-edit",
+                                color="primary",
+                                className="mt-2 w-100",
+                            )
+                        ),
+                        dbc.Col(
+                            dbc.Button(
+                                "Reset to Identity",
+                                id=f"{self.component_id}-identity-reset",
+                                color="secondary",
+                                className="mt-2 w-100",
+                            )
+                        ),
+                    ],
+                    className="g-2",
+                ),                
                 html.Div(id=f"{self.component_id}-edit-output", style={"display": "none"})
             ])
         ])
@@ -185,29 +229,9 @@ class VirtualLayerManager(BaseComponent):
         def show_selected_layer(layer_idx):
             if layer_idx is None: 
                 return "No Layer Selected"
-            layer = self.gateset.layers[layer_idx]
-            N = len(layer.source_gates)
+            
+            return self._render_matrix_editor(layer_idx)
 
-            header = [dbc.Col("", width=2)] + [dbc.Col(html.B(name), width=2) for name in layer.source_gates]
-            rows = []
-            for i, row_name in enumerate(layer.target_gates):
-                row = [dbc.Col(html.B(row_name), width=2)]
-                for j in range(N):
-                    row.append(dbc.Col(
-                        dcc.Input(
-                            id={'type': 'edit-matrix-cell', 'layer': layer_idx, 'row': i, 'col': j},
-                            type='number',
-                            value=layer.matrix[i][j]
-                        ),
-                        width=2
-                    ))
-                rows.append(dbc.Row(row))
-
-            return html.Div([
-                dbc.Row(header, className="mb-2"),
-                *rows
-            ])
-        
 
         @app.callback(
             Output(f"{self.component_id}-edit-output", "children"),
@@ -225,3 +249,40 @@ class VirtualLayerManager(BaseComponent):
             M = np.reshape(np.array(matrix_flat), (length, length)).tolist()
             layer.matrix = M
             return "Updated!"
+        
+        # @app.callback(
+        #     Output(f"{self.component_id}-layer-matrix-editor", "children", allow_duplicate=True),
+        #     Input(f"{self.component_id}-identity-reset", "n_clicks"),
+        #     State(f"{self.component_id}-layer-dropdown", "value"),
+        #     prevent_initial_call=True,
+        # )
+        # def _reset_to_identity(n_clicks, layer_idx):
+        #     if not n_clicks:
+        #         raise PreventUpdate
+        #     layer = self.gateset.layers[layer_idx]
+        #     N = len(layer.source_gates)
+        #     layer.matrix = np.eye(N).tolist()
+        #     return self._render_matrix_editor(layer_idx)
+  
+
+        @app.callback(
+            # one Output per cell input, matching the same ALL selector you used for apply
+            Output({'type': 'edit-matrix-cell', 'layer': ALL, 'row': ALL, 'col': ALL}, 'value'),
+            Input(f"{self.component_id}-identity-reset", 'n_clicks'),
+            State(f"{self.component_id}-layer-dropdown", 'value'),
+            prevent_initial_call=True
+        )
+        def _reset_to_identity(n_clicks, layer_idx):
+            if not n_clicks or layer_idx is None:
+                raise PreventUpdate
+            layer = self.gateset.layers[layer_idx]
+            N = len(layer.source_gates)
+
+            # build a flat list of identity entries:
+            flat_id = []
+            for i in range(N):
+                for j in range(N):
+                    flat_id.append(1.0 if i == j else 0.0)
+
+            # return that list as the new .value for each matching input
+            return flat_id

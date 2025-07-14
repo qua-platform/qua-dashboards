@@ -121,15 +121,23 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
             try:
                 raw_snapshot = self.perform_actual_acquisition()
 
+                # with self._data_lock:
+                #     self._data_history_raw.append(raw_snapshot)
+                #     if len(self._data_history_raw) > self.num_software_averages:
+                #         self._data_history_raw.pop(0)
+
+                #     if self._data_history_raw:
+                #         self._latest_processed_data = self._perform_averaging(
+                #             self._data_history_raw
+                #         )
+
                 with self._data_lock:
                     self._data_history_raw.append(raw_snapshot)
-                    if len(self._data_history_raw) > self.num_software_averages:
-                        self._data_history_raw.pop(0)
-
-                    if self._data_history_raw:
-                        self._latest_processed_data = self._perform_averaging(
-                            self._data_history_raw
-                        )
+                    self._latest_processed_data = self._perform_averaging(
+                        self._data_history_raw
+                    )
+                    if len(self._data_history_raw) >= self.num_software_averages:
+                        self._data_history_raw.clear()
 
                 try:  # Clear any previous error from the queue if successful this cycle
                     while not self._error_queue.empty():

@@ -1,6 +1,6 @@
 import logging
 from typing import Any, Dict, List, Optional, Tuple
-
+from plotly import graph_objs as go
 import dash_bootstrap_components as dbc
 from qua_dashboards.core import BaseUpdatableComponent, ModifiedFlags
 
@@ -743,8 +743,8 @@ class VideoModeComponent_with_GateSet(VideoModeComponent):
         def update_sweep_channels(selected):
             if selected is None:
                 raise exceptions.PreventUpdate
-            self.inner_loop_action.x_elem = self.gateset.channels[selected["x"]]
-            self.inner_loop_action.y_elem = self.gateset.channels[selected["y"]]
+            self.inner_loop_action.x_elem = selected["x"]
+            self.inner_loop_action.y_elem = selected["y"]
             return ""
 
         @app.callback(

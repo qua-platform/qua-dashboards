@@ -21,9 +21,9 @@ class GateSetControl(BaseUpdatableComponent):
                             id=self._get_id(f"voltage-{ch}"),
                             type="number",
                             value=current[ch],
-                            min=-5, max=5, step=0.001,
+                            min=-5, max=5, step=0.0001,
                         ),
-                        width=4
+                        width=10
                     ),
                 ], className="mb-2")
             )

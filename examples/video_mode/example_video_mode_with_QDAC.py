@@ -120,8 +120,8 @@ machine.channels['ch3'] = QdacOpxChannel(
     operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
     couplings = {'Plunger1': 0.15, 'Plunger2': 0.25, 'Sensor1': 0.2}
 )
-
-readout_pulse = pulses.SquareReadoutPulse(id="readout", length=1000, amplitude=0.1)
+length = 100
+readout_pulse = pulses.SquareReadoutPulse(id="readout", length=length, amplitude=0.1)
 # Define the readout pulse and the channel used for measurement
 machine.channels["ch1_readout"] = QdacOpxReadout(
     id = 'Sensor1', 
@@ -132,7 +132,7 @@ machine.channels["ch1_readout"] = QdacOpxReadout(
     opx_input=("con1", lffem1, 1),  # Input for acquiring the measurement signal
     intermediate_frequency=200e6,  # Set IF for the readout channel
     operations={"readout": readout_pulse, 
-                "step": pulses.SquarePulse(amplitude=0.1, length=1000)},
+                "step": pulses.SquarePulse(amplitude=0.1, length=length)},
     time_of_flight=32,  
     couplings = {'Plunger1': 0.1, 'Plunger2': 0.15, 'Plunger3': 0.2}
 )
@@ -224,7 +224,7 @@ data_acquirer = OPXQDACDataAcquirer(
 
 video_mode_component = VideoModeComponent_with_GateSet(
     data_acquirer=data_acquirer,
-    data_polling_interval_s=0.5, 
+    data_polling_interval_s=0.2, 
     gateset=machine.gate_set,
     inner_loop_action=inner_loop_action,
     machine = machine

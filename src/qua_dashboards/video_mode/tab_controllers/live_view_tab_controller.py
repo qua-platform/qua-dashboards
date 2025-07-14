@@ -5,7 +5,7 @@ from typing import Any, Dict, Union
 
 import dash_bootstrap_components as dbc
 import dash
-from dash import Dash, Input, Output, State, html, ctx, ALL
+from dash import Dash, Input, Output, State, html, ctx, ALL, dcc
 
 from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import (
     BaseDataAcquirer,
@@ -15,6 +15,7 @@ from qua_dashboards.video_mode.tab_controllers.base_tab_controller import (
     BaseTabController,
 )
 from qua_dashboards.video_mode import data_registry
+import plotly.graph_objs as go
 
 
 logger = logging.getLogger(__name__)
@@ -90,23 +91,32 @@ class LiveViewTabController(BaseTabController):
                     width=8,  # Adjusted width
                 ),
                 dbc.Col(
-                    html.Div(
-                        dbc.Badge(
-                            "STOPPED",  # Initial status text
-                            id=self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX),
-                            color="secondary",  # Initial color for STOPPED
-                            className="ms-1 p-2",  # Added padding
-                            style={
-                                "fontSize": "0.9rem",
-                                "width": "100%",
-                                "textAlign": "center",
-                            },
+                    [
+                        html.Div(
+                            dbc.Badge(
+                                "STOPPED",
+                                id=self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX),
+                                color="secondary",
+                                className="ms-1 p-2",
+                                style={"fontSize": "0.9rem", "width": "100%", "textAlign": "center"},
+                            ),
+                            className="d-flex align-items-center justify-content-center h-100",
                         ),
-                        className=(
-                            "d-flex align-items-center justify-content-center h-100"
+                        html.Div(
+                            [
+                                html.Label("(0,0)"),
+                                dcc.Checklist(
+                                    id=self._get_id("center-marker-toggle"),
+                                    options=[{"label": "", "value": "on"}],
+                                    value=[],
+                                    inline=True,
+                                    inputStyle={"margin": "0 5px 0 0"},
+                                ),
+                            ],
+                            className="mt-2",
                         ),
-                    ),
-                    width=4,  # Adjusted width
+                    ],
+                    width=4,
                 ),
             ],
             className="mb-3 align-items-center",
@@ -198,6 +208,34 @@ class LiveViewTabController(BaseTabController):
         )
         self._register_acquisition_control_callback(app, orchestrator_stores)
         self._register_parameter_update_callback(app)
+
+        @app.callback(
+            Output(shared_viewer_store_ids["viewer_layout_config_store"], "data"),
+            Input(self._get_id("center-marker-toggle"), "value"),
+            State(shared_viewer_store_ids["viewer_layout_config_store"], "data"),
+            prevent_initial_call=True,
+        )
+        def _toggle_center_marker(toggle_val, existing_layout):
+            layout = existing_layout or {}
+            show = "on" in toggle_val
+
+            # remove any old center‐marker
+            shapes = [s for s in layout.get("shapes", []) if s.get("name") != "center"]
+            if show:
+                shapes.append({
+                    "type": "circle",
+                    "xref": "x", "yref": "y",
+                    "x0": -0.005, "y0": -0.005,
+                    "x1":  0.005, "y1":  0.005,
+                    "fillcolor": "red",
+                    "opacity": 0.8,
+                    "line": {"width": 0},
+                    "layer": "above",
+                    "name": "center",
+                })
+            layout["shapes"] = shapes
+            return layout
+
 
     def _register_acquisition_control_callback(
         self, app: Dash, orchestrator_stores: Dict[str, Any]

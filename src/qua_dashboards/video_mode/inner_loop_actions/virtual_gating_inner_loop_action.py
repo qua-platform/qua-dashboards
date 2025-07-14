@@ -107,27 +107,19 @@ class VirtualGateInnerLoopAction(InnerLoopAction):
     
 
     def set_dc_offsets(self, x: QuaVariableFloat, y: QuaVariableFloat):
-        def resolve_through_layers(gate_name:str)->str:
-            for layer in reversed(self.gateset.layers):
-                if gate_name in layer.target_gates:
-                    idx = layer.target_gates.index(gate_name)
-                    gate_name = layer.source_gates[idx]
-            return gate_name
-        # if self.gateset.layers:
-        x_phys = resolve_through_layers(self.x_elem.name)
-        y_phys = resolve_through_layers(self.y_elem.name)
-        levels = {x_phys: x, y_phys:y}
+        x_name = getattr(self.x_elem, "name", self.x_elem)
+        y_name = getattr(self.y_elem, "name", self.y_elem)
+        levels = {x_name: x, y_name:y}
+
         # else: 
         #     levels = {self.x_elem.name : x, self.y_elem.name: y}
-
-        
         if self.ramp_rate > 0:
-            if getattr(self.x_elem, "sticky", None) is None:
-                raise RuntimeError("Ramp rate is not supported for non-sticky elements")
-            if getattr(self.y_elem, "sticky", None) is None:
-                raise RuntimeError("Ramp rate is not supported for non-sticky elements")
-            #raise NotImplementedError('Please set ramp_rate to 0 and use a low OPX span')
-            self.perform_ramp(levels=levels)
+            # if getattr(self.x_elem, "sticky", None) is None:
+            #     raise RuntimeError("Ramp rate is not supported for non-sticky elements")
+            # if getattr(self.y_elem, "sticky", None) is None:
+            #     raise RuntimeError("Ramp rate is not supported for non-sticky elements")
+            raise NotImplementedError('Please set ramp_rate to 0 and use a low OPX span')
+            #self.perform_ramp(levels=levels)
 
         else: 
             phys = self.gateset.resolve_voltages(levels)

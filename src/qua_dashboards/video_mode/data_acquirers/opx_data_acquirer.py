@@ -347,6 +347,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
     def get_components(self) -> List[BaseUpdatableComponent]:
         components = super().get_components()
+        components.append(self.qua_inner_loop_action)
         components.extend(self.scan_mode.get_components())
         components.extend(self.qua_inner_loop_action.get_components())
         return components

@@ -585,7 +585,7 @@ class VideoModeComponent(BaseComponent):
 
 
 class VideoModeComponent_with_GateSet(VideoModeComponent):
-    def __init__(self, *args, gateset, inner_loop_action,machine, **kwargs): 
+    def __init__(self, *args, gateset, inner_loop_action,machine,save_path, **kwargs): 
         super().__init__(*args, **kwargs)
         self.gateset = gateset
         self.inner_loop_action = inner_loop_action
@@ -598,6 +598,7 @@ class VideoModeComponent_with_GateSet(VideoModeComponent):
             self.data_acquirer.y_axis.points,
         )
         self.machine = machine
+        self.save_path = save_path
 
     def get_layout(self) -> Component:
         """Generates the Dash layout for the VideoModeComponent."""
@@ -823,7 +824,7 @@ class VideoModeComponent_with_GateSet(VideoModeComponent):
             if not n_clicks:
                 raise PreventUpdate
             try:
-                self.machine.save() 
+                self.machine.save(self.save_path) 
                 message = "QUAM state successfully saved."
                 color = "success"
                 print(message)

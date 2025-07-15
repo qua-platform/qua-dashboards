@@ -80,6 +80,8 @@ qdac = QDAC2.QDac2(
     "QDAC", visalib="@py", address=f"TCPIP::{qdac_addr}::5025::SOCKET"
 )
 
+path = '/Users/kalidu_laptop/QUA'
+
 
 # %% Create QUAM Machine Configuration and Connect to Quantum Machines Manager (QMM)
 
@@ -87,6 +89,7 @@ qdac = QDAC2.QDac2(
 # This object will be used to define the quantum hardware configuration (channels, pulses, etc.)
 # and generate the QUA configuration for the OPX.
 machine = GateSetQuam()
+
 
 
 machine.channels['ch1'] = QdacOpxChannel(
@@ -227,7 +230,8 @@ video_mode_component = VideoModeComponent_with_GateSet(
     data_polling_interval_s=0.2, 
     gateset=machine.gate_set,
     inner_loop_action=inner_loop_action,
-    machine = machine
+    machine = machine, 
+    save_path = path
 )
 
 virtual_layer_ui = VirtualLayerEditor(machine.gate_set, component_id = 'VG_editor')

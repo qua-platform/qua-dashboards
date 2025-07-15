@@ -207,12 +207,14 @@ class SharedViewerComponent(BaseComponent):
         @app.callback(
             Output(self._get_id(self._MAIN_GRAPH_ID_SUFFIX), "figure"),
             Input(viewer_data_store_id, "data"),
+            Input("selected-sweep-channels", "data"),
             Input(layout_config_store_id, "data"),
             State(self._get_id(self._MAIN_GRAPH_ID_SUFFIX), "figure"),
             prevent_initial_call=True,  # Prevent update on initial app load if stores are empty
         )
         def update_shared_viewer_graph(
             viewer_data_ref: Optional[Dict[str, Any]],
+            selected_channels:   Optional[Dict[str, str]],
             layout_updates_input: Optional[Dict[str, Any]],
             current_fig_state_dict: Optional[Dict[str, Any]],
         ) -> go.Figure:
@@ -268,6 +270,12 @@ class SharedViewerComponent(BaseComponent):
                     f"{layout_updates_input}"
                 )
                 fig_to_display.update_layout(layout_updates_input)
+
+            if selected_channels:
+                fig_to_display.update_layout(
+                    xaxis_title=f"{selected_channels["x"]}_V",
+                    yaxis_title=f"{selected_channels["y"]}_V",
+                )
 
             # Commented out because it causes annotation points to become barely visible
             # Preserve zoom/pan state (uirevision)

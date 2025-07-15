@@ -134,7 +134,8 @@ class VirtualGateInnerLoopAction(InnerLoopAction):
         pre_measurement_delay_cycles = int(self.pre_measurement_delay * 1e9 // 4)
         if pre_measurement_delay_cycles >= 4:
             wait(pre_measurement_delay_cycles)
-
+            
+        logger.info(f"[VGI] readout pulse length = {self.readout_pulse.length} ns")
         I, Q = self.readout_pulse.channel.measure(self.readout_pulse.id)
         align()
 

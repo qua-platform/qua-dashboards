@@ -62,7 +62,7 @@ from qua_dashboards.video_mode import (
 from qua_dashboards.video_mode.video_mode_component import VideoModeComponent_with_GateSet
 
 from qua_dashboards.video_mode.data_acquirers.opx_data_acquirer import OPXQDACDataAcquirer
-from qua_dashboards.voltage_control.virtual_layer_UI import VirtualLayerEditor, VirtualLayerManager
+from qua_dashboards.voltage_control.virtual_layer_UI import VirtualLayerAdder, VirtualLayerManager
 logger = setup_logging(__name__)
 
 lffem1 = 3
@@ -207,8 +207,8 @@ data_acquirer = OPXQDACDataAcquirer(
     machine=machine,
     qua_inner_loop_action=inner_loop_action,
     scan_mode=scan_mode,
-    x_axis=SweepAxis(name = 'X', label = machine.channels['ch1'].name, span=x_span, points=x_resolution, offset_parameter=x_offset),
-    y_axis=SweepAxis(name = 'Y', label = machine.channels['ch2'].name, span=y_span, points=y_resolution, offset_parameter=y_offset),
+    x_axis=SweepAxis(name = f'{machine.channels['ch1'].name}_V', label = machine.channels['ch1'].name, span=x_span, points=x_resolution, offset_parameter=x_offset),
+    y_axis=SweepAxis(name = f'{machine.channels['ch2'].name}_V', label = machine.channels['ch2'].name, span=y_span, points=y_resolution, offset_parameter=y_offset),
     result_type="I",  # Specify the type of result to  display (e.g., "I", "Q", "amplitude", "phase")
 )
 
@@ -234,7 +234,7 @@ video_mode_component = VideoModeComponent_with_GateSet(
     save_path = path
 )
 
-virtual_layer_ui = VirtualLayerEditor(machine.gate_set, component_id = 'VG_editor')
+virtual_layer_ui = VirtualLayerAdder(machine.gate_set, component_id = 'Virtual Gate Adder')
 virtual_layer_editor = VirtualLayerManager(machine.gate_set, component_id = 'Existing Virtual Gate Editor')
 
 gateset_control = GateSetControl(gateset=machine.gate_set)

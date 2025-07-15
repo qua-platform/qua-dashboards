@@ -58,7 +58,7 @@ from qua_dashboards.video_mode import (
     VideoModeComponent,
 )
 from qua_dashboards.video_mode.video_mode_component import VideoModeComponent_with_GateSet, VideoModeComponent_with_OPX_offset
-from qua_dashboards.voltage_control.virtual_layer_UI import VirtualLayerEditor, VirtualLayerManager
+from qua_dashboards.voltage_control.virtual_layer_UI import VirtualLayerAdder, VirtualLayerManager
 from qua_dashboards.voltage_control.ui_refresh_script import ui_update
 from qua_dashboards.video_mode.data_acquirers.opx_data_acquirer import OPXQDACDataAcquirer
 
@@ -67,6 +67,8 @@ logger = setup_logging(__name__)
 lffem1 = 3
 lffem2 = 5
 mwfem = 1
+
+path = '/Users/kalidu_laptop/QUA'
 
 # %% Create QUAM Machine Configuration and Connect to Quantum Machines Manager (QMM)
 
@@ -219,10 +221,11 @@ video_mode_component = VideoModeComponent_with_GateSet(
     data_polling_interval_s=0.5, 
     gateset=machine.gate_set,
     inner_loop_action=inner_loop_action, 
-    machine = machine
+    machine = machine, 
+    save_path = path
 )
 
-virtual_layer_ui = VirtualLayerEditor(machine.gate_set, component_id = 'VG_editor')
+virtual_layer_ui = VirtualLayerAdder(machine.gate_set, component_id = 'Virtual Gate Adder')
 virtual_layer_editor = VirtualLayerManager(machine.gate_set, component_id = 'Existing Virtual Gate Editor')
 
 app = build_dashboard(
@@ -232,8 +235,6 @@ app = build_dashboard(
 
 #Live updating code for the Virtual Gating UI
 ui_update(app, machine.gate_set, virtual_layer_ui, virtual_layer_editor)
-
-
 
 
 logger.info("Dashboard built. Starting Dash server on http://localhost:8050")

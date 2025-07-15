@@ -261,6 +261,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             self._compilation_flags = ModifiedFlags.NONE
         elif self._compilation_flags & ModifiedFlags.PROGRAM_MODIFIED:
             logger.info(f"Program recompile triggered for {self.component_id}.")
+            if self.qm is None:
+                self.initialize_qm()
             self.execute_program()
             self._compilation_flags = ModifiedFlags.NONE
 
@@ -347,7 +349,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
     def get_components(self) -> List[BaseUpdatableComponent]:
         components = super().get_components()
-        components.append(self.qua_inner_loop_action)
+        #components.append(self.qua_inner_loop_action)
         components.extend(self.scan_mode.get_components())
         components.extend(self.qua_inner_loop_action.get_components())
         return components

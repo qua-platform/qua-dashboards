@@ -301,19 +301,29 @@ class VideoModeComponent(BaseComponent):
             ),
         }
         # Shared viewer stores that tab controllers will write to
+        # shared_viewer_store_ids_for_tabs = {
+        #     "viewer_data_store": self._get_store_id(self.VIEWER_DATA_STORE_SUFFIX),
+        #     "layout_config_store": self._get_store_id(
+        #         self.VIEWER_LAYOUT_CONFIG_STORE_SUFFIX
+        #     ),
+        # }
+
         shared_viewer_store_ids_for_tabs = {
             "viewer_data_store": self._get_store_id(self.VIEWER_DATA_STORE_SUFFIX),
-            "layout_config_store": self._get_store_id(
-                self.VIEWER_LAYOUT_CONFIG_STORE_SUFFIX
-            ),
+            "viewer_layout_config_store": self._get_store_id(self.VIEWER_LAYOUT_CONFIG_STORE_SUFFIX),
         }
 
+        # self.shared_viewer.register_callbacks(
+        #     app,
+        #     viewer_data_store_id=shared_viewer_store_ids_for_tabs["viewer_data_store"],
+        #     layout_config_store_id=shared_viewer_store_ids_for_tabs[
+        #         "layout_config_store"
+        #     ],
+        # )
         self.shared_viewer.register_callbacks(
             app,
             viewer_data_store_id=shared_viewer_store_ids_for_tabs["viewer_data_store"],
-            layout_config_store_id=shared_viewer_store_ids_for_tabs[
-                "layout_config_store"
-            ],
+            layout_config_store_id=shared_viewer_store_ids_for_tabs["viewer_layout_config_store"],
         )
 
         shared_viewer_graph_actual_id = self.shared_viewer.get_graph_id()
@@ -723,6 +733,8 @@ class VideoModeComponent_with_GateSet(VideoModeComponent):
     
     def register_callbacks(self, app, **kwargs):
         super().register_callbacks(app, **kwargs)
+        self.data_acquirer.x_axis.register_callbacks(app)
+        self.data_acquirer.y_axis.register_callbacks(app)
         @app.callback(
             Output("selected-sweep-channels", "data"),
             Input("set-sweep-channels", "n_clicks"),
@@ -743,6 +755,7 @@ class VideoModeComponent_with_GateSet(VideoModeComponent):
         def update_sweep_channels(selected):
             if selected is None:
                 raise exceptions.PreventUpdate
+            logger.info(f"[Channel Debug] update_sweep_channels fired! selected = {selected!r}")
             self.inner_loop_action.x_elem = selected["x"]
             self.inner_loop_action.y_elem = selected["y"]
             return ""

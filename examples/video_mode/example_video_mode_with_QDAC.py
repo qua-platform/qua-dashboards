@@ -48,6 +48,7 @@ from qua_dashboards.voltage_control.GateSet_Voltage_Control import GateSetContro
 from quam_builder.architecture.quantum_dots.voltage_sequence.gate_set import GateSetQuam
 from quam_builder.architecture.quantum_dots.virtual_gates.virtual_gate_set import VirtualGateSet, VirtualQdacGateSet
 from quam_builder.hardware.quam_channel import QdacOpxChannel, QdacOpxReadout
+from qua_dashboards.voltage_control.ui_refresh_script import ui_update
 
 from qua_dashboards.core import build_dashboard
 from qua_dashboards.utils import setup_logging, BasicParameter
@@ -221,7 +222,6 @@ data_acquirer = OPXQDACDataAcquirer(
 # # plt.show()
 
 # # %% Run Video Mode Dashboard
-
 video_mode_component = VideoModeComponent_with_GateSet(
     data_acquirer=data_acquirer,
     data_polling_interval_s=0.2, 
@@ -240,24 +240,7 @@ app = build_dashboard(
 )
 
 #Live updating code for the Virtual Gating UI
-app.layout.children.append(dcc.Store(id="vg-layer-refresh-trigger", data=0))
-app.layout.children.append(
-    html.Div(id="VG_MANAGER_CONTAINER", children=virtual_layer_editor.get_layout()))
-app.layout.children.append(
-    html.Div(id="VG_EDITOR_CONTAINER", children=virtual_layer_ui.get_layout()))
-@app.callback(
-    Output("VG_EDITOR_CONTAINER", "children"),
-    Input("vg-layer-refresh-trigger", "data"))
-def refresh_editor_layout(_):
-    return virtual_layer_ui.get_layout()
-@app.callback(
-    Output("VG_MANAGER_CONTAINER", "children"),
-    Input("vg-layer-refresh-trigger", "data"),)
-def refresh_manager_layout(_):
-    return virtual_layer_editor.get_layout()
-virtual_layer_ui.register_callbacks(app)
-virtual_layer_editor.register_callbacks(app)
-
+ui_update(app, machine.gate_set, virtual_layer_ui, virtual_layer_editor)
 
 logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
 # Run the Dash server.

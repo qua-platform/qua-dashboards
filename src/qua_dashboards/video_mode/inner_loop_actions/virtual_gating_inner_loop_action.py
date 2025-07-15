@@ -37,7 +37,6 @@ from qm.qua import (
     amp
 )
 
-
 from typing import Any, Dict, List, Tuple
 
 from qm.qua import (
@@ -48,7 +47,8 @@ from qm.qua import (
     ramp_to_zero,
     wait,
 )
-
+import logging
+logger = logging.getLogger(__name__)
 from typing import List
 
 class VirtualGateInnerLoopAction(InnerLoopAction):
@@ -107,26 +107,22 @@ class VirtualGateInnerLoopAction(InnerLoopAction):
     
 
     def set_dc_offsets(self, x: QuaVariableFloat, y: QuaVariableFloat):
+
         x_name = getattr(self.x_elem, "name", self.x_elem)
         y_name = getattr(self.y_elem, "name", self.y_elem)
         levels = {x_name: x, y_name:y}
 
-        # else: 
-        #     levels = {self.x_elem.name : x, self.y_elem.name: y}
         if self.ramp_rate > 0:
             # if getattr(self.x_elem, "sticky", None) is None:
             #     raise RuntimeError("Ramp rate is not supported for non-sticky elements")
             # if getattr(self.y_elem, "sticky", None) is None:
             #     raise RuntimeError("Ramp rate is not supported for non-sticky elements")
             raise NotImplementedError('Please set ramp_rate to 0 and use a low OPX span')
-            #self.perform_ramp(levels=levels)
 
         else: 
             phys = self.gateset.resolve_voltages(levels)
             for gate_name, qua_V in phys.items():
                 set_dc_offset(gate_name, "single", qua_V)
-            # for gate_name in phys:
-            #     self.gateset.channels[gate_name].play("step", amplitude_scale=0, duration = self.readout_pulse.length)
             self.readout_pulse.channel.play("step", amplitude_scale=0, duration = 4)
                 
     def __call__(
@@ -160,8 +156,6 @@ class VirtualGateInnerLoopAction(InnerLoopAction):
             self.set_dc_offsets(0.0,0.0)
         else:
             self.set_dc_offsets(0.0,0.0)
-            # self.x_elem.set_dc_offset(0)
-            # self.y_elem.set_dc_offset(0)
             
         align()
 

@@ -128,9 +128,10 @@ class SweepAxis(BaseUpdatableComponent):
         )
 
     def register_callbacks(self, app: Dash) -> None:
-        self._span.register_callbacks(app)
-        self._points.register_callbacks(app)
-        self.offset_parameter.register_callbacks(app)
+        super().register_callbacks(app)
+        # self._span.register_callbacks(app)
+        # self._points.register_callbacks(app)
+        # self.offset_parameter.register_callbacks(app)
 
     def create_axis_layout(
         self,

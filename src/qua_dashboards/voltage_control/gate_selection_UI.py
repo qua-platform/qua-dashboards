@@ -4,7 +4,9 @@ import dash_bootstrap_components as dbc
 
 
 def get_gate_selection_ui(gateset):
-    channel_names = gateset.valid_channel_names
+    channel_names = list(gateset.channels.keys())
+    for layer in gateset.layers:
+        channel_names = channel_names + layer.source_gates
     return dbc.Card([
         dbc.CardHeader("Sweep Channel Selection"),
         dbc.CardBody([

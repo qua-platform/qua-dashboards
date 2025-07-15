@@ -59,6 +59,7 @@ from qua_dashboards.video_mode import (
 )
 from qua_dashboards.video_mode.video_mode_component import VideoModeComponent_with_GateSet, VideoModeComponent_with_OPX_offset
 from qua_dashboards.voltage_control.virtual_layer_UI import VirtualLayerEditor, VirtualLayerManager
+from qua_dashboards.voltage_control.ui_refresh_script import ui_update
 from qua_dashboards.video_mode.data_acquirers.opx_data_acquirer import OPXQDACDataAcquirer
 
 logger = setup_logging(__name__)
@@ -218,25 +219,20 @@ video_mode_component = VideoModeComponent_with_GateSet(
     data_polling_interval_s=0.5, 
     gateset=machine.gate_set,
     inner_loop_action=inner_loop_action, 
+    machine = machine
 )
 
 virtual_layer_ui = VirtualLayerEditor(machine.gate_set, component_id = 'VG_editor')
 virtual_layer_editor = VirtualLayerManager(machine.gate_set, component_id = 'Existing Virtual Gate Editor')
 
 app = build_dashboard(
-    components=[video_mode_component, virtual_layer_editor],
+    components=[video_mode_component],
     title="Combined Dashboard",
 )
-from dash import html, Output, Input
+
 #Live updating code for the Virtual Gating UI
-app.layout.children.append(
-    html.Div(id="VG_EDITOR_CONTAINER", children=virtual_layer_ui.get_layout()))
-@app.callback(
-    Output("VG_EDITOR_CONTAINER", "children"),
-    Input({"type": "LAYER_REFRESH", "index": "VG_editor"}, "data"),)
-def refresh_editor_layout(_):
-    return virtual_layer_ui.get_layout()
-virtual_layer_ui.register_callbacks(app)
+ui_update(app, machine.gate_set, virtual_layer_ui, virtual_layer_editor)
+
 
 
 

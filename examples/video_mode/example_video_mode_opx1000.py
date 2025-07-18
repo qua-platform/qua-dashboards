@@ -64,7 +64,6 @@ lffem1 = 3
 lffem2 = 5
 mwfem = 1
 
-path = '/Users/kalidu_laptop/QUA'
 
 # %% Create QUAM Machine Configuration and Connect to Quantum Machines Manager (QMM)
 

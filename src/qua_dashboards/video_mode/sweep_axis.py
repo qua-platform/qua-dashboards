@@ -4,7 +4,7 @@ from dash import Dash
 from dash.development.base_component import Component
 import numpy as np
 import dash_bootstrap_components as dbc
-
+from qua_dashboards.video_mode.tab_controllers import LiveViewTabController
 from qua_dashboards.core import BaseUpdatableComponent, ModifiedFlags
 from qua_dashboards.utils.basic_parameter import BasicParameter
 from qua_dashboards.utils.dash_utils import create_input_field
@@ -91,10 +91,15 @@ class SweepAxis(BaseUpdatableComponent):
             "span": self._get_id("span"),
             "points": self._get_id("points"),
         }
+        live_tab = LiveViewTabController._TAB_VALUE   
         return dbc.Col(
             dbc.Card(
                 [
-                    dbc.CardHeader(self.name.upper(), className="text-light"),
+                    dbc.CardHeader(
+                        id= f"{self.component_id}-header-text-{live_tab}",
+                        children=(self.label or self.name).upper(),
+                        className="text-light",
+                    ),
                     dbc.CardBody(
                         [
                             create_input_field(

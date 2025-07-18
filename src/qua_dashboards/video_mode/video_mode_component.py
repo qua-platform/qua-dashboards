@@ -3,11 +3,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import dash_bootstrap_components as dbc
 
-from dash import Dash, Input, Output, State, dcc, html, ctx, no_update
+from dash import Dash, Input, Output, State, dcc, html, ctx, no_update, exceptions
 from dash.development.base_component import Component
 from dash.exceptions import PreventUpdate
+from qua_dashboards.voltage_control.gate_selection_UI import get_gate_selection_ui
 
-from qua_dashboards.core import BaseComponent
+from qua_dashboards.core import BaseComponent, ModifiedFlags
 from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import (
     BaseDataAcquirer,
 )
@@ -595,3 +596,195 @@ class VideoModeComponent(BaseComponent):
         except ImportError:
             pass
         return save_data(results)
+
+
+class VideoModeComponent_with_GateSet(VideoModeComponent):
+    def __init__(self, *args, gateset, **kwargs): 
+        super().__init__(*args, **kwargs)
+        self.gateset = gateset
+        self.inner_loop_action = self.data_acquirer.qua_inner_loop_action
+        self._x_default_span,  self._x_default_pts = (
+            self.data_acquirer.x_axis.span,
+            self.data_acquirer.x_axis.points,
+        )
+        self._y_default_span,  self._y_default_pts = (
+            self.data_acquirer.y_axis.span,
+            self.data_acquirer.y_axis.points,
+        )
+
+    def get_layout(self) -> Component:
+        """Generates the Dash layout for the VideoModeComponent."""
+        logger.debug(f"Generating layout for VideoModeComponent '{self.component_id}'")
+
+        tabs_children = []
+        if not self.tab_controllers:
+            tabs_children.append(
+                dcc.Tab(
+                    label="No Tabs Configured",
+                    value="no-tabs-dummy",
+                    children=[
+                        html.Div(
+                            "Please provide or configure tab controllers.",
+                            style={"padding": "20px", "textAlign": "center"},
+                        )
+                    ],
+                )
+            )
+        else:
+            for tc in self.tab_controllers:
+                tabs_children.append(
+                    dcc.Tab(
+                        label=tc.get_tab_label(),
+                        value=tc.get_tab_value(),
+                        id=self._get_id(f"tab-ctrl-wrapper-{tc.get_tab_value()}"),
+                        children=[
+                            html.Div(
+                                tc.get_layout(),
+                                style={"padding": "10px"},
+                                className="tab-controller-content-wrapper",
+                            )
+                        ],
+                        className="dash-tab",
+                    )
+                )
+
+        left_panel_controls = dcc.Tabs(
+            id=self._get_id(self._TABS_ID_SUFFIX),
+            value=self._active_tab_value,
+            children=tabs_children,
+            className="mb-3",
+        )
+
+        bottom_left_row = dbc.Row(
+            [
+                dbc.Col(
+                    dbc.Button(
+                        "Save",
+                        id=self._get_id("save-button"),
+                        color="success",
+                        className="me-2",
+                    ),
+                    width=3,
+                ),
+                dbc.Col(
+                    dbc.Button(
+                        "Save QUAM State",
+                        id=self._get_id("save-quam-button"),
+                        color="info",
+                        className="me-2",
+                    ),
+                    width=4,
+                ),
+            ],
+            className="mb-3 g-2 justify-content-start",
+        )
+
+        right_panel_viewer = self.shared_viewer.get_layout()
+
+        shared_stores_for_layout = [
+            dcc.Store(
+                id=self._get_store_id(self.LATEST_PROCESSED_DATA_STORE_SUFFIX),
+                data=None,
+            ),
+            dcc.Store(
+                id=self._get_store_id(self.VIEWER_DATA_STORE_SUFFIX),
+                data={"key": "live_data", "version": None},
+            ),
+            dcc.Store(
+                id=self._get_store_id(self.VIEWER_UI_STATE_STORE_SUFFIX), data={}
+            ),
+            dcc.Store(
+                id=self._get_store_id(self.VIEWER_LAYOUT_CONFIG_STORE_SUFFIX), data={}
+            ),
+        ]
+
+        main_layout = dbc.Container(
+            fluid=True,
+            children=[
+                html.Div(id="dummy-trigger-channel", style={"display": "none"}),
+                html.Div(id="dummy-trigger-axes", style={"display": "none"}),
+                get_gate_selection_ui(self.gateset),
+                html.Div(
+                    id=self._get_id(self._MAIN_STATUS_ALERT_ID_SUFFIX), className="mb-2"
+                ),
+                dcc.Store(id="selected-sweep-channels"),
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                left_panel_controls,
+                                bottom_left_row,  
+                            ],
+                            width=12,
+                            lg=4,
+                            className="mb-3 mb-lg-0",
+                            style={
+                                "maxHeight": "calc(100vh - 70px)",
+                                "overflowY": "auto",
+                            },
+                        ),
+                        dbc.Col(
+                            right_panel_viewer,
+                            width=12,
+                            lg=8,
+                            style={
+                                "maxHeight": "calc(100vh - 70px)",
+                                "overflowY": "hidden",  
+                            },
+                        ),
+                    ],
+                    className="g-3", 
+                ),
+                dcc.Interval(
+                    id=self._get_id(self._DATA_POLLING_INTERVAL_ID_SUFFIX),
+                    interval=self.data_polling_interval_ms,
+                    n_intervals=0,
+                    disabled=False,  
+                ),
+                *shared_stores_for_layout,
+            ],
+            style={"paddingTop": "10px"},
+        )
+        return main_layout
+    
+    def register_callbacks(self, app, **kwargs):
+        super().register_callbacks(app, **kwargs)
+        self.data_acquirer.x_axis.register_callbacks(app)
+        self.data_acquirer.y_axis.register_callbacks(app)
+
+        live_tab = LiveViewTabController._TAB_VALUE   
+
+        @app.callback(
+            Output("selected-sweep-channels", "data"),
+            Input(self._get_id(self._TABS_ID_SUFFIX), "value"),
+            Input("set-sweep-channels", "n_clicks"),
+            State("sweep-x-channel", "value"),
+            State("sweep-y-channel", "value"),
+            prevent_initial_call=True,
+            allow_duplicate = True
+        )
+        def _reset_2d(new_active_tab_value, n_clicks, x_gate, y_gate):
+            if not n_clicks:
+                raise PreventUpdate
+            channels = {"x": x_gate, "y": y_gate}
+            return channels
+
+        # Have to change the headers accordingly, using the same tab signature
+        x_comp_id = self.data_acquirer.x_axis.component_id
+        y_comp_id = self.data_acquirer.y_axis.component_id
+
+        @app.callback(
+            Output("dummy-trigger-channel", "children"),
+            Output(f"{x_comp_id}-header-text-{live_tab}", "children"),
+            Output(f"{y_comp_id}-header-text-{live_tab}", "children"),
+            Input("selected-sweep-channels", "data"),
+            prevent_initial_call=True,
+        )
+        def update_sweep_channels(selected):
+            if selected is None:
+                raise exceptions.PreventUpdate
+            logger.info(f"[Channel Debug] update_sweep_channels fired! selected = {selected!r}")
+            self.inner_loop_action.x_elem = self.gateset.channels[selected["x"]]
+            self.inner_loop_action.y_elem = self.gateset.channels[selected["y"]]
+
+            return "", selected["x"].upper(), selected["y"].upper()

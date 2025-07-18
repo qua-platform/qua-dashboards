@@ -46,7 +46,7 @@ from quam.components import (
 from quam_builder.architecture.quantum_dots.voltage_sequence.gate_set import GateSet
 from quam_builder.architecture.quantum_dots.virtual_gates.virtual_gate_set import VirtualGateSet, VirtualQdacGateSet
 from quam_builder.hardware.quam_channel import QdacOpxChannel, QdacOpxReadout, CoupledSingleChannel, CoupledInOutSingleChannel
-
+from quam_builder.architecture.quantum_dots.voltage_sequence.gate_set import GateSetQuam
 from qua_dashboards.core import build_dashboard
 from qua_dashboards.utils import setup_logging, BasicParameter
 from qua_dashboards.video_mode import (
@@ -71,7 +71,7 @@ path = '/Users/kalidu_laptop/QUA'
 # Initialize a basic QUAM machine object.
 # This object will be used to define the quantum hardware configuration (channels, pulses, etc.)
 # and generate the QUA configuration for the OPX.
-machine = BasicQuam()
+machine = GateSetQuam()
 
 
 # Coupled Single Channel simply a single channel with a 'couplings' input; the couplings input is not saved in the QUAM, instead is composed into a single big matrix which is saved.
@@ -144,12 +144,6 @@ qm = qmm.open_qm(config, close_other_machines=True)
 x_offset = BasicParameter(name="X Voltage Offset", initial_value=0)
 y_offset = BasicParameter(name="Y Voltage Offset", initial_value=0)
 
-x_span = BasicParameter(name="X span", initial_value=0.05)
-y_span = BasicParameter(name="Y span", initial_value=0.05)
-
-x_resolution = BasicParameter(name="X points", initial_value=101)
-y_resolution = BasicParameter(name="Y points", initial_value=101)
-
 x_span = 0.05
 y_span = 0.05
 
@@ -211,7 +205,6 @@ video_mode_component = VideoModeComponent_with_GateSet(
     data_acquirer=data_acquirer,
     data_polling_interval_s=0.5, 
     gateset=machine.gate_set,
-    # inner_loop_action=inner_loop_action, 
 )
 
 # virtual_layer_ui = VirtualLayerAdder(machine.gate_set, component_id = 'Virtual Gate Adder')

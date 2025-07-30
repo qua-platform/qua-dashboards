@@ -40,57 +40,58 @@ class SweepAxis(BaseUpdatableComponent):
             component_id = f"{name}-axis"
         super().__init__(component_id=component_id)
         self.name = name
-        # #self.span = span
-        # self._span = span
-        # self._points = points
+        self.span = span
+        self._span = span
+        self.points = points
+        self._points = points
         self.label = label
         self.units = units
         self.offset_parameter = offset_parameter
         self.attenuation = attenuation
         self._override_unattenuated: np.ndarray | None = None
 
-        if isinstance(span, BasicParameter):
-            self._span = span
-        else:
-            self._span = BasicParameter(
-                name = f'{name}_span',
-                label = label or name,
-                units = units or '',
-                initial_value = span
-            )
-        if isinstance(points, BasicParameter):
-            self._points = points
-        else:
-            self._points = BasicParameter(
-                name = f'{name}_points', 
-                label = label or name,
-                units = units or '',
-                initial_value = points
-            )
+        # if isinstance(span, BasicParameter):
+        #     self._span = span
+        # else:
+        #     self._span = BasicParameter(
+        #         name = f'{name}_span',
+        #         label = label or name,
+        #         units = units or '',
+        #         initial_value = span
+        #     )
+        # if isinstance(points, BasicParameter):
+        #     self._points = points
+        # else:
+        #     self._points = BasicParameter(
+        #         name = f'{name}_points', 
+        #         label = label or name,
+        #         units = units or '',
+        #         initial_value = points
+        #     )
             
-    @property
-    def span(self) -> float:
-        return self._span._value
+    # @property
+    # def span(self) -> float:
+    #     return self._span._value
 
-    @span.setter
-    def span(self, val: float):
-        self._span._value = val
+    # @span.setter
+    # def span(self, val: float):
+    #     self._span._value = val
 
-    @property
-    def points(self):
-        return self._points._value
+    # @property
+    # def points(self):
+    #     return self._points._value
 
-    @points.setter
-    def points(self, val):
-        self._points._value = val
+    # @points.setter
+    # def points(self, val):
+    #     self._points._value = val
 
-    @property
-    def offset(self):
-        return self.offset_parameter._value
+    # @property
+    # def offset(self):
+    #     return self.offset_parameter._value
     
-    @offset.setter
-    def offset(self, val):
-        self.offset_parameter._value = val
+    # @offset.setter
+    # def offset(self, val):
+    #     self.offset_parameter._value = val
 
     @property
     def sweep_values(self):

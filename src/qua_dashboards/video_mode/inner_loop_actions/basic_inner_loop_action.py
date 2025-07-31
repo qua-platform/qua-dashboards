@@ -1,148 +1,84 @@
 from qua_dashboards.core.base_updatable_component import ModifiedFlags
 from qua_dashboards.utils.dash_utils import create_input_field
 from dash import html
-from qm.qua.lib import Cast, Math
 from qualang_tools.units.units import unit
 from qua_dashboards.video_mode.inner_loop_actions.inner_loop_action import (
     InnerLoopAction,
 )
 from qua_dashboards.utils.qua_types import QuaVariableFloat
+from quam_builder.architecture.quantum_dots.voltage_sequence import GateSet
 
-
-from qm.qua import (
-    align,
-    assign,
-    declare,
-    demod,
-    else_,
-    fixed,
-    if_,
-    measure,
-    play,
-    ramp,
-    ramp_to_zero,
-    set_dc_offset,
-    wait,
-)
+from qm import qua
 
 
 from typing import Any, Dict, List, Tuple
 
 
 class BasicInnerLoopAction(InnerLoopAction):
-    """Inner loop action for the video mode: set voltages and measure using QUAM objects.
+    """Inner loop action for the video mode: set voltages and measure using GateSet.
 
     Args:
-        x_element: The QUAM Channel object along the x-axis.
-        y_element: The QUAM Channel object along the y-axis.
+        gate_set: The GateSet object containing voltage channels.
         readout_pulse: The QUAM Pulse object to measure.
-        pre_measurement_delay: The optional delay before the measurement.
-        ramp_rate: The ramp rate for voltage changes (optional).
+        x_channel_name: Name of the X-axis channel in the GateSet.
+        y_channel_name: Name of the Y-axis channel in the GateSet.
+        pre_measurement_delay: The optional delay before the measurement in ns..
+        track_integrated_voltage: Whether to track integrated voltage (optional).
         use_dBm: Whether to use dBm for amplitude (optional).
     """
 
     def __init__(
         self,
-        x_element,
-        y_element,
+        gate_set: GateSet,
         readout_pulse,
-        pre_measurement_delay: float = 0.0,
-        ramp_rate: float = 0.0,
+        x_channel_name: str,
+        y_channel_name: str,
+        pre_measurement_delay: int = 0,
+        track_integrated_voltage: bool = False,
         use_dBm=False,
     ):
         super().__init__()
-        self.x_elem = x_element
-        self.y_elem = y_element
+        self.gate_set = gate_set
         self.readout_pulse = readout_pulse
+        self.x_channel_name = x_channel_name
+        self.y_channel_name = y_channel_name
         self.pre_measurement_delay = pre_measurement_delay
-        self.ramp_rate = ramp_rate
+        self.track_integrated_voltage = track_integrated_voltage
         self.use_dBm = use_dBm
-
-        self._last_x_voltage = None
-        self._last_y_voltage = None
-        self.reached_voltage = None
-
-    def perform_ramp(self, element, previous_voltage, new_voltage):
-        ramp_cycles_ns_V = declare(int, int(1e9 / self.ramp_rate / 4))
-        qua_ramp = declare(fixed, self.ramp_rate / 1e9)
-        dV = declare(fixed)
-        duration = declare(int)
-        self.reached_voltage = declare(fixed)
-        assign(dV, new_voltage - previous_voltage)
-        assign(duration, Math.abs(Cast.mul_int_by_fixed(ramp_cycles_ns_V, dV)))
-
-        with if_(duration > 4):
-            with if_(dV > 0):
-                assign(
-                    self.reached_voltage,
-                    previous_voltage + Cast.mul_fixed_by_int(qua_ramp, duration << 2),
-                )
-                play(ramp(self.ramp_rate / 1e9), element.name, duration=duration)
-            with else_():
-                assign(
-                    self.reached_voltage,
-                    previous_voltage - Cast.mul_fixed_by_int(qua_ramp, duration << 2),
-                )
-                play(ramp(-self.ramp_rate / 1e9), element.name, duration=duration)
-        with else_():
-            ramp_rate = dV * (1 / 16e-9)
-            play(ramp(ramp_rate), element.name, duration=4)
-            # element.play("step", amplitude_scale=dV << 2)
-            assign(self.reached_voltage, new_voltage)
-
-    def set_dc_offsets(self, x: QuaVariableFloat, y: QuaVariableFloat):
-        if self.ramp_rate > 0:
-            if getattr(self.x_elem, "sticky", None) is None:
-                raise RuntimeError("Ramp rate is not supported for non-sticky elements")
-            if getattr(self.y_elem, "sticky", None) is None:
-                raise RuntimeError("Ramp rate is not supported for non-sticky elements")
-
-            self.perform_ramp(self.x_elem, self._last_x_voltage, x)
-            assign(self._last_x_voltage, self.reached_voltage)
-            self.perform_ramp(self.y_elem, self._last_y_voltage, y)
-            assign(self._last_y_voltage, self.reached_voltage)
-        else:
-            self.x_elem.set_dc_offset(x)
-            self.y_elem.set_dc_offset(y)
-
-            assign(self._last_x_voltage, x)
-            assign(self._last_y_voltage, y)
+        self.voltage_sequence = None
 
     def __call__(
         self, x: QuaVariableFloat, y: QuaVariableFloat
     ) -> Tuple[QuaVariableFloat, QuaVariableFloat]:
-        self.set_dc_offsets(x, y)
-        align()
+        # Map sweep values to named channels via SweepAxis.name
+        levels = {self.x_channel_name: x, self.y_channel_name: y}
 
-        pre_measurement_delay_cycles = int(self.pre_measurement_delay * 1e9 // 4)
-        if pre_measurement_delay_cycles >= 4:
-            wait(pre_measurement_delay_cycles)
+        duration = self.readout_pulse.length
+        if self.pre_measurement_delay > 0:
+            duration += self.pre_measurement_delay
+
+        self.voltage_sequence.step_to_level(levels=levels, duration=duration)
+
+        if self.pre_measurement_delay > 0:
+            self.readout_pulse.channel.wait(self.pre_measurement_delay)
 
         I, Q = self.readout_pulse.channel.measure(self.readout_pulse.id)
-        align()
+
+        qua.align()
 
         return I, Q
 
     def initial_action(self):
-        self._last_x_voltage = declare(fixed, 0.0)
-        self._last_y_voltage = declare(fixed, 0.0)
-        self.set_dc_offsets(0, 0)
-        align()
+        # Create VoltageSequence within QUA program context
+        self.voltage_sequence = self.gate_set.new_sequence(
+            track_integrated_voltage=self.track_integrated_voltage
+        )
+        # Initialize all channels to zero
+        self.voltage_sequence.step_to_level({}, duration=16)
 
     def final_action(self):
-        if self.ramp_rate > 0:
-            if getattr(self.x_elem, "sticky", None) is None:
-                raise RuntimeError("Ramp rate is not supported for non-sticky elements")
-            if getattr(self.y_elem, "sticky", None) is None:
-                raise RuntimeError("Ramp rate is not supported for non-sticky elements")
-
-            ramp_to_zero(self.x_elem.name)
-            ramp_to_zero(self.y_elem.name)
-            assign(self._last_x_voltage, 0.0)
-            assign(self._last_y_voltage, 0.0)
-        else:
-            self.set_dc_offsets(0, 0)
-        align()
+        # Use GateSet's built-in ramp to zero
+        self.voltage_sequence.ramp_to_zero()
 
     def get_dash_components(self, include_subcomponents: bool = True) -> List[html.Div]:
         components = super().get_dash_components(include_subcomponents)

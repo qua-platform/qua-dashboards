@@ -27,6 +27,10 @@ from qua_dashboards.video_mode.scan_modes import ScanMode
 from qua_dashboards.video_mode.inner_loop_actions.inner_loop_action import (
     InnerLoopAction,
 )
+from qua_dashboards.video_mode.inner_loop_actions.basic_inner_loop_action import (
+    BasicInnerLoopAction,
+)
+from quam_builder.architecture.quantum_dots.voltage_sequence import GateSet
 
 
 logger = logging.getLogger(__name__)
@@ -53,16 +57,19 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         *,
         qmm: QuantumMachinesManager,
         machine: Any,
-        qua_inner_loop_action: InnerLoopAction,
+        gate_set: GateSet,
         scan_mode: ScanMode,
         x_axis: SweepAxis,
         y_axis: SweepAxis,
+        readout_pulse,
+        qua_inner_loop_action: Optional[InnerLoopAction] = None,
         component_id: str = "opx-data-acquirer",
         num_software_averages: int = 1,
         acquisition_interval_s: float = 0.1,
         result_type: Literal["I", "Q", "amplitude", "phase"] = "I",
         initial_delay_s: Optional[float] = None,
         stream_vars: Optional[List[str]] = None,
+        inner_loop_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ):
         """
@@ -71,10 +78,13 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         Args:
             qmm: The QuantumMachinesManager instance.
             machine: The QUAM Machine instance to use for generating the QUA config.
-            qua_inner_loop_action: The QUA inner loop action to execute at each scan point.
+            gate_set: The GateSet object containing voltage channels.
             scan_mode: The scan mode defining how the 2D grid is traversed.
-            x_axis: The X sweep axis.
-            y_axis: The Y sweep axis.
+            x_axis: The X sweep axis (x_axis.name must match GateSet channel).
+            y_axis: The Y sweep axis (y_axis.name must match GateSet channel).
+            readout_pulse: The QUAM Pulse object to measure.
+            qua_inner_loop_action: Optional custom QUA inner loop action. If not provided,
+                                   BasicInnerLoopAction will be created automatically.
             component_id: Unique ID for Dash elements.
             num_software_averages: Number of raw snapshots for software averaging.
             acquisition_interval_s: Target interval for acquiring a new raw snapshot.
@@ -82,8 +92,19 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             initial_delay_s: Initial delay in seconds before starting each full scan in QUA.
             stream_vars: List of stream variables (e.g., ["I", "Q"]) expected from QUA.
                          Defaults to ["I", "Q"].
+            inner_loop_kwargs: Additional arguments for BasicInnerLoopAction creation.
             **kwargs: Additional arguments for Base2DDataAcquirer.
         """
+        # Validate that sweep axis names exist in GateSet
+        if x_axis.name not in gate_set.channels:
+            raise ValueError(
+                f"X-axis channel '{x_axis.name}' not found in GateSet channels: {list(gate_set.channels.keys())}"
+            )
+        if y_axis.name not in gate_set.channels:
+            raise ValueError(
+                f"Y-axis channel '{y_axis.name}' not found in GateSet channels: {list(gate_set.channels.keys())}"
+            )
+
         super().__init__(
             x_axis=x_axis,
             y_axis=y_axis,
@@ -95,10 +116,23 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
         self.qmm: QuantumMachinesManager = qmm
         self.machine: Any = machine
+        self.gate_set: GateSet = gate_set
         self.qua_config: Dict[str, Any] = self.machine.generate_config()
         self.qm: Any = None
 
-        self.qua_inner_loop_action: InnerLoopAction = qua_inner_loop_action
+        # Create BasicInnerLoopAction if not provided
+        if qua_inner_loop_action is None:
+            inner_loop_kwargs = inner_loop_kwargs or {}
+            self.qua_inner_loop_action = BasicInnerLoopAction(
+                gate_set=gate_set,
+                readout_pulse=readout_pulse,
+                x_channel_name=x_axis.name,
+                y_channel_name=y_axis.name,
+                **inner_loop_kwargs,
+            )
+        else:
+            self.qua_inner_loop_action = qua_inner_loop_action
+
         self.scan_mode: ScanMode = scan_mode
 
         self.initial_delay_s: Optional[float] = initial_delay_s

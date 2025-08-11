@@ -178,6 +178,7 @@ def main() -> None:
     )  
 
     logger.info("Building the dashboard...")
+
     # Use build_dashboard to create the Dash app layout.
     app = build_dashboard(
         components=[video_mode_component,voltage_control_component],  # List of dashboard components to include.

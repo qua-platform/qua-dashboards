@@ -76,6 +76,8 @@ class AnnotationTabController(BaseTabController):
     _LOAD_FROM_DISK_BUTTON_SUFFIX = "load-from-disk-button"
     _LOAD_FROM_DISK_INPUT_SUFFIX = "load-from-disk-input"
     _SHOW_LABELS_CHECKLIST_SUFFIX = "show-labels-checklist"
+    _COMPENSATION_BUTTON_SUFFIX = "compensation-button"
+    _COMPENSATION_RESULTS_SUFFIX = "compensation-results"
 
     def __init__(
         self,
@@ -257,6 +259,22 @@ class AnnotationTabController(BaseTabController):
                         "fontSize": "0.8em",
                     },
                 ),
+                dbc.Button(
+                    "Compute Compensation Matrix",
+                    id=self._get_id(self._COMPENSATION_BUTTON_SUFFIX),
+                    color="success",
+                    size="sm",
+                    className="mb-2",
+                ),
+                html.Pre(
+                    id=self._get_id(self._COMPENSATION_RESULTS_SUFFIX),
+                    className="border rounded analysis-results-dark p-1 mb-3",
+                    style={
+                        "maxHeight": "100px",
+                        "overflowY": "auto",
+                        "fontSize": "0.8em",
+                    },
+                ),                
             ]
         )
 

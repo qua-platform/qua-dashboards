@@ -87,7 +87,7 @@ machine.channels["ch1_readout"] = InOutSingleChannel(
 # --- QMM Connection ---
 # Replace with your actual OPX host and cluster name
 # Example: qmm = QuantumMachinesManager(host="your_opx_ip", cluster_name="your_cluster")
-qmm = QuantumMachinesManager(host="172.16.33.101", cluster_name="CS_1")
+qmm = QuantumMachinesManager(host="0.0.0.0", cluster_name="cluster")
 
 # Generate the QUA configuration from the QUAM machine object
 config = machine.generate_config()
@@ -163,7 +163,7 @@ app = build_dashboard(
 
 logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
 # Run the Dash server.
-# `host="0.0.0.0"` makes it accessible on your network.
+# `host="127.0.0.1"` makes it accessible on your network.
 # `use_reloader=False` is often recommended for stability with background threads.
 app.run(debug=True, host="127.0.0.1", port=8050, use_reloader=False)
 

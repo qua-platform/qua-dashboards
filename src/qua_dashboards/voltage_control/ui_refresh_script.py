@@ -18,14 +18,3 @@ def ui_update(app, gate_set, virtual_layer_ui, virtual_layer_editor):
         return virtual_layer_editor.get_layout()
     virtual_layer_ui.register_callbacks(app)
     virtual_layer_editor.register_callbacks(app)
-    @app.callback(
-        Output("sweep-x-channel", "options"),
-        Output("sweep-y-channel", "options"),
-        Input("vg-layer-refresh-trigger", "data"),
-    )
-    def _refresh_gate_options(_trigger):
-        names = list(gate_set.channels.keys())
-        for layer in gate_set.layers:
-            names.extend(layer.source_gates)
-        opts = [{"label": n, "value": n} for n in names]
-        return opts, opts

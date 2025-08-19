@@ -45,8 +45,6 @@ from quam.components import (
 )
 from qua_dashboards.video_mode.inner_loop_actions.virtual_gating_inner_loop_action import VirtualGateInnerLoopAction
 from quam_builder.architecture.quantum_dots.virtual_gates.virtual_gate_set import VirtualGateSet
-from qua_dashboards.voltage_control.ui_refresh_script import ui_update
-
 from qua_dashboards.core import build_dashboard
 from qua_dashboards.utils import setup_logging, BasicParameter
 from qua_dashboards.video_mode import (
@@ -55,8 +53,6 @@ from qua_dashboards.video_mode import (
     scan_modes,
     VideoModeComponent,
 )
-
-from qua_dashboards.voltage_control.virtual_layer_UI import VirtualLayerAdder, VirtualLayerManager
 logger = setup_logging(__name__)
 
 lffem1 = 3
@@ -122,12 +118,12 @@ machine.gate_set = VirtualGateSet(id = 'Plungers', channels=channels)
 machine.gate_set.add_layer(
     source_gates = ['vPlunger1', 'vPlunger2', 'vPlunger3', 'vSensor1'], 
     target_gates = ['Plunger1', 'Plunger2', 'Plunger3', 'Sensor1'], 
-    matrix = [[1,0.2,0,0], [0.2,1,0,0], [0,0,1,0], [0,0,0,1]]
+    matrix = [[1,0,0,0], [0,1,0,0], [0,0,1,0], [0,0,0,1]]
 )
 
 # --- QMM Connection ---
 # Replace with your actual OPX host and cluster name
-qmm = QuantumMachinesManager(host=host_name, cluster_name=cluster_name)
+qmm = QuantumMachinesManager(host=host_ip, cluster_name=cluster_name)
 
 # Generate the QUA configuration from the QUAM machine object
 config = machine.generate_config()
@@ -149,8 +145,8 @@ y_resolution = 101
 
 # Define the action to be performed at each point in the QUA scan (inner loop).
 inner_loop_action = VirtualGateInnerLoopAction(
-    x_element = machine.channels['ch1'], 
-    y_element = machine.channels['ch2'],
+    x_element = 'vPlunger1', 
+    y_element = 'vPlunger2',
     gateset=machine.gate_set,
     ramp_rate = 0,
     readout_pulse=readout_pulse
@@ -167,8 +163,8 @@ data_acquirer = OPXDataAcquirer(
     machine=machine,
     qua_inner_loop_action=inner_loop_action,
     scan_mode=scan_mode,
-    x_axis=SweepAxis(name = f'{machine.channels["ch1"].name}_V', label = machine.channels['ch1'].name, span=x_span, points=x_resolution, offset_parameter=x_offset),
-    y_axis=SweepAxis(name = f'{machine.channels["ch2"].name}_V', label = machine.channels['ch2'].name, span=y_span, points=y_resolution, offset_parameter=y_offset),
+    x_axis=SweepAxis(name = 'vPlunger1', label = 'vPlunger1', span=x_span, points=x_resolution, offset_parameter=x_offset),
+    y_axis=SweepAxis(name = 'vPlunger2', label = 'vPlunger2', span=y_span, points=y_resolution, offset_parameter=y_offset),
     result_type="I",  # Specify the type of result to  display (e.g., "I", "Q", "amplitude", "phase")
 )
 
@@ -191,16 +187,11 @@ video_mode_component = VideoModeComponent(
     machine = machine, 
 )
 
-virtual_layer_ui = VirtualLayerAdder(machine.gate_set, component_id = 'Virtual Gate Adder')
-virtual_layer_editor = VirtualLayerManager(machine.gate_set, component_id = 'Existing Virtual Gate Editor')
-
 app = build_dashboard(
     components=[video_mode_component],
     title="Combined Dashboard",
 )
 
-#Live updating code for the Virtual Gating UI
-ui_update(app, machine.gate_set, virtual_layer_ui, virtual_layer_editor)
 
 logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
 # Run the Dash server.

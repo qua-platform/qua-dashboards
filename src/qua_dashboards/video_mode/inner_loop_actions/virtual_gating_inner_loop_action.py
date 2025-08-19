@@ -98,9 +98,6 @@ class VirtualGateInnerLoopAction(InnerLoopAction):
 
         x_name = getattr(self.x_elem, "name", self.x_elem)
         y_name = getattr(self.y_elem, "name", self.y_elem)
-        x_name = self.gateset.layers[-1].source_gates[self.gateset.layers[0].target_gates.index(x_name)]
-        y_name = self.gateset.layers[-1].source_gates[self.gateset.layers[0].target_gates.index(y_name)]
-
         levels = {x_name: x, y_name:y}
 
         if self.ramp_rate > 0:

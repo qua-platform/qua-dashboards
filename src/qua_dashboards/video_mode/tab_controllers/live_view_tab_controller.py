@@ -4,7 +4,7 @@ from typing import Any, Dict, Union
 
 import dash_bootstrap_components as dbc
 import dash
-from dash import Dash, Input, Output, State, html, ctx, ALL
+from dash import Dash, Input, Output, State, html, ctx, ALL, dcc
 
 from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import (
     BaseDataAcquirer,
@@ -89,22 +89,37 @@ class LiveViewTabController(BaseTabController):
                     width=8,  # Adjusted width
                 ),
                 dbc.Col(
-                    html.Div(
-                        dbc.Badge(
-                            "STOPPED",  # Initial status text
-                            id=self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX),
-                            color="secondary",  # Initial color for STOPPED
-                            className="ms-1 p-2",  # Added padding
-                            style={
-                                "fontSize": "0.9rem",
-                                "width": "100%",
-                                "textAlign": "center",
-                            },
+                    [
+                        html.Div(
+                            dbc.Badge(
+                                "STOPPED",  # Initial status text
+                                id=self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX),
+                                color="secondary",  # Initial color for STOPPED
+                                className="ms-1 p-2",  # Added padding
+                                style={
+                                    "fontSize": "0.9rem",
+                                    "width": "100%",
+                                    "textAlign": "center",
+                                },
+                            ),
+                            className=(
+                                "d-flex align-items-center justify-content-center h-100"
+                            ),
                         ),
-                        className=(
-                            "d-flex align-items-center justify-content-center h-100"
+                        html.Div(
+                            [
+                                html.Label("Gridlines"),
+                                dcc.Checklist(
+                                    id=self._get_id("center-marker-toggle"),
+                                    options=[{"label": "", "value": "on"}],
+                                    value=[],
+                                    inline=True,
+                                    inputStyle={"margin": "0 5px 0 0"},
+                                ),
+                            ],
+                            className="mt-2",
                         ),
-                    ),
+                    ],
                     width=4,  # Adjusted width
                 ),
             ],
@@ -228,6 +243,40 @@ class LiveViewTabController(BaseTabController):
             # _ = self._data_acquirer_instance.y_axis
 
             return "", self._data_acquirer_instance.get_dash_components(include_subcomponents=True)
+
+        @app.callback(
+            Output(shared_viewer_store_ids["viewer_layout_config_store"], "data"),
+            Input(self._get_id("center-marker-toggle"), "value"),
+            State(shared_viewer_store_ids["viewer_layout_config_store"], "data"),
+            prevent_initial_call=True,
+        )
+        def _toggle_gridlines(toggle_val, existing_layout):
+            layout = existing_layout or {}
+            show = "on" in toggle_val
+
+            # remove any old center‐marker
+            layout["shapes"] = [s for s in layout.get("shapes", []) if s.get("name") != "center"]
+            xaxis = {**layout.get("xaxis", {})}
+            yaxis = {**layout.get("yaxis", {})}
+
+
+            for ax in (xaxis, yaxis):
+                    ax["showgrid"] = show
+                    ax["gridwidth"] = 1
+                    ax["gridcolor"] = "rgba(0,0,0,0.25)"
+                    # optional: minor grid + center (zero) lines
+                    ax["minor"] = {**ax.get("minor", {}), "showgrid": show}
+                    ax["zeroline"] = show
+                    ax["zerolinewidth"] = 1
+                    ax["zerolinecolor"] = "rgba(0,0,0,0.35)"
+
+                # (optional) fix grid spacing; comment out if you want auto
+                # xaxis["dtick"] = 0.01
+                # yaxis["dtick"] = 0.01
+
+            layout["xaxis"] = xaxis
+            layout["yaxis"] = yaxis
+            return layout
 
     def _register_acquisition_control_callback(
         self, app: Dash, orchestrator_stores: Dict[str, Any]

@@ -1,4 +1,3 @@
-from qua_dashboards.video_mode.inner_loop_actions.basic_inner_loop_action import BasicInnerLoopAction
 from qua_dashboards.core.base_updatable_component import ModifiedFlags
 from qua_dashboards.utils.dash_utils import create_input_field
 from dash import html
@@ -6,14 +5,6 @@ from qm.qua.lib import Cast, Math
 from qualang_tools.units.units import unit
 from qua_dashboards.video_mode.inner_loop_actions.inner_loop_action import (
     InnerLoopAction,
-)
-from quam_builder.architecture.quantum_dots.voltage_sequence.gate_set import (
-    GateSet,
-    VoltageTuningPoint,
-    QdacGateSet
-)
-from quam_builder.architecture.quantum_dots.voltage_sequence import (
-    VoltageSequence
 )
 from quam_builder.architecture.quantum_dots.virtual_gates.virtual_gate_set import (
     VirtualGateSet
@@ -91,8 +82,6 @@ class VirtualGateInnerLoopAction(InnerLoopAction):
         self.reached_voltage = None
 
         self.sequence = gateset.new_sequence(track_integrated_voltage=False)
-    # def perform_step(self, levels):
-    #     self.sequence.step_to_level(levels = levels, duration = )
     def perform_ramp(self, levels):
         """Performs a ramp on a single channel
         Currently hard-coded to be 1us ramp time, but in future will convert to a QUA calculation
@@ -115,10 +104,6 @@ class VirtualGateInnerLoopAction(InnerLoopAction):
         levels = {x_name: x, y_name:y}
 
         if self.ramp_rate > 0:
-            # if getattr(self.x_elem, "sticky", None) is None:
-            #     raise RuntimeError("Ramp rate is not supported for non-sticky elements")
-            # if getattr(self.y_elem, "sticky", None) is None:
-            #     raise RuntimeError("Ramp rate is not supported for non-sticky elements")
             raise NotImplementedError('Please set ramp_rate to 0 and use a low OPX span')
 
         else: 
@@ -136,8 +121,7 @@ class VirtualGateInnerLoopAction(InnerLoopAction):
         pre_measurement_delay_cycles = int(self.pre_measurement_delay * 1e9 // 4)
         if pre_measurement_delay_cycles >= 4:
             wait(pre_measurement_delay_cycles)
-            
-        logger.info(f"[VGI] readout pulse length = {self.readout_pulse.length} ns")
+
         I, Q = self.readout_pulse.channel.measure(self.readout_pulse.id)
         align()
 

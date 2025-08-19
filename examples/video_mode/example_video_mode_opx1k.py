@@ -1,5 +1,5 @@
 """
-Example Script: Video Mode with OPX with DC Offsets provided by the QDAC
+Example Script: Video Mode with OPX1k
 
 This script demonstrates how to use the VideoModeComponent with an OPXDataAcquirer
 to perform live 2D scans on a quantum device. It sets up a QUA program to sweep
@@ -16,7 +16,7 @@ Quick How-to-Use:
 2.  **Adjust Scan Parameters**:
     * Modify `x_axis` and `y_axis` (`SweepAxis` objects) with your desired span,
         points, and any offset parameters.
-    * Review `inner_loop_action` (`BasicInnerLoopAction`) and ensure the
+    * Review `inner_loop_action` (`VirtualGateInnerLoopAction`) and ensure the
         `x_element`, `y_element`, and `readout_pulse` correspond to your QUAM machine
         definitions. Adjust `use_dBm` or other parameters as needed.
     * Select a `scan_mode` (e.g., `SwitchRasterScan`, `RasterScan`).
@@ -40,10 +40,11 @@ from quam.components import (
     Octave,
     pulses,
     StickyChannelAddon,
+    SingleChannel, 
+    InOutSingleChannel
 )
 from qua_dashboards.video_mode.inner_loop_actions.virtual_gating_inner_loop_action import VirtualGateInnerLoopAction
-from quam_builder.architecture.quantum_dots.virtual_gates.virtual_gate_set import VirtualGateSet, VirtualQdacGateSet
-from quam_builder.hardware.quam_channel import QdacOpxChannel, QdacOpxReadout
+from quam_builder.architecture.quantum_dots.virtual_gates.virtual_gate_set import VirtualGateSet
 from qua_dashboards.voltage_control.ui_refresh_script import ui_update
 
 from qua_dashboards.core import build_dashboard
@@ -62,19 +63,6 @@ lffem1 = 3
 lffem2 = 5
 mwfem = 1
 
-from qcodes_contrib_drivers.drivers.QDevil import QDAC2
-
-try: 
-    qdac.close()
-except: 
-    pass
-qdac_addr = "172.16.33.101"
-qdac = QDAC2.QDac2(
-    "QDAC", visalib="@py", address=f"TCPIP::{qdac_addr}::5025::SOCKET"
-)
-
-path = '/Users/kalidu_laptop/QUA'
-
 
 # %% Create QUAM Machine Configuration and Connect to Quantum Machines Manager (QMM)
 
@@ -90,58 +78,38 @@ class GateSetQuam(BasicQuam):
     channels: Dict[str, Channel] = field(default_factory=dict)
     octaves: Dict[str, Octave] = field(default_factory=dict)
     gate_set: Optional[VirtualGateSet] = None
-
 machine = GateSetQuam()
 
-
-
-machine.channels['ch1'] = QdacOpxChannel(
+machine.channels['ch1'] = SingleChannel(
     id = 'Plunger1',
-    qdac = qdac, 
-    qdac_channel = 1, 
-    qdac_unit = 'V',
     opx_output=("con1", lffem2, 6),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
     operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
-    couplings = {'Plunger2': 0.2, 'Plunger3': 0.15, 'Sensor1': 0.1}
 )
 
-machine.channels['ch2'] = QdacOpxChannel(
+machine.channels['ch2'] = SingleChannel(
     id = 'Plunger2', 
-    qdac = qdac, 
-    qdac_channel = 2, 
-    qdac_unit = 'V',
     opx_output=("con1", lffem1, 8),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
     operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
-    couplings = {'Plunger1': 0.2, 'Plunger3': 0.25, 'Sensor1': 0.15}
 )
-
-machine.channels['ch3'] = QdacOpxChannel(
+machine.channels['ch3'] = SingleChannel(
     id = 'Plunger3', 
-    qdac = qdac, 
-    qdac_channel = 3, 
-    qdac_unit = 'V',
     opx_output=("con1", lffem1, 7),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
     operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
-    couplings = {'Plunger1': 0.15, 'Plunger2': 0.25, 'Sensor1': 0.2}
 )
 length = 100
 readout_pulse = pulses.SquareReadoutPulse(id="readout", length=length, amplitude=0.1)
 # Define the readout pulse and the channel used for measurement
-machine.channels["ch1_readout"] = QdacOpxReadout(
+machine.channels["ch1_readout"] = InOutSingleChannel(
     id = 'Sensor1', 
-    qdac = qdac, 
-    qdac_channel = 4, 
-    qdac_unit = 'V',
     opx_output=("con1", lffem1, 1),  # Output for the readout pulse
     opx_input=("con1", lffem1, 1),  # Input for acquiring the measurement signal
     intermediate_frequency=200e6,  # Set IF for the readout channel
     operations={"readout": readout_pulse, 
                 "step": pulses.SquarePulse(amplitude=0.1, length=length)},
     time_of_flight=32,  
-    couplings = {'Plunger1': 0.1, 'Plunger2': 0.15, 'Plunger3': 0.2}
 )
 
 ### Right now, the .get_reference() is necessary to map the channels, but should be improved eventually 
@@ -151,16 +119,11 @@ channels = {machine.channels['ch1'].name: machine.channels['ch1'].get_reference(
             machine.channels['ch1_readout'].name: machine.channels['ch1_readout'].get_reference()}
 readout = {'Resonator': machine.channels['ch1_readout'].get_reference()}
 
-machine.gate_set = VirtualQdacGateSet(id = 'Plungers', channels=channels, readout=readout)
+machine.gate_set = VirtualGateSet(id = 'Plungers', channels=channels)
 machine.gate_set.add_layer(
     source_gates = ['vPlunger1', 'vPlunger2', 'vPlunger3', 'vSensor1'], 
     target_gates = ['Plunger1', 'Plunger2', 'Plunger3', 'Sensor1'], 
-    matrix = machine.gate_set.get_cross_capacitive_matrix()
-)
-machine.gate_set.add_layer(
-    source_gates = ['det_Plunger1','det_Plunger2','det_Plunger3','det_Sensor1'],
-    target_gates = ['vPlunger1','vPlunger2','vPlunger3','vSensor1'],
-    matrix      = [[1,0.2,0,0], [0.2,1,0,0], [0,0,1,0], [0,0,0,1]]
+    matrix = [[1,0.2,0,0], [0.2,1,0,0], [0,0,1,0], [0,0,0,1]]
 )
 
 # --- QMM Connection ---

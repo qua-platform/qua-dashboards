@@ -83,20 +83,19 @@ machine = GateSetQuam()
 machine.channels['ch1'] = SingleChannel(
     id = 'Plunger1',
     opx_output=("con1", lffem2, 6),  # OPX controller and port
-    sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
+    sticky=StickyChannelAddon(duration=1_000, digital=False),
     operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
 )
-
 machine.channels['ch2'] = SingleChannel(
     id = 'Plunger2', 
     opx_output=("con1", lffem1, 8),  # OPX controller and port
-    sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
+    sticky=StickyChannelAddon(duration=1_000, digital=False),
     operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
 )
 machine.channels['ch3'] = SingleChannel(
     id = 'Plunger3', 
     opx_output=("con1", lffem1, 7),  # OPX controller and port
-    sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
+    sticky=StickyChannelAddon(duration=1_000, digital=False),
     operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
 )
 length = 100

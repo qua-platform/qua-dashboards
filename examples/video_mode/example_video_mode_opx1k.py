@@ -112,7 +112,6 @@ channels = {machine.channels['ch1'].name: machine.channels['ch1'].get_reference(
             machine.channels['ch2'].name: machine.channels['ch2'].get_reference(),
             machine.channels['ch3'].name: machine.channels['ch3'].get_reference(),
             machine.channels['ch1_readout'].name: machine.channels['ch1_readout'].get_reference()}
-readout = {'Resonator': machine.channels['ch1_readout'].get_reference()}
 
 machine.gate_set = VirtualGateSet(id = 'Plungers', channels=channels)
 machine.gate_set.add_layer(
@@ -191,7 +190,6 @@ app = build_dashboard(
     components=[video_mode_component],
     title="Combined Dashboard",
 )
-
 
 logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
 # Run the Dash server.

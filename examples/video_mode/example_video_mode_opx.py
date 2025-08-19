@@ -87,7 +87,7 @@ machine.channels["ch1_readout"] = InOutSingleChannel(
 # --- QMM Connection ---
 # Replace with your actual OPX host and cluster name
 # Example: qmm = QuantumMachinesManager(host="your_opx_ip", cluster_name="your_cluster")
-qmm = QuantumMachinesManager(host="`127.0.0.1", cluster_name="CS_1")
+qmm = QuantumMachinesManager(host="172.16.33.101", cluster_name="CS_1")
 
 # Generate the QUA configuration from the QUAM machine object
 config = machine.generate_config()
@@ -145,10 +145,15 @@ data_acquirer = OPXDataAcquirer(
 # %% Run Video Mode Dashboard
 
 # Instantiate the main VideoModeComponent, providing the configured data_acquirer.
+save_path = 'C:\Users\ ...'
+
 video_mode_component = VideoModeComponent(
     data_acquirer=data_acquirer,
-    data_polling_interval_s=0.5,  # How often the dashboard polls for new data
+    data_polling_interval_s=0.2, 
+    machine = machine, 
+    save_path = save_path
 )
+
 
 # Build the Dash application layout using the VideoModeComponent.
 app = build_dashboard(
@@ -160,7 +165,7 @@ logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
 # Run the Dash server.
 # `host="0.0.0.0"` makes it accessible on your network.
 # `use_reloader=False` is often recommended for stability with background threads.
-app.run(debug=True, host="0.0.0.0", port=8050, use_reloader=False)
+app.run(debug=True, host="127.0.0.1", port=8050, use_reloader=False)
 
 
 # %% --- Debugging Sections (Optional) ---

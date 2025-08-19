@@ -78,6 +78,8 @@ class VideoModeComponent(BaseComponent):
     def __init__(
         self,
         data_acquirer: BaseDataAcquirer,
+        machine = None, 
+        save_path: str = None,
         tab_controllers: Optional[List[BaseTabController]] = None,
         default_tab_value: Optional[str] = None,
         component_id: str = DEFAULT_COMPONENT_ID,
@@ -159,6 +161,8 @@ class VideoModeComponent(BaseComponent):
             f"{len(self.tab_controllers)} tab controllers. "
             f"Active tab: {self._active_tab_value}"
         )
+        self.machine = machine
+        self.save_path = save_path
 
     def _get_store_id(self, suffix: str) -> Dict[str, str]:
         """Generates a namespaced Dash component ID for internal stores."""
@@ -221,6 +225,15 @@ class VideoModeComponent(BaseComponent):
                         className="me-2",
                     ),
                     width=3,
+                ),
+                dbc.Col(
+                    dbc.Button(
+                        "Save QUAM State",
+                        id=self._get_id("save-quam-button"),
+                        color="info",
+                        className="me-2",
+                    ),
+                    width=4,
                 ),
             ],
             className="mb-3 g-2 justify-content-start",
@@ -398,6 +411,28 @@ class VideoModeComponent(BaseComponent):
                 dismissable=True,
                 # No duration: stays until dismissed or replaced
             )
+        @app.callback(
+            Output(self._get_id(self._MAIN_STATUS_ALERT_ID_SUFFIX), "children", allow_duplicate=True),
+            Input(self._get_id("save-quam-button"), "n_clicks"),
+            prevent_initial_call=True,
+        )
+        def handle_save_quam_button(n_clicks):
+            if not n_clicks:
+                raise PreventUpdate
+            try:
+                self.machine.save(self.save_path) 
+                message = "QUAM state successfully saved."
+                color = "success"
+                print(message)
+            except Exception as e:
+                message = f"Failed to save QUAM state: {e}"
+                color = "danger"
+                print(message)
+            return dbc.Alert(
+                message,
+                color=color,
+                dismissable=True,
+    )
 
     def _register_data_polling_interval_callback(self, app: Dash) -> None:
         """Registers callback for periodically polling the data acquirer."""

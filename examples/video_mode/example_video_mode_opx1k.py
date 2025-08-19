@@ -111,7 +111,7 @@ machine.channels["ch1_readout"] = InOutSingleChannel(
     time_of_flight=32,  
 )
 
-### Right now, the .get_reference() is necessary to map the channels, but should be improved eventually 
+### Right now, the .get_reference() is necessary to map the channels. .name is used to map consistently with the SweepAxis set up later
 channels = {machine.channels['ch1'].name: machine.channels['ch1'].get_reference(),
             machine.channels['ch2'].name: machine.channels['ch2'].get_reference(),
             machine.channels['ch3'].name: machine.channels['ch3'].get_reference(),

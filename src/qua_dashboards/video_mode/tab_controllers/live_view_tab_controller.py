@@ -10,6 +10,7 @@ from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import (
     BaseDataAcquirer,
     ModifiedFlags,
 )
+import numpy as np
 from qua_dashboards.video_mode.tab_controllers.base_tab_controller import (
     BaseTabController,
 )
@@ -116,6 +117,15 @@ class LiveViewTabController(BaseTabController):
                                     inline=True,
                                     inputStyle={"margin": "0 5px 0 0"},
                                 ),
+                                dcc.Input(
+                                    id = self._get_id("grid_opacity"), 
+                                    type = "number", 
+                                    min = 0, 
+                                    max = 100, 
+                                    step = 5, 
+                                    value = 40, 
+                                    style = {"width": "50px", "marginLeft": "10px"}
+                                )
                             ],
                             className="mt-2",
                         ),
@@ -245,37 +255,48 @@ class LiveViewTabController(BaseTabController):
             return "", self._data_acquirer_instance.get_dash_components(include_subcomponents=True)
 
         @app.callback(
-            Output(shared_viewer_store_ids["viewer_layout_config_store"], "data"),
+            Output(shared_viewer_store_ids["layout_config_store"], "data"),
             Input(self._get_id("center-marker-toggle"), "value"),
-            State(shared_viewer_store_ids["viewer_layout_config_store"], "data"),
+            Input(self._get_id("grid_opacity"), "value"),
+            State(shared_viewer_store_ids["layout_config_store"], "data"),
             prevent_initial_call=True,
         )
-        def _toggle_gridlines(toggle_val, existing_layout):
+        def _toggle_gridlines(toggle_val, opacity, existing_layout):
             layout = existing_layout or {}
             show = "on" in toggle_val
+            shapes = []
+            alpha = float(opacity)/100
 
-            # remove any old center‐marker
-            layout["shapes"] = [s for s in layout.get("shapes", []) if s.get("name") != "center"]
-            xaxis = {**layout.get("xaxis", {})}
-            yaxis = {**layout.get("yaxis", {})}
+            if show: 
 
+                xr = list(self._data_acquirer_instance.x_axis.sweep_values_unattenuated)
+                yr = list(self._data_acquirer_instance.y_axis.sweep_values_unattenuated)
+                xs, ys = np.linspace(xr[0], xr[-1], 15).tolist() + [0], np.linspace(yr[0], yr[-1], 15).tolist() + [0]
 
-            for ax in (xaxis, yaxis):
-                    ax["showgrid"] = show
-                    ax["gridwidth"] = 1
-                    ax["gridcolor"] = "rgba(0,0,0,0.25)"
-                    # optional: minor grid + center (zero) lines
-                    ax["minor"] = {**ax.get("minor", {}), "showgrid": show}
-                    ax["zeroline"] = show
-                    ax["zerolinewidth"] = 1
-                    ax["zerolinecolor"] = "rgba(0,0,0,0.35)"
+                for xv in xs:
+                    grid_color = f"rgba(0,0,0,{alpha*5})" if xv == 0 else f"rgba(0,0,0,{alpha})"
+                    shapes.append({
+                        "type": "line",
+                        "xref": "x", "yref": "paper",
+                        "x0": xv, "x1": xv, "y0": 0, "y1": 1,
+                        "line": {"width": 4, "color": grid_color},
+                        "layer": "above",
+                        "name": "grid-x",
+                    })
+                for yv in ys:
+                    grid_color = f"rgba(0,0,0,{alpha*5})" if yv == 0 else f"rgba(0,0,0,{alpha})"
+                    shapes.append({
+                        "type": "line",
+                        "xref": "paper", "yref": "y",
+                        "x0": 0, "x1": 1, "y0": yv, "y1": yv,
+                        "line": {"width": 4, "color": grid_color},
+                        "layer": "above",
+                        "name": "grid-y",
+                    })
+            layout["shapes"] = shapes
+            # xaxis = {**layout.get("xaxis", {})}; xaxis["showgrid"] = False; layout["xaxis"] = xaxis
+            # yaxis = {**layout.get("yaxis", {})}
 
-                # (optional) fix grid spacing; comment out if you want auto
-                # xaxis["dtick"] = 0.01
-                # yaxis["dtick"] = 0.01
-
-            layout["xaxis"] = xaxis
-            layout["yaxis"] = yaxis
             return layout
 
     def _register_acquisition_control_callback(

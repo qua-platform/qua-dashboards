@@ -268,12 +268,15 @@ class LiveViewTabController(BaseTabController):
             alpha = float(opacity)/100
 
             if show: 
-
+                #Get the range from the data acquirer instance
                 xr = list(self._data_acquirer_instance.x_axis.sweep_values_unattenuated)
                 yr = list(self._data_acquirer_instance.y_axis.sweep_values_unattenuated)
+
+                #Set grid lines points, and ensure that 0 is included
                 xs, ys = np.linspace(xr[0], xr[-1], 15).tolist() + [0], np.linspace(yr[0], yr[-1], 15).tolist() + [0]
 
                 for xv in xs:
+                    #0 grid line has 5x higher alpha
                     grid_color = f"rgba(0,0,0,{alpha*5})" if xv == 0 else f"rgba(0,0,0,{alpha})"
                     shapes.append({
                         "type": "line",
@@ -294,9 +297,6 @@ class LiveViewTabController(BaseTabController):
                         "name": "grid-y",
                     })
             layout["shapes"] = shapes
-            # xaxis = {**layout.get("xaxis", {})}; xaxis["showgrid"] = False; layout["xaxis"] = xaxis
-            # yaxis = {**layout.get("yaxis", {})}
-
             return layout
 
     def _register_acquisition_control_callback(

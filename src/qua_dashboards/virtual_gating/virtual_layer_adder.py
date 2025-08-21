@@ -10,7 +10,7 @@ class VirtualLayerAdder:
     An apply button calls gateset.add_layer(..) internally. 
     """
 
-    def __init__(self, gateset, component_id: str):
+    def __init__(self, gateset, component_id: str, layer_names: list):
         """
         gateset: your VirtualGateSet instance
         component_id: a unique string to namespace this editor
@@ -20,6 +20,7 @@ class VirtualLayerAdder:
         self.apply_button_id = f"{self.component_id}-apply-button"
         self.layout_columns = 9
         self.layout_rows    = 4 
+        self.layer_names = layer_names
 
     def _matrix_builder(self, source_gates: list[str], target_gates: list[str]):
         """
@@ -72,6 +73,13 @@ class VirtualLayerAdder:
                                     id=f"{self.component_id}-tgt-dd",
                                     options=dropdown_options, multi=True, value=[], placeholder = "Pick Target Gates!"),
                                 width=4),
+                            dbc.Col(html.Label("Layer name"), width=2),
+                            dbc.Col(dcc.Input(
+                                id=f"{self.component_id}-layer-name",
+                                type="text",
+                                placeholder="Enter layer name",
+                                style={"width": "100%"},
+                            ), width=4),
                         ], className="mb-3"),
 
                         html.Div(id=f"{self.component_id}-matrix-container"),
@@ -104,15 +112,17 @@ class VirtualLayerAdder:
             Output({"type":"LAYER_OUTPUT","index":self.component_id}, "children", allow_duplicate=True),
             Output({"type":"LAYER_REFRESH","index":self.component_id}, "data", allow_duplicate=True),
             Output("vg-layer-refresh-trigger", "data", allow_duplicate=True),
+            Output(f"{self.component_id}-layer-name", "value", allow_duplicate=True),
             Input(self.apply_button_id, "n_clicks"),
             State(f"{self.component_id}-tgt-dd", "value"),
             State({"type":"vg-source-column", "index":self.component_id, "col": ALL}, "value"),
             State({"type":"vg-layer-cell",   "index":self.component_id, "row": ALL, "col": ALL}, "value"),
             State({"type":"LAYER_REFRESH",    "index":self.component_id}, "data"),
             State("vg-layer-refresh-trigger","data"),
+            State(f"{self.component_id}-layer-name", "value"),
             prevent_initial_call=True
         )
-        def _apply(nc, target_list, source_names, flat_cells, refresh, glob_ref):
+        def _apply(nc, target_list, source_names, flat_cells, refresh, glob_ref, layer_name):
             if nc is None or not target_list:
                 raise PreventUpdate
 
@@ -133,8 +143,9 @@ class VirtualLayerAdder:
             except Exception as e:
                 app.logger.error(f"add_layer failed: {e}")
                 return f"Error: {e}", no_update, no_update
-
-            return "Layer added!", (refresh or 0)+1, (glob_ref or 0)+1
+            new_idx = len(self.gateset.layers)-1
+            self.layer_names.append({"label": layer_name if layer_name else f"Layer {new_idx + 1}", "value": new_idx})
+            return "Layer Added!", (refresh or 0)+1, (glob_ref or 0)+1, ""
         
         @app.callback(
             Output(f"{self.component_id}-tgt-dd", "options"),

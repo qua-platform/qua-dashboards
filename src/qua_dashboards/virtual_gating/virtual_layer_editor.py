@@ -23,7 +23,8 @@ class VirtualLayerEditor(BaseComponent):
         super().__init__(component_id = component_id)
         self.gateset = gateset
         self.component_id = component_id
-        self._adder = VirtualLayerAdder(self.gateset, component_id = f"{component_id}-adder")
+        self.layer_names = []
+        self._adder = VirtualLayerAdder(self.gateset, component_id = f"{component_id}-adder", layer_names=self.layer_names)
     
     def _render_matrix_editor(self, layer_idx):
         layer = self.gateset.layers[layer_idx]
@@ -52,7 +53,7 @@ class VirtualLayerEditor(BaseComponent):
     def get_layout(self):
         layers = [layer for layer in self.gateset.layers]
         num_of_layers = len(layers)
-        options = [{"label":f"Layer {i+1}", "value":i} for i in range(num_of_layers)]
+        options = self.layer_names
         default = 0 if num_of_layers > 0 else None
 
         editor_card = dbc.Card([
@@ -158,8 +159,7 @@ class VirtualLayerEditor(BaseComponent):
         )
         def _refresh_dropdown(_refresh, _init):
             num = len(self.gateset.layers)
-            options = [{"label": f"Layer {i+1}", "value":i} for i in range(num)]
-
+            options = self.layer_names
             val = num - 1 if num >0 else None
             return options, val
         

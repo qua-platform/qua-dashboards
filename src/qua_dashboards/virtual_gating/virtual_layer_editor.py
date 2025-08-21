@@ -23,7 +23,10 @@ class VirtualLayerEditor(BaseComponent):
         super().__init__(component_id = component_id)
         self.gateset = gateset
         self.component_id = component_id
-        self.layer_names = []
+        self.layer_names = [
+            {"label": f"Layer {i+1}", "value": i}
+            for i, _ in enumerate(self.gateset.layers)
+        ]
         self._adder = VirtualLayerAdder(self.gateset, component_id = f"{component_id}-adder", layer_names=self.layer_names)
     
     def _render_matrix_editor(self, layer_idx):

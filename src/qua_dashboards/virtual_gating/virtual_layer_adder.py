@@ -120,9 +120,10 @@ class VirtualLayerAdder:
             State({"type":"LAYER_REFRESH",    "index":self.component_id}, "data"),
             State("vg-layer-refresh-trigger","data"),
             State(f"{self.component_id}-layer-name", "value"),
+            State({"type":"vg-layer-cell", "index":self.component_id, "row":ALL, "col":ALL}, "id"),
             prevent_initial_call=True
         )
-        def _apply(nc, target_list, source_names, flat_cells, refresh, glob_ref, layer_name):
+        def _apply(nc, target_list, source_names, flat_cells, refresh, glob_ref, layer_name, cell_ids):
             if nc is None or not target_list:
                 raise PreventUpdate
 
@@ -132,7 +133,8 @@ class VirtualLayerAdder:
                 app.logger.error(f"Wrong shape: Expected {M*K} cells, got {len(flat_cells)}")
                 return no_update, no_update, no_update
 
-            mat = [flat_cells[i*K:(i+1)*K] for i in range(M)]
+            coord_vals = { (cid["row"], cid["col"]): v for cid, v in zip(cell_ids, flat_cells) }
+            mat = [[ float(coord_vals.get((i, j), 0.0)) for j in range(K)] for i in range(M)]
             try:
                 self.gateset.add_layer(
                     source_gates=source_names,

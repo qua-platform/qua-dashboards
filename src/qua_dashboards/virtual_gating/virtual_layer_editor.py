@@ -56,7 +56,7 @@ class VirtualLayerEditor(BaseComponent):
         default = 0 if num_of_layers > 0 else None
 
         editor_card = dbc.Card([
-            dbc.CardHeader("Edit Existing Virtual Gate Layers"),
+            dbc.CardHeader("VirtualGateSet Layer Editor"),
             dbc.CardBody([
                 dcc.Dropdown(
                     id = f"{self.component_id}-layer-dropdown",
@@ -65,6 +65,10 @@ class VirtualLayerEditor(BaseComponent):
                     clearable = False
                 ),
                 html.Div(id = f"{self.component_id}-layer-matrix-editor"),
+                dcc.Interval(
+                    id=f"{self.component_id}-init",
+                    interval=50, n_intervals=0, max_intervals=1
+                ),
                 dbc.Row(
                     [
                         dbc.Col(
@@ -149,9 +153,10 @@ class VirtualLayerEditor(BaseComponent):
             Output(f"{self.component_id}-layer-dropdown", "options"),
             Output(f"{self.component_id}-layer-dropdown", "value"),
             Input("vg-layer-refresh-trigger", "data"),
+            Input(f"{self.component_id}-init", "n_intervals"),
             prevent_initial_call=True,
         )
-        def _refresh_dropdown(_):
+        def _refresh_dropdown(_refresh, _init):
             num = len(self.gateset.layers)
             options = [{"label": f"Layer {i+1}", "value":i} for i in range(num)]
 

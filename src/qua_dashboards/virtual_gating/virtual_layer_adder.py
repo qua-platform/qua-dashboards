@@ -64,7 +64,7 @@ class VirtualLayerAdder:
         dropdown_options = [{"label":n,"value":n} for n in sorted(set(full_list))]
 
         return dbc.Card([
-                    dbc.CardHeader("Virtual Gate-Set Layer Adder"),
+                    dbc.CardHeader("VirtualGateSet Layer Adder"),
                     dbc.CardBody([
                         dbc.Row([
                             dbc.Col(html.Label("Target gates"), width=2),
@@ -75,8 +75,10 @@ class VirtualLayerAdder:
                         ], className="mb-3"),
 
                         html.Div(id=f"{self.component_id}-matrix-container"),
-
-
+                        dcc.Interval(
+                            id=f"{self.component_id}-init",
+                            interval=50, n_intervals=0, max_intervals=1
+                        ),
                         dbc.Button("Apply", id=self.apply_button_id, color="primary", className="mt-2"),
                         html.Div(
                             id={"type": "LAYER_OUTPUT", "index": self.component_id},
@@ -138,9 +140,10 @@ class VirtualLayerAdder:
             Output(f"{self.component_id}-tgt-dd", "options"),
             Output(f"{self.component_id}-tgt-dd", "value"),
             Input("vg-layer-refresh-trigger", "data"),
+            Input(f"{self.component_id}-init", "n_intervals"),
             prevent_initial_call=True,
         )
-        def _refresh_target_dropdown(_):
+        def _refresh_target_dropdown(_refresh, _init):
             if self.gateset.layers:
                 assigned = {t for layer in self.gateset.layers for t in layer.target_gates}
                 full_list = [n for n in self.gateset.valid_channel_names if n not in assigned]

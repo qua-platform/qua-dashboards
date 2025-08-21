@@ -35,7 +35,7 @@ def main():
     logger.info("Starting Virtual Gating UI")
     machine, gateset = setup_gateset()
 
-    component = VirtualLayerEditor(gateset = gateset, component_id = 'VirtualLayerEditor')
+    component = VirtualLayerEditor(gateset = gateset, component_id = 'Virtual Gates UI')
     app = build_dashboard(
         components=[component],
         title="Virtual Layer UI",

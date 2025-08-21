@@ -18,7 +18,7 @@ class VirtualLayerEditor(BaseComponent):
         """
         Args:
             gateset: The VirtualGateSet instance
-            component_id: Dash Component ID
+            component_id: Dash Component ID; also the name of the component title
         """
         super().__init__(component_id = component_id)
         self.gateset = gateset

@@ -13,7 +13,6 @@ class LineScan(ScanMode):
     """
 
     def get_idxs(self, x_points: int, y_points: int) -> Tuple[np.ndarray, np.ndarray]:
-        # MINIMAL FIX: map N samples onto a 1×N frame (row 0)
         x_idxs = np.arange(x_points, dtype=int)
         y_idxs = np.zeros(x_points, dtype=int)
         return x_idxs, y_idxs

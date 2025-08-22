@@ -15,7 +15,7 @@ from qm.qua import (
 )
 from dash import html
 import dash_bootstrap_components as dbc
-
+from qua_dashboards.video_mode.scan_modes import LineScan
 from qua_dashboards.core.base_updatable_component import BaseUpdatableComponent
 from qua_dashboards.video_mode.data_acquirers.base_2d_data_acquirer import (
     Base2DDataAcquirer,
@@ -56,7 +56,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         qua_inner_loop_action: InnerLoopAction,
         scan_mode: ScanMode,
         x_axis: SweepAxis,
-        y_axis: SweepAxis,
+        y_axis: None | SweepAxis,
         component_id: str = "opx-data-acquirer",
         num_software_averages: int = 1,
         acquisition_interval_s: float = 0.1,
@@ -84,9 +84,14 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                          Defaults to ["I", "Q"].
             **kwargs: Additional arguments for Base2DDataAcquirer.
         """
+        self._is_1d: bool = y_axis is None
+        if y_axis is None:
+            self.y_axis = SweepAxis(name="dummy_y", span=0.0, points=1, units="", attenuation=0, component_id=f"{component_id}-dummy-y")
+        else:
+            self.y_axis: SweepAxis = y_axis
         super().__init__(
             x_axis=x_axis,
-            y_axis=y_axis,
+            y_axis=self.y_axis,
             component_id=component_id,
             num_software_averages=num_software_averages,
             acquisition_interval_s=acquisition_interval_s,
@@ -117,6 +122,9 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         """
         x_qua_values = list(self.x_axis.sweep_values_unattenuated)
         y_qua_values = list(self.y_axis.sweep_values_unattenuated)
+
+        if self._is_1d:
+            self.scan_mode = LineScan()
 
         with program() as prog:
             qua_streams = {var: declare_stream() for var in self.stream_vars}

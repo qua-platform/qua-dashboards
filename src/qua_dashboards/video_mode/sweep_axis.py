@@ -70,10 +70,16 @@ class SweepAxis(BaseUpdatableComponent):
         return 10 ** (-self.attenuation / 20)
 
     def get_layout(self) -> Component | None:
+        if isinstance(self.name, str) and self.name.startswith("dummy_y"):
+            return None
         return self.create_axis_layout(
             min_span=0.001,
             max_span=None,
         )
+        # return self.create_axis_layout(
+        #     min_span=0.001,
+        #     max_span=None,
+        # )
 
     def register_callbacks(self, app: Dash) -> None:
         pass

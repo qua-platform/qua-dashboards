@@ -122,7 +122,6 @@ class SharedViewerComponent(BaseComponent):
                 x_dim = dims[1] if base_image_data.shape[0] == 1 else dims[0]
                 coord = base_image_data.coords[x_dim]
                 x = np.asarray(coord.values)
-                # same labeling convention as 2D: label + units if present
                 x_label = coord.attrs.get("label") or str(x_dim)
                 if coord.attrs.get("units"):
                     x_label = f"{x_label} [{coord.attrs['units']}]"
@@ -175,7 +174,6 @@ class SharedViewerComponent(BaseComponent):
                     x_dim = dims[1] if base_image_data.shape[0] == 1 else dims[0]
                     coord = base_image_data.coords[x_dim]
                     x = np.asarray(coord.values)
-                    # same labeling convention as 2D: label + units if present
                     x_label = coord.attrs.get("label") or str(x_dim)
                     if coord.attrs.get("units"):
                         x_label = f"{x_label} [{coord.attrs['units']}]"

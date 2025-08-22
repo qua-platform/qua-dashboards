@@ -1,4 +1,3 @@
-from qua_dashboards.core.base_updatable_component import ModifiedFlags
 from qua_dashboards.utils.dash_utils import create_input_field
 from dash import html
 from qm.qua.lib import Cast, Math
@@ -187,14 +186,13 @@ class BasicInnerLoopAction(InnerLoopAction):
 
         return components
 
-    def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
+    def update_parameters(self, parameters: Dict[str, Dict[str, Any]]):
         """Update the data acquirer's attributes based on the input values."""
         if self.component_id not in parameters:
-            return ModifiedFlags.NONE
-
+            return None
+        
         params = parameters[self.component_id]
 
-        flags = ModifiedFlags.NONE
         if (
             self.readout_pulse.channel.intermediate_frequency
             != params["readout_frequency"]
@@ -202,27 +200,14 @@ class BasicInnerLoopAction(InnerLoopAction):
             self.readout_pulse.channel.intermediate_frequency = params[
                 "readout_frequency"
             ]
-            flags |= ModifiedFlags.PARAMETERS_MODIFIED
-            flags |= ModifiedFlags.PROGRAM_MODIFIED
-            flags |= ModifiedFlags.CONFIG_MODIFIED
 
         if self.readout_pulse.length != params["readout_duration"]:
             self.readout_pulse.length = params["readout_duration"]
-            flags |= ModifiedFlags.PARAMETERS_MODIFIED
-            flags |= ModifiedFlags.PROGRAM_MODIFIED
-            flags |= ModifiedFlags.CONFIG_MODIFIED
 
         if self.use_dBm:
             if unit.volts2dBm(self.readout_pulse.amplitude) != params["readout_power"]:
                 self.readout_pulse.amplitude = unit.dBm2volts(params["readout_power"])
-                flags |= ModifiedFlags.PARAMETERS_MODIFIED
-                flags |= ModifiedFlags.PROGRAM_MODIFIED
-                flags |= ModifiedFlags.CONFIG_MODIFIED
         else:
             if self.readout_pulse.amplitude != params["readout_amplitude"]:
                 self.readout_pulse.amplitude = params["readout_amplitude"]
-                flags |= ModifiedFlags.PARAMETERS_MODIFIED
-                flags |= ModifiedFlags.PROGRAM_MODIFIED
-                flags |= ModifiedFlags.CONFIG_MODIFIED
 
-        return flags

@@ -220,8 +220,7 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
             "status": self._acquisition_status,
         }
 
-    def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
-        flags = super().update_parameters(parameters)  # From BaseUpdatableComponent
+    def update_parameters(self, parameters: Dict[str, Dict[str, Any]]):
 
         if self.component_id in parameters:
             params = parameters[self.component_id]
@@ -232,7 +231,6 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
                 new_interval = float(params["acquisition_interval_s"])
                 if new_interval > 0:
                     self.acquisition_interval_s = new_interval
-                    flags |= ModifiedFlags.PARAMETERS_MODIFIED
                 else:
                     logger.warning(
                         f"Invalid acquisition_interval_s: {new_interval}. Not updated."
@@ -245,7 +243,6 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
                 new_averages = int(params["num_software_averages"])
                 if new_averages >= 1:
                     self.num_software_averages = new_averages
-                    flags |= ModifiedFlags.PARAMETERS_MODIFIED
                     with self._data_lock:  # Clear history as averaging window changed
                         self._data_history_raw.clear()
                         self._latest_processed_data = None
@@ -259,9 +256,9 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
                 continue
 
             if component.component_id in parameters:
-                flags |= component.update_parameters(parameters)
+                component.update_parameters(parameters)
 
-        return flags
+
 
     def get_dash_components(self, include_subcomponents: bool = True) -> List[Any]:
         components = super().get_dash_components(include_subcomponents)

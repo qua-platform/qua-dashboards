@@ -40,7 +40,7 @@ class BaseUpdatableComponent(BaseComponent, ABC):
         # Pass through component_id and any other args/kwargs to BaseComponent
         super().__init__(component_id=component_id, *args, **kwargs)  # type: ignore
 
-    def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
+    def update_parameters(self, parameters: Dict[str, Dict[str, Any]]):
         """
         Update the component's attributes based on the input values from the UI.
 
@@ -59,7 +59,7 @@ class BaseUpdatableComponent(BaseComponent, ABC):
             and might require further action (e.g., re-generating a program).
             Defaults to ModifiedFlags.NONE.
         """
-        return ModifiedFlags.NONE
+        return None
 
     def get_dash_components(self, include_subcomponents: bool = True) -> List[html.Div]:
         """

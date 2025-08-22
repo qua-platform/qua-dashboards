@@ -20,7 +20,6 @@ from qua_dashboards.core.base_updatable_component import BaseUpdatableComponent
 from qua_dashboards.video_mode.data_acquirers.base_2d_data_acquirer import (
     Base2DDataAcquirer,
 )
-from qua_dashboards.core import ModifiedFlags
 from qua_dashboards.video_mode.sweep_axis import SweepAxis
 from qua_dashboards.video_mode.scan_modes import ScanMode
 
@@ -104,12 +103,14 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self.initial_delay_s: Optional[float] = initial_delay_s
         self.qua_program: Optional[Program] = None
         self.qm_job: Optional[RunningQmJob] = None
-        self._compilation_flags: ModifiedFlags = ModifiedFlags.NONE
 
         self.result_type: str = result_type
         self._raw_qua_results: Dict[str, np.ndarray] = {}
         self.stream_vars: List[str] = stream_vars or self.stream_vars_default
         self.result_types: List[str] = self.result_types_default
+
+        #Initial parameters upon instantialisation of the data_acquirer
+        self.current_parameters = self._program_parameters()
 
     def generate_qua_program(self) -> Program:
         """
@@ -183,12 +184,26 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
         if self.qm is None:
             self.qm = self.qmm.open_qm(self.qua_config)  # type: ignore
+        
+    def _program_parameters(self):
+        inner_loop = self.qua_inner_loop_action
+
+        params = (
+            self.x_axis.span, self.x_axis.points, 
+            self.y_axis.span, self.y_axis.points, 
+            # self.scan_mode.__name__, 
+            tuple(self.stream_vars), self.result_type, self.initial_delay_s, 
+            inner_loop.readout_pulse.channel.intermediate_frequency, inner_loop.readout_pulse.length, inner_loop.readout_pulse.amplitude, 
+            self.num_software_averages, self.acquisition_interval_s
+        )
+        return params
+        
 
     def execute_program(self, validate_running: bool = True):
-        if self.qua_program is None:
-            logger.info(f"Generating QUA program for {self.component_id}.")
-            self.generate_qua_program()
 
+        self.qua_program = None
+        logger.info(f"Generating QUA program for {self.component_id}.")
+        self.generate_qua_program()
         logger.info(f"Executing QUA program for {self.component_id}.")
         self.qm_job = self.qm.execute(self.qua_program)  # type: ignore
 
@@ -202,6 +217,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                     f"QM job for {self.component_id} failed to start or produce initial values: {e}"
                 )
                 raise
+        #Update the internal programme parameters, if anything has changed. Only done after a successful execution
+        self.current_parameters = self._program_parameters()
 
     def _process_fetched_results(self, fetched_qua_results: Tuple) -> np.ndarray:
         """
@@ -252,15 +269,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         return output_data_2d
 
     def perform_actual_acquisition(self) -> np.ndarray:
-        if self._compilation_flags & ModifiedFlags.CONFIG_MODIFIED:
-            logger.info(f"Config regeneration triggered for {self.component_id}.")
+        if self.current_parameters != self._program_parameters(): 
             self._regenerate_config_and_reopen_qm()
-            self._compilation_flags = ModifiedFlags.NONE
-        elif self._compilation_flags & ModifiedFlags.PROGRAM_MODIFIED:
-            logger.info(f"Program recompile triggered for {self.component_id}.")
-            self.qua_program = None  # Clear the program to force a re-generation
-            self.execute_program()
-            self._compilation_flags = ModifiedFlags.NONE
 
         if self.qm_job is None or self.qm_job.status != "running":
             logger.warning(
@@ -293,20 +303,25 @@ class OPXDataAcquirer(Base2DDataAcquirer):
     def _regenerate_config_and_reopen_qm(self) -> None:
         logger.info(f"Regenerating QUA config for {self.component_id} from machine.")
         self.qua_config = self.machine.generate_config()
+
+        try:
+            if self.qm_job and self.qm_job.status == "running":
+                self.qm_job.halt()
+        except Exception:
+            logger.exception("Error halting job before reopen")
+
+        self.qm_job = None
+        self.qm = None
         self.initialize_qm()
         self.execute_program()
 
-    def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
-        flags = super().update_parameters(parameters)
-
+    def update_parameters(self, parameters: Dict[str, Dict[str, Any]]):
+        super().update_parameters(parameters)
         if self.component_id in parameters:
             params = parameters[self.component_id]
             if "result-type" in params and self.result_type != params["result-type"]:
                 self.result_type = params["result-type"]
-                flags |= ModifiedFlags.PARAMETERS_MODIFIED
 
-        self._compilation_flags = flags
-        return flags
 
     def get_dash_components(self, include_subcomponents: bool = True) -> List[Any]:
         components = super().get_dash_components(include_subcomponents)

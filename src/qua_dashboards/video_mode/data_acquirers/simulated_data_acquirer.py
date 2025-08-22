@@ -262,7 +262,28 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
             )
         )
         return dash_components
-
+    
+    def ramp(self, v_start, v_end, N):
+        """
+        Generates a linear ramp from v_start to v_end with the specified resolution.
+        
+        Parameters:
+        v_start (np.array): Starting voltage vector.
+        v_end (np.array): Ending voltage vector.
+        state_hint (list): State hint for the tunneling simulation.
+        N (int): Number of points in the ramp (resolution).
+        
+        Returns:
+        1D numpy array of voltage vectors along the ramp.
+        """
+        state_hint = self.args_rendering["state_hint_lower_left"]
+        sensor_signal = self.experiment.tunneling_sim.sensor_scan(
+                                                            v_start = v_start,
+                                                            v_end = v_end,
+                                                            resolution = N,
+                                                            v_start_state_hint = state_hint,
+                                                            )
+        return sensor_signal[:, 0]  # Return the sensor signal as a 1D numpy array
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
         """Updates SimulatedDataAcquirer parameters based on UI input.

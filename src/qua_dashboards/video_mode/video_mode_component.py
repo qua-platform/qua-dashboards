@@ -120,7 +120,7 @@ class VideoModeComponent(BaseComponent):
                 data_acquirer=self.data_acquirer,  # Pass data_acquirer here
             )
             annotation_tab = AnnotationTabController(
-                component_id=f"{self.component_id}-annotation-tab",
+                component_id=f"{self.component_id}-annotation-tab", data_acquirer=self.data_acquirer,
             )
             self.tab_controllers: List[BaseTabController] = [
                 live_view_tab,
@@ -242,7 +242,8 @@ class VideoModeComponent(BaseComponent):
                 data = {},
             ),
             dcc.Store(
-                id=self._get_store_id(self.VIEWER_LAYOUT_CONFIG_STORE_SUFFIX), data={}
+                id=self._get_store_id(self.VIEWER_LAYOUT_CONFIG_STORE_SUFFIX), 
+                data={},
             ),
         ]
 

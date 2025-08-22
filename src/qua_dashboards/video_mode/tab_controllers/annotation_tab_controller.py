@@ -2,6 +2,7 @@ import json
 import logging
 from typing import Dict, Any, List, Optional, Tuple
 import re
+import copy
 
 import dash
 import dash_bootstrap_components as dbc
@@ -20,8 +21,10 @@ from qua_dashboards.video_mode.utils.dash_utils import xarray_to_plotly
 from qua_dashboards.video_mode.utils.annotation_utils import (
     calculate_slopes,
     find_closest_line_id,
+    compute_gate_compensation,
 )
 from qua_dashboards.video_mode.utils.data_utils import load_data
+from qua_dashboards.video_mode.data_acquirers.simulated_data_acquirer import SimulatedDataAcquirer
 
 logger = logging.getLogger(__name__)
 
@@ -76,12 +79,13 @@ class AnnotationTabController(BaseTabController):
     _LOAD_FROM_DISK_BUTTON_SUFFIX = "load-from-disk-button"
     _LOAD_FROM_DISK_INPUT_SUFFIX = "load-from-disk-input"
     _SHOW_LABELS_CHECKLIST_SUFFIX = "show-labels-checklist"
-    _COMPENSATION_BUTTON_SUFFIX = "compensation-button"
-    _COMPENSATION_RESULTS_SUFFIX = "compensation-results"
+    _SENSOR_COMPENSATION_BUTTON_SUFFIX = "sensor-compensation-button"
+    _SENSOR_COMPENSATION_RESULTS_SUFFIX = "sensor-compensation-results"
 
     def __init__(
         self,
         component_id: str = "annotation-tab-controller",
+        data_acquirer: Optional[Any] = None,
         point_select_tolerance: float = 0.025,  # Relative
         **kwargs: Any,
     ) -> None:
@@ -94,6 +98,7 @@ class AnnotationTabController(BaseTabController):
             **kwargs: Additional keyword arguments passed to BaseComponent.
         """
         super().__init__(component_id=component_id, **kwargs)
+        self.data_acquirer = data_acquirer
         self._relative_click_tolerance = max(0.001, point_select_tolerance)
         self._absolute_click_tolerance: float = 1.0  # Default, updated with figure
 
@@ -260,14 +265,14 @@ class AnnotationTabController(BaseTabController):
                     },
                 ),
                 dbc.Button(
-                    "Compute Compensation Matrix",
-                    id=self._get_id(self._COMPENSATION_BUTTON_SUFFIX),
+                    "Compensate Sensors",
+                    id=self._get_id(self._SENSOR_COMPENSATION_BUTTON_SUFFIX),
                     color="success",
                     size="sm",
                     className="mb-2",
                 ),
                 html.Pre(
-                    id=self._get_id(self._COMPENSATION_RESULTS_SUFFIX),
+                    id=self._get_id(self._SENSOR_COMPENSATION_RESULTS_SUFFIX),
                     className="border rounded analysis-results-dark p-1 mb-3",
                     style={
                         "maxHeight": "100px",
@@ -440,6 +445,52 @@ class AnnotationTabController(BaseTabController):
         self._register_mode_change(
             app, viewer_ui_state_store_id
         )
+        self._register_compute_sensor_compensation(
+            app,
+        )
+
+    def _register_compute_sensor_compensation(
+            self,
+            app: Dash,
+    ) -> None:
+        """Callback to compute the sensor compensation (sensor tuning)."""
+    
+        @app.callback(
+            Output(self._get_id(self._SENSOR_COMPENSATION_RESULTS_SUFFIX), "children"),
+            Input(self._get_id(self._SENSOR_COMPENSATION_BUTTON_SUFFIX), "n_clicks"),
+            prevent_initial_call=True,
+        )
+        def _compute_sensor_compensation(n_clicks: int):
+            logger.info(f"{self._get_id(self._SENSOR_COMPENSATION_BUTTON_SUFFIX)}: Compute compensation clicked.")
+            if not isinstance(self.data_acquirer, SimulatedDataAcquirer):
+                return "This feature is only available for simulated data."
+            else:
+                ## Simulated data acquirer
+
+                # Fixed parameters   MAYBE AS USER INPUT (WITH DEFAULT VALUES)?
+                N = 200
+                num_trials = 4
+                max_iterations=1000000
+                epsilon=1.e-6 
+                dim = self.data_acquirer.experiment.capacitance_config["C_DD"].shape[0]  # dimension of the system (number of gates/sensors)
+                ranges = {i: (-0.015, 0.015) for i in range(dim)}
+                
+                # Other parameters
+                sensor_id = self.data_acquirer.experiment.sensor_config["sensor_dot_indices"][0]  # index of the sensor dot to compensate
+                state_hint = self.data_acquirer.args_rendering["state_hint_lower_left"]  # state hint for the sensor dot, used to find the state of the voltage
+                central_point = copy.deepcopy(self.data_acquirer.experiment.tunneling_sim.boundaries(state_hint).point_inside)
+                
+                # Computation of the gate compensation
+                flag_running = 1 if self.data_acquirer._acquisition_status == "running" else 0  
+                if flag_running:
+                    self.data_acquirer.stop_acquisition() # stop data acquisition
+                P_fit, m_fit = compute_gate_compensation(self.data_acquirer.ramp, central_point, sensor_id, ranges, N=N, num_trials=num_trials, max_iterations=max_iterations, epsilon=epsilon)
+                if flag_running:
+                    self.data_acquirer.start_acquisition() # start data acquisition
+                logger.info(f"Computed P_fit: {P_fit}, m_fit: {m_fit}")
+                # In general, I could define a function ramp = lambda v_start, v_end, N: self.data_acquirer.ramp(v_start, v_end, N)
+                #return f"Fitted P:\n{json.dumps(P_fit.tolist(), indent=2)}"
+                return f"Fitted compensation matrix P:\n {repr(P_fit)}"
 
     def _register_mode_change(
             self,

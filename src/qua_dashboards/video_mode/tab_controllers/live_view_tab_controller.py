@@ -44,6 +44,7 @@ class LiveViewTabController(BaseTabController):
         data_acquirer: BaseDataAcquirer,
         component_id: str = "live-view-tab-controller",
         is_active: bool = False,
+        show_inner_loop_controls: bool = True,
         **kwargs: Any,
     ) -> None:
         """Initializes the LiveViewTabController.
@@ -56,6 +57,7 @@ class LiveViewTabController(BaseTabController):
         """
         super().__init__(component_id=component_id, is_active=is_active, **kwargs)
         self._data_acquirer_instance: BaseDataAcquirer = data_acquirer
+        self._show_inner_loop_controls = show_inner_loop_controls
         logger.info(
             f"LiveViewTabController '{self.component_id}' initialized with "
             f"Data Acquirer '{self._data_acquirer_instance.component_id}'."
@@ -112,7 +114,7 @@ class LiveViewTabController(BaseTabController):
         )
 
         acquirer_specific_controls = (
-            self._data_acquirer_instance.get_dash_components(include_subcomponents=True)
+            self._data_acquirer_instance.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
             if self._data_acquirer_instance
             else [html.P("Data acquirer components could not be loaded.")]
         )

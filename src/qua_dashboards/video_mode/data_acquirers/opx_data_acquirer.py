@@ -308,33 +308,15 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self._compilation_flags = flags
         return flags
 
-    def get_dash_components(self, include_subcomponents: bool = True) -> List[Any]:
+    def get_dash_components(self, include_subcomponents: bool = True, *, include_inner_loop_controls: bool = True) -> List[Any]:
         components = super().get_dash_components(include_subcomponents)
-
-        result_type_selector = dbc.Row(
-            [
-                dbc.Label("Result Type", width="auto", className="col-form-label"),
-                dbc.Col(
-                    dbc.Select(
-                        id=self._get_id("result-type"),
-                        options=[
-                            {"label": rt, "value": rt} for rt in self.result_types
-                        ],
-                        value=self.result_type,
-                    ),
-                    width=True,
-                ),
-            ],
-            className="mb-2 align-items-center",
-        )
-        components.append(result_type_selector)
 
         if include_subcomponents:
             if hasattr(self.scan_mode, "get_dash_components"):
                 components.extend(
                     self.scan_mode.get_dash_components(include_subcomponents)
                 )
-            if hasattr(self.qua_inner_loop_action, "get_dash_components"):
+            if include_inner_loop_controls and hasattr(self.qua_inner_loop_action, "get_dash_components"):
                 components.extend(
                     self.qua_inner_loop_action.get_dash_components(
                         include_subcomponents

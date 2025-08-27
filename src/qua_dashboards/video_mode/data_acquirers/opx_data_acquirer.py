@@ -115,8 +115,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         """
         Generates the QUA program for the 2D scan.
         """
-        x_qua_values = list(self.x_axis.sweep_values_unattenuated)
-        y_qua_values = list(self.y_axis.sweep_values_unattenuated)
+        x_qua_values = list(self.x_axis.sweep_values_with_offset)
+        y_qua_values = list(self.y_axis.sweep_values_with_offset)
 
         with program() as prog:
             qua_streams = {var: declare_stream() for var in self.stream_vars}

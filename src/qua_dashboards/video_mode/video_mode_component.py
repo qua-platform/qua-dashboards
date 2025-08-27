@@ -338,7 +338,7 @@ class VideoModeComponent(BaseComponent):
                 "orchestrator_stores": orchestrator_stores_for_tabs,
                 "shared_viewer_store_ids": shared_viewer_store_ids_for_tabs,
             }
-            if isinstance(tc, AnnotationTabController):
+            if isinstance(tc, (AnnotationTabController, LiveViewTabController)):
                 callback_kwargs_for_tab["shared_viewer_graph_id"] = (
                     shared_viewer_graph_actual_id
                 )

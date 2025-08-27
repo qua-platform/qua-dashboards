@@ -4,7 +4,7 @@ from typing import Any, Dict, Union
 
 import dash_bootstrap_components as dbc
 import dash
-from dash import Dash, Input, Output, State, html, ctx, ALL
+from dash import Dash, Input, Output, State, html, ctx, ALL, no_update
 
 from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import (
     BaseDataAcquirer,
@@ -184,6 +184,7 @@ class LiveViewTabController(BaseTabController):
         app: Dash,
         orchestrator_stores: Dict[str, Any],
         shared_viewer_store_ids: Dict[str, Any],
+        shared_viewer_graph_id: Dict[str, str] | None = None,
     ) -> None:
         """
         Registers Dash callbacks for the Live View tab.
@@ -198,6 +199,32 @@ class LiveViewTabController(BaseTabController):
         )
         self._register_acquisition_control_callback(app, orchestrator_stores)
         self._register_parameter_update_callback(app)
+
+        if shared_viewer_graph_id:
+            @app.callback(
+                Output(self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX), "children", allow_duplicate=True),
+                Input(shared_viewer_graph_id, "clickData"),
+                prevent_initial_call=True,)
+            def _center_on_click(click_data):
+                if not click_data or "points" not in click_data or not click_data["points"]:
+                    return no_update
+
+                pt = click_data["points"][0]
+                x_val, y_val = pt.get("x"), pt.get("y")
+
+                xa = self._data_acquirer_instance.x_axis
+                ya = self._data_acquirer_instance.y_axis
+
+                #Use the BasicParameter setter to set new offset values to clicked coordinate
+                xa.offset_parameter.set(float(x_val))
+                ya.offset_parameter.set(float(y_val))
+
+                try:
+                    self._data_acquirer_instance._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
+                except Exception:
+                    self._data_acquirer_instance.qua_program = None
+
+                return no_update
 
     def _register_acquisition_control_callback(
         self, app: Dash, orchestrator_stores: Dict[str, Any]
@@ -317,6 +344,7 @@ class LiveViewTabController(BaseTabController):
             Output(
                 self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX),
                 component_property="children",
+                allow_duplicate=True
             ),
             dynamic_inputs,
             dynamic_states_ids,

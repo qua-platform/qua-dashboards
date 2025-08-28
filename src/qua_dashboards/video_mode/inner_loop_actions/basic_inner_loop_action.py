@@ -61,7 +61,12 @@ class BasicInnerLoopAction(InnerLoopAction):
         self._last_x_voltage = None
         self._last_y_voltage = None
         self.reached_voltage = None
-
+        self.selected_readout_channels = []
+    @property
+    def selected_readout_names(self) -> list[str]:
+        return [ch.name for ch in getattr(self, "selected_readout_channels", [])]
+    def _pulse_for(self, ch):
+        return ch.operations["readout"]
     def perform_ramp(self, element, previous_voltage, new_voltage):
         ramp_cycles_ns_V = declare(int, int(1e9 / self.ramp_rate / 4))
         qua_ramp = declare(fixed, self.ramp_rate / 1e9)
@@ -117,11 +122,13 @@ class BasicInnerLoopAction(InnerLoopAction):
         pre_measurement_delay_cycles = int(self.pre_measurement_delay * 1e9 // 4)
         if pre_measurement_delay_cycles >= 4:
             wait(pre_measurement_delay_cycles)
-
-        I, Q = self.readout_pulse.channel.measure(self.readout_pulse.id)
+        result = []
+        for channel in self.selected_readout_channels:
+            I, Q = channel.measure("readout")
+            result.extend([I, Q])
         align()
 
-        return I, Q
+        return result
 
     def initial_action(self):
         self._last_x_voltage = declare(fixed, 0.0)
@@ -143,47 +150,58 @@ class BasicInnerLoopAction(InnerLoopAction):
         else:
             self.set_dc_offsets(0, 0)
         align()
+    def build_readout_controls(self, channels = None):
+        channels = getattr(self, "selected_readout_channels", []) or [self.readout_pulse.channel]
+        rows = []
+        for ch in channels: 
+            pulse = self._pulse_for(ch)
+            name = ch.name
+
+            additional_components = [
+                create_input_field(
+                    id=self._get_id(f"{name}-readout_frequency"),
+                    label=f"{name} Readout frequency",
+                    value=pulse.channel.intermediate_frequency,
+                    input_style={"width": "200px"},
+                    units="Hz",
+                ),
+                create_input_field(
+                    id=self._get_id(f"{name}-readout_duration"),
+                    label=f"{name} Readout duration",
+                    value=pulse.length,
+                    units="ns",
+                    step=10,
+                ),
+            ]
+
+            if self.use_dBm:
+                additional_components.append(
+                    create_input_field(
+                        id=self._get_id(f"{name}-readout_power"),
+                        label=f"{name} Readout power",
+                        value=unit.volts2dBm(pulse.amplitude),
+                        units="dBm",
+                    ),
+                )
+            else:
+                additional_components.append(
+                    create_input_field(
+                        id=self._get_id(f"{name}-readout_amplitude"),
+                        label=f"{name} Readout amplitude",
+                        value=pulse.amplitude,
+                        units="V",
+                    ),
+                )
+            rows.append(html.Div(additional_components, id = f"{self.component_id}-ro-params-{name}"))
+        return rows
 
     def get_dash_components(self, include_subcomponents: bool = True) -> List[html.Div]:
         components = super().get_dash_components(include_subcomponents)
-
-        additional_components = [
-            create_input_field(
-                id=self._get_id("readout_frequency"),
-                label="Readout frequency",
-                value=self.readout_pulse.channel.intermediate_frequency,
-                input_style={"width": "200px"},
-                units="Hz",
-            ),
-            create_input_field(
-                id=self._get_id("readout_duration"),
-                label="Readout duration",
-                value=self.readout_pulse.length,
-                units="ns",
-                step=10,
-            ),
-        ]
-
-        if self.use_dBm:
-            additional_components.append(
-                create_input_field(
-                    id=self._get_id("readout_power"),
-                    label="Readout power",
-                    value=unit.volts2dBm(self.readout_pulse.amplitude),
-                    units="dBm",
-                ),
-            )
-        else:
-            additional_components.append(
-                create_input_field(
-                    id=self._get_id("readout_amplitude"),
-                    label="Readout amplitude",
-                    value=self.readout_pulse.amplitude,
-                    units="V",
-                ),
-            )
-
-        components.append(html.Div(additional_components))
+        
+        components.append(html.Div(
+            id=f"{self.component_id}-readout-params-container",
+            children=self.build_readout_controls(),
+        ))
 
         return components
 
@@ -195,34 +213,47 @@ class BasicInnerLoopAction(InnerLoopAction):
         params = parameters[self.component_id]
 
         flags = ModifiedFlags.NONE
-        if (
-            self.readout_pulse.channel.intermediate_frequency
-            != params["readout_frequency"]
-        ):
-            self.readout_pulse.channel.intermediate_frequency = params[
-                "readout_frequency"
-            ]
-            flags |= ModifiedFlags.PARAMETERS_MODIFIED
-            flags |= ModifiedFlags.PROGRAM_MODIFIED
-            flags |= ModifiedFlags.CONFIG_MODIFIED
+        channels = getattr(self, "selected_readout_channels", []) or [self.readout_pulse.channel]
+        for ch in channels: 
+            pulse = self._pulse_for(ch)
+            name = ch.name
 
-        if self.readout_pulse.length != params["readout_duration"]:
-            self.readout_pulse.length = params["readout_duration"]
-            flags |= ModifiedFlags.PARAMETERS_MODIFIED
-            flags |= ModifiedFlags.PROGRAM_MODIFIED
-            flags |= ModifiedFlags.CONFIG_MODIFIED
+            f_key = f"{name}-readout_frequency"
+            d_key = f"{name}-readout_duration"
+            p_key = f"{name}-readout_power"
+            v_key = f"{name}-readout_amplitude"
 
-        if self.use_dBm:
-            if unit.volts2dBm(self.readout_pulse.amplitude) != params["readout_power"]:
-                self.readout_pulse.amplitude = unit.dBm2volts(params["readout_power"])
+            freq = params.get(f_key, params.get("readout_frequency"))
+            dur  = params.get(d_key,  params.get("readout_duration"))
+            amp_dbm = params.get(p_key, params.get("readout_power"))
+            amp_v = params.get(v_key, params.get("readout_amplitude"))
+
+            if (
+                pulse.channel.intermediate_frequency
+                != freq
+            ):
+                pulse.channel.intermediate_frequency = freq
                 flags |= ModifiedFlags.PARAMETERS_MODIFIED
                 flags |= ModifiedFlags.PROGRAM_MODIFIED
                 flags |= ModifiedFlags.CONFIG_MODIFIED
-        else:
-            if self.readout_pulse.amplitude != params["readout_amplitude"]:
-                self.readout_pulse.amplitude = params["readout_amplitude"]
+
+            if pulse.length != dur:
+                pulse.length = dur
                 flags |= ModifiedFlags.PARAMETERS_MODIFIED
                 flags |= ModifiedFlags.PROGRAM_MODIFIED
                 flags |= ModifiedFlags.CONFIG_MODIFIED
+
+            if self.use_dBm:
+                if unit.volts2dBm(pulse.amplitude) != amp_dbm:
+                    pulse.amplitude = unit.dBm2volts(amp_dbm)
+                    flags |= ModifiedFlags.PARAMETERS_MODIFIED
+                    flags |= ModifiedFlags.PROGRAM_MODIFIED
+                    flags |= ModifiedFlags.CONFIG_MODIFIED
+            else:
+                if pulse.amplitude != amp_v:
+                    pulse.amplitude = amp_v
+                    flags |= ModifiedFlags.PARAMETERS_MODIFIED
+                    flags |= ModifiedFlags.PROGRAM_MODIFIED
+                    flags |= ModifiedFlags.CONFIG_MODIFIED
 
         return flags

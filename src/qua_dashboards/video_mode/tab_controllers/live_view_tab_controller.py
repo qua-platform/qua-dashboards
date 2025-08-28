@@ -199,6 +199,24 @@ class LiveViewTabController(BaseTabController):
         self._register_acquisition_control_callback(app, orchestrator_stores)
         self._register_parameter_update_callback(app)
 
+        @app.callback(
+            Output(f"{self._data_acquirer_instance.qua_inner_loop_action.component_id}-readout-params-container", "children"),
+            Input(self._data_acquirer_instance._get_id("readouts"), "value"),
+            prevent_initial_call=True,
+        )
+        def _refresh_readout_params(selected_names):
+            names = selected_names or []
+            if not isinstance(names, list):
+                names = [names]
+
+            self._data_acquirer_instance.selected_readout_channel = [
+                self._data_acquirer_instance.available_readout_channels[n]
+                for n in names
+                if n in self._data_acquirer_instance.available_readout_channels
+            ]
+            self._data_acquirer_instance.qua_inner_loop_action.selected_readout_channels = self._data_acquirer_instance.selected_readout_channel
+
+            return self._data_acquirer_instance.qua_inner_loop_action.build_readout_controls()
     def _register_acquisition_control_callback(
         self, app: Dash, orchestrator_stores: Dict[str, Any]
     ) -> None:

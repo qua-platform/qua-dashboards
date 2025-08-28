@@ -1,6 +1,6 @@
 import logging
 from typing import Any, Dict, List, Optional
-
+from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import xarray as xr
 from dash import Dash, Input, Output, State, dcc, html
@@ -115,16 +115,53 @@ class SharedViewerComponent(BaseComponent):
             self._current_figure = self._get_default_figure()
             return self._current_figure
 
-        try:
-            self._current_figure = xarray_to_plotly(base_image_data)
-        except Exception as e:
-            logger.error(
-                f"SharedViewer ({self.component_id}): Error converting "
-                f"live xr.DataArray to Plotly: {e}",
-                exc_info=True,
+        if base_image_data.ndim == 2:
+            try:
+                self._current_figure = xarray_to_plotly(base_image_data)
+            except Exception as e:
+                logger.error(
+                    f"SharedViewer ({self.component_id}): Error converting "
+                    f"live xr.DataArray to Plotly: {e}",
+                    exc_info=True,
+                )
+                self._current_figure = self._get_default_figure()
+            return self._current_figure
+        if base_image_data.ndim != 3: 
+            logger.warning(
+                f"SharedViewer: expected 2D or 3D DataArray, got ndim={base_image_data.ndim}"
             )
+        if base_image_data.ndim ==3 and "readout" in base_image_data.dims:
+            y_name, x_name = [d for d in base_image_data.dims if d != "readout"]
+            rd_vals = base_image_data.coords["readout"].values
+            labels = [str(v) for v in rd_vals]
+            n = len(labels)
+
+            fig = make_subplots(rows=1, cols=n, subplot_titles=labels, horizontal_spacing=0.06)
+            yc, xc = base_image_data.coords[y_name], base_image_data.coords[x_name]
+            y_lab = yc.attrs.get("long_name", y_name); y_unit = yc.attrs.get("units", "")
+            x_lab = xc.attrs.get("long_name", x_name); x_unit = xc.attrs.get("units", "")
+            y_title = f"{y_lab} ({y_unit})" if y_unit else y_lab
+            x_title = f"{x_lab} ({x_unit})" if x_unit else x_lab
+            
+            for i in range(n): 
+                sub = base_image_data.isel(readout = i)
+                sub = sub.reset_coords("readout", drop=True)
+                small = xarray_to_plotly(sub)
+                tr = small.data[0]
+                tr.update(showscale=(i==n-1))
+                fig.add_trace(tr, row = 1, col = i+1)
+            
+            for col in range(1, n + 1):
+                fig.update_xaxes(title_text=x_title, row=1, col=col)
+            fig.update_yaxes(title_text=y_title, row=1, col=1)
+
+            fig.update_layout(template="plotly_dark", showlegend=False, margin=dict(l=60, r=30, t=40, b=40))
+            self._current_figure = fig
+            return fig
+        else: 
+            logger.warning(f"SharedViewer: expected 2D or 3D DataArray with 'readout' dim, got dims={base_image_data.dims}")
             self._current_figure = self._get_default_figure()
-        return self._current_figure
+            return self._current_figure
 
     def _create_figure_from_static_data(self, static_data_object: dict, viewer_ui_state_input: dict) -> go.Figure:
         """

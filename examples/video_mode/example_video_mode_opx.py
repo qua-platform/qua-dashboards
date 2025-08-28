@@ -83,11 +83,12 @@ machine.channels["ch1_readout"] = InOutSingleChannel(
     intermediate_frequency=20000000,  # Set IF for the readout channel
     operations={"readout": readout_pulse},  # Assign the readout pulse to this channel
 )
+readout_pulse2 = pulses.SquareReadoutPulse(id="readout", length=1500, amplitude=0.1)
 machine.channels["ch2_readout"] = InOutSingleChannel(
     opx_output=("con1", 3),  # Output for the readout pulse
     opx_input=("con1", 1),  # Input for acquiring the measurement signal
-    intermediate_frequency=25000000,  # Set IF for the readout channel
-    operations={"readout": readout_pulse},  # Assign the readout pulse to this channel
+    intermediate_frequency=20000000,  # Set IF for the readout channel
+    operations={"readout": readout_pulse2},  # Assign the readout pulse to this channel
 )
 
 # --- QMM Connection ---
@@ -115,7 +116,7 @@ y_offset = BasicParameter(name="Y Voltage Offset", initial_value=0.0)
 inner_loop_action = BasicInnerLoopAction(
     x_element=machine.channels["ch1"],  # QUAM element for X-axis voltage
     y_element=machine.channels["ch2"],  # QUAM element for Y-axis voltage
-    readout_pulse=readout_pulse,  # QUAM readout pulse to use for measurement
+    readout_pulse=readout_pulse,  # The DEFAULT QUAM readout pulse to use for measurement
     # ramp_rate=1_000,                  # Optional: Voltage ramp rate (V/s)
     use_dBm=True,  # If true, readout amplitude is in dBm
 )

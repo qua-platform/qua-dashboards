@@ -160,14 +160,14 @@ class BasicInnerLoopAction(InnerLoopAction):
             additional_components = [
                 create_input_field(
                     id=self._get_id(f"{name}-readout_frequency"),
-                    label=f"{name} Readout frequency",
+                    label=f"{name} frequency",
                     value=pulse.channel.intermediate_frequency,
                     input_style={"width": "200px"},
                     units="Hz",
                 ),
                 create_input_field(
                     id=self._get_id(f"{name}-readout_duration"),
-                    label=f"{name} Readout duration",
+                    label=f"{name} duration",
                     value=pulse.length,
                     units="ns",
                     step=10,
@@ -178,7 +178,7 @@ class BasicInnerLoopAction(InnerLoopAction):
                 additional_components.append(
                     create_input_field(
                         id=self._get_id(f"{name}-readout_power"),
-                        label=f"{name} Readout power",
+                        label=f"{name} power",
                         value=unit.volts2dBm(pulse.amplitude),
                         units="dBm",
                     ),
@@ -187,7 +187,7 @@ class BasicInnerLoopAction(InnerLoopAction):
                 additional_components.append(
                     create_input_field(
                         id=self._get_id(f"{name}-readout_amplitude"),
-                        label=f"{name} Readout amplitude",
+                        label=f"{name} amplitude",
                         value=pulse.amplitude,
                         units="V",
                     ),

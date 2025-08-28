@@ -12,9 +12,8 @@ from qm.qua import (
     save,
     stream_processing,
     wait,
-    update_frequency
 )
-from dash import html, dcc, Output, Input, Dash
+from dash import html, dcc
 import dash_bootstrap_components as dbc
 
 from qua_dashboards.core.base_updatable_component import BaseUpdatableComponent

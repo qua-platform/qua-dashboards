@@ -240,6 +240,25 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             part3 = "or a direct stream variable name from {}.".format(self.stream_vars)
             error_msg = part1 + part2 + part3
             raise ValueError(error_msg)
+        
+        expected_points = self.x_axis.points * self.y_axis.points
+
+        # If we got more than one frame concatenated (rare but possible), keep the last full frame
+        if output_data_flat.size > expected_points:
+            output_data_flat = np.asarray(output_data_flat)[-expected_points:]
+
+        # If we don't yet have enough samples for the new resolution, return a placeholder frame
+        if output_data_flat.size < expected_points:
+            logger.info(
+                f"{self.component_id}: Fetched {output_data_flat.size} samples but "
+                f"need {expected_points} for current resolution. Returning placeholder and waiting for next frame."
+            )
+            return np.full(
+                (self.y_axis.points, self.x_axis.points),
+                np.nan,
+                dtype=np.asarray(output_data_flat).dtype,
+            )
+
 
         shape = (self.y_axis.points, self.x_axis.points)
         output_data_2d = np.zeros(shape, dtype=output_data_flat.dtype)

@@ -103,17 +103,15 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         # Ensure shapes match the axes
         expected_shape = (self.y_axis.points, self.x_axis.points)
         if data_np.shape != expected_shape:
-            logger.warning(
+            logger.info(
                 f"{self.component_id}: Shape mismatch. Data shape is {data_np.shape}, "
                 f"but expected {expected_shape} based on axis points. "
-                f"Returning raw data. Ensure acquisition logic and axis points align."
+                f"Ignoring stale frames."
             )
             return {
                 "data": None,  # Or a default empty xarray
-                "error": ValueError(
-                    f"Shape mismatch: data {data_np.shape}, expected {expected_shape}"
-                ),
-                "status": "error",
+                "error": None,
+                "status": "pending",
             }
 
         try:

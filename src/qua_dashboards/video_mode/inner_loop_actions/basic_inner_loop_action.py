@@ -70,16 +70,17 @@ class BasicInnerLoopAction(InnerLoopAction):
         self.y_type = y_type
 
     def _qua_command_by_type(self, kind: str, elem, value, last_v = None): 
+        elem = elem.name
         kind = kind if kind else "voltage"
 
         if kind == "frequency": 
             freq = declare(int)
-            assign(freq, Cast.mul_fixed_by_int(value, 1))
+            # assign(freq, Cast.to_int(value))
             update_frequency(elem, freq)
             return 
         
         if kind == "voltage": 
-            set_dc_offset(elem, value)
+            set_dc_offset(elem, "single", value)
             return 
         
         if kind == "amplitude": 
@@ -155,7 +156,10 @@ class BasicInnerLoopAction(InnerLoopAction):
     def initial_action(self):
         self._last_x_voltage = declare(fixed, 0.0)
         self._last_y_voltage = declare(fixed, 0.0)
-        self.set_dc_offsets(0, 0)
+        if self.x_type == "voltage":
+            self.x_elem.set_dc_offset(0)
+        if self.y_type == "voltage":
+            self.y_elem.set_dc_offset(0)
         align()
 
     def final_action(self):
@@ -170,7 +174,10 @@ class BasicInnerLoopAction(InnerLoopAction):
             assign(self._last_x_voltage, 0.0)
             assign(self._last_y_voltage, 0.0)
         else:
-            self.set_dc_offsets(0, 0)
+            if self.x_type == "voltage":
+                self.x_elem.set_dc_offset(0)
+            if self.y_type == "voltage":
+                self.y_elem.set_dc_offset(0)
         align()
 
     def get_dash_components(self, include_subcomponents: bool = True) -> List[html.Div]:

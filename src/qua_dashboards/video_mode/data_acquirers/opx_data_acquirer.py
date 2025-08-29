@@ -125,6 +125,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             return "amplitude"
         if "v" in unit: 
             return "voltage"
+        return "voltage"
 
     def generate_qua_program(self) -> Program:
         """
@@ -132,6 +133,10 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         """
         x_qua_values = list(self.x_axis.sweep_values_unattenuated)
         y_qua_values = list(self.y_axis.sweep_values_unattenuated)
+        if self.x_type == "frequency":
+            x_qua_values = [int(round(v)) for v in x_qua_values]
+        if self.y_type == "frequency":
+            y_qua_values = [int(round(v)) for v in y_qua_values]
 
         with program() as prog:
             qua_streams = {var: declare_stream() for var in self.stream_vars}
@@ -143,7 +148,9 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
                 for x_qua_var, y_qua_var in self.scan_mode.scan(
                     x_vals=x_qua_values,
-                    y_vals=y_qua_values,  # type: ignore
+                    y_vals=y_qua_values,
+                    x_kind = self.x_type, 
+                    y_kind = self.y_type  # type: ignore
                 ):
                     measured_qua_values = self.qua_inner_loop_action(
                         x_qua_var, y_qua_var

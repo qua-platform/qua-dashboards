@@ -216,7 +216,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         if validate_running:
             try:
                 handle = self.qm_job.result_handles.get("all_streams_combined")
-                handle.wait_for_values(1, timeout=20)
+                handle.wait_for_values(1, timeout=50)
                 logger.info(f"QM job for {self.component_id} started successfully.")
             except Exception as e:
                 logger.error(
@@ -333,6 +333,11 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         try:
             result_handle = self.qm_job.result_handles.get("all_streams_combined")
             fetched_results_tuple = result_handle.fetch_all()
+            # fetched_results_tuple = result_handle.fetch(-1, check_for_errors=False)
+            # if fetched_results_tuple is None:
+            #     # block until at least one complete frame exists, then refetch
+            #     result_handle.wait_for_values(1, timeout=300)
+            #     fetched_results_tuple = result_handle.fetch_all()
         except Exception as e:
             logger.error(
                 f"Error fetching results from QM job for {self.component_id}: {e}"
@@ -362,6 +367,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         if self.qm is not None:
             try:
                 self.qmm.close_all_qms()
+                #pass
             except Exception as e: 
                 logger.warning(f"Error closing QM: {e}")
             finally: 

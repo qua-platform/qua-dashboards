@@ -105,7 +105,7 @@ class SharedViewerComponent(BaseComponent):
             )
             self._current_figure = self._get_default_figure()
             return self._current_figure
-        base_image_data = data_object.get("base_image_data")
+        base_image_data = data_object.get("base_image_data") or data_object.get("data")
         if not isinstance(base_image_data, xr.DataArray):
             logger.warning(
                 f"SharedViewer ({self.component_id}): Live data object "

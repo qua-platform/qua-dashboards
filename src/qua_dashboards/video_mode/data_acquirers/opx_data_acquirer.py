@@ -111,6 +111,21 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self.stream_vars: List[str] = stream_vars or self.stream_vars_default
         self.result_types: List[str] = self.result_types_default
 
+        self.x_type = self._axis_type(x_axis.units)
+        self.y_type = self._axis_type(y_axis.units)
+        self.qua_inner_loop_action.set_axis_types(self.x_type, self.y_type)
+
+    def _axis_type(self, units: Optional[str]) -> str:
+        if not units: 
+            return "voltage"
+        unit = units.lower()
+        if "hz" in unit: 
+            return "frequency"
+        if "dbm" in unit: 
+            return "amplitude"
+        if "v" in unit: 
+            return "voltage"
+
     def generate_qua_program(self) -> Program:
         """
         Generates the QUA program for the 2D scan.
@@ -298,6 +313,10 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
         flags = super().update_parameters(parameters)
+        new_x_type, new_y_type = self._axis_type(self.x_axis.units), self._axis_type(self.y_axis.units)
+        if new_x_type != self.x_type or new_y_type != self.y_type: 
+            self.x_type, self.y_type = new_x_type, new_y_type
+            flags |= ModifiedFlags.PROGRAM_MODIFIED
 
         if self.component_id in parameters:
             params = parameters[self.component_id]

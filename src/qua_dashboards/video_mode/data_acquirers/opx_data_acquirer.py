@@ -15,7 +15,7 @@ from qm.qua import (
 )
 from dash import html
 import dash_bootstrap_components as dbc
-
+from qualang_tools.units import unit
 from qua_dashboards.core.base_updatable_component import BaseUpdatableComponent
 from qua_dashboards.video_mode.data_acquirers.base_2d_data_acquirer import (
     Base2DDataAcquirer,
@@ -110,13 +110,47 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self._raw_qua_results: Dict[str, np.ndarray] = {}
         self.stream_vars: List[str] = stream_vars or self.stream_vars_default
         self.result_types: List[str] = self.result_types_default
+        self.sweep_dBm = False
+        self.x_type = self._axis_type(x_axis.units, type(self.qua_inner_loop_action.x_elem).__name__)
+        self.y_type = self._axis_type(y_axis.units, type(self.qua_inner_loop_action.y_elem).__name__)
+        self.qua_inner_loop_action.set_axis_types(self.x_type, self.y_type)
+        
+    def _axis_type(self, units: Optional[str], element_name: Optional[str]) -> str:
+        if not units: 
+            return "voltage"
+        unit = units.lower()
+        if "hz" in unit: 
+            return "frequency"
+        if ("dbm" in unit) or ("v" in unit and element_name == "InOutSingleChannel"): 
+            if "dbm" in unit: 
+                self.sweep_dBm = True
+            else: 
+                self.sweep_dBm = False
+            return "amplitude"
+        if "v" in unit and element_name == "SingleChannel": 
+            return "voltage"
+        return "voltage"
 
     def generate_qua_program(self) -> Program:
         """
         Generates the QUA program for the 2D scan.
         """
-        x_qua_values = list(self.x_axis.sweep_values_unattenuated)
-        y_qua_values = list(self.y_axis.sweep_values_unattenuated)
+        self.qua_inner_loop_action.set_axis_types(self.x_type, self.y_type)
+        x_qua_values = list(self.x_axis.sweep_values_with_offset)
+        y_qua_values = list(self.y_axis.sweep_values_with_offset)
+        r_pulse_amp = self.qua_inner_loop_action.readout_pulse.amplitude
+        if self.x_type == "frequency":
+            x_qua_values = [int(round(v)) for v in x_qua_values]
+        elif self.x_type == "amplitude" and ("dbm" in (self.x_axis.units or "").lower()):
+            x_qua_values = (unit.dBm2volts(np.array(x_qua_values)) / r_pulse_amp).tolist()
+        elif self.x_type == "amplitude" and not ("dbm" in (self.x_axis.units or "").lower()): 
+            x_qua_values = (np.array(x_qua_values) / r_pulse_amp).tolist()
+        if self.y_type == "frequency":
+            y_qua_values = [int(round(v)) for v in y_qua_values]
+        elif self.y_type == "amplitude" and ("dbm" in (self.y_axis.units or "").lower()):
+            y_qua_values = (unit.dBm2volts(np.array(y_qua_values)) / r_pulse_amp).tolist()
+        elif self.y_type == "amplitude" and not ("dbm" in (self.y_axis.units or "").lower()): 
+            y_qua_values = (np.array(y_qua_values) / r_pulse_amp).tolist()
 
         with program() as prog:
             qua_streams = {var: declare_stream() for var in self.stream_vars}
@@ -128,7 +162,9 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
                 for x_qua_var, y_qua_var in self.scan_mode.scan(
                     x_vals=x_qua_values,
-                    y_vals=y_qua_values,  # type: ignore
+                    y_vals=y_qua_values,
+                    x_kind = self.x_type, 
+                    y_kind = self.y_type  # type: ignore
                 ):
                     measured_qua_values = self.qua_inner_loop_action(
                         x_qua_var, y_qua_var
@@ -298,6 +334,10 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
         flags = super().update_parameters(parameters)
+        new_x_type, new_y_type = self._axis_type(self.x_axis.units, type(self.qua_inner_loop_action.x_elem).__name__), self._axis_type(self.y_axis.units, type(self.qua_inner_loop_action.y_elem).__name__)
+        if new_x_type != self.x_type or new_y_type != self.y_type: 
+            self.x_type, self.y_type = new_x_type, new_y_type
+            flags |= ModifiedFlags.PROGRAM_MODIFIED
 
         if self.component_id in parameters:
             params = parameters[self.component_id]

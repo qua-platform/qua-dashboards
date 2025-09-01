@@ -104,11 +104,17 @@ qm = qmm.open_qm(config, close_other_machines=True)
 x_offset = BasicParameter(name="X Voltage Offset", initial_value=0.0)
 y_offset = BasicParameter(name="Y Voltage Offset", initial_value=0.0)
 
+frequency_offset = BasicParameter(name = "Frequency Offset", initial_value = 1e8)
+frequency_span = 1e7
+
+amp_offset = BasicParameter(name = "Amplitude Offset", initial_value = 0.5)
+amp_span = 0.2
+
 # Define the action to be performed at each point in the QUA scan (inner loop).
 # BasicInnerLoopAction sets DC offsets on two elements and performs a measurement.
 inner_loop_action = BasicInnerLoopAction(
     x_element=machine.channels["ch1"],  # QUAM element for X-axis voltage
-    y_element=machine.channels["ch2"],  # QUAM element for Y-axis voltage
+    y_element=machine.channels["ch1_readout"],  # QUAM element for Y-axis voltage
     readout_pulse=readout_pulse,  # QUAM readout pulse to use for measurement
     # ramp_rate=1_000,                  # Optional: Voltage ramp rate (V/s)
     use_dBm=True,  # If true, readout amplitude is in dBm
@@ -125,8 +131,9 @@ data_acquirer = OPXDataAcquirer(
     machine=machine,
     qua_inner_loop_action=inner_loop_action,
     scan_mode=scan_mode,
-    x_axis=SweepAxis("x", span=0.03, points=61, offset_parameter=x_offset),
-    y_axis=SweepAxis("y", span=0.03, points=61, offset_parameter=y_offset),
+    x_axis=SweepAxis("x", span=0.03, points=61, offset_parameter=x_offset, units = "V"),
+    #y_axis=SweepAxis("Readout_Amplitude", span=amp_span, points=61, offset_parameter=amp_offset, units = "V"),
+    y_axis=SweepAxis("Readout_Frequency", span=frequency_span, points=61, offset_parameter=frequency_offset, units = "Hz"),
     result_type="I",  # Specify the type of result to display (e.g., "I", "Q", "amplitude", "phase")
 )
 

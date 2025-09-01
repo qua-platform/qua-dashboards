@@ -23,6 +23,8 @@ from qm.qua import (
     ramp_to_zero,
     set_dc_offset,
     wait,
+    update_frequency,
+    amp
 )
 
 
@@ -61,6 +63,33 @@ class BasicInnerLoopAction(InnerLoopAction):
         self._last_x_voltage = None
         self._last_y_voltage = None
         self.reached_voltage = None
+
+        self.x_type: str = None
+        self.y_type: str = None
+    def set_axis_types(self, x_type, y_type): 
+        self.x_type = x_type
+        self.y_type = y_type
+
+    def _qua_command_by_type(self, kind: str, elem, value, last_v = None): 
+        kind = kind if kind else "voltage"
+
+        if kind == "frequency": 
+            update_frequency(elem.name, value)
+            return
+        
+        if kind == "voltage":
+            elem.set_dc_offset(value) 
+            #set_dc_offset(elem.name, "single", value)
+            return
+    
+        if kind == "amplitude": 
+            return
+
+    def apply_axes(self, x:QuaVariableFloat, y:QuaVariableFloat):
+        
+        self._qua_command_by_type(self.x_type, self.x_elem, x, self._last_x_voltage if self.x_type == "voltage" else None)
+        self._qua_command_by_type(self.y_type, self.y_elem, y, self._last_y_voltage if self.y_type == "voltage" else None)
+
 
     def perform_ramp(self, element, previous_voltage, new_voltage):
         ramp_cycles_ns_V = declare(int, int(1e9 / self.ramp_rate / 4))
@@ -111,14 +140,25 @@ class BasicInnerLoopAction(InnerLoopAction):
     def __call__(
         self, x: QuaVariableFloat, y: QuaVariableFloat
     ) -> Tuple[QuaVariableFloat, QuaVariableFloat]:
-        self.set_dc_offsets(x, y)
-        align()
+        self.apply_axes(x, y)
+
 
         pre_measurement_delay_cycles = int(self.pre_measurement_delay * 1e9 // 4)
         if pre_measurement_delay_cycles >= 4:
             wait(pre_measurement_delay_cycles)
 
-        I, Q = self.readout_pulse.channel.measure(self.readout_pulse.id)
+        
+        amp_scale = None
+        if self.x_type == "amplitude":
+            amp_scale = x
+        if self.y_type == "amplitude":
+            amp_scale = y
+
+        if amp_scale is not None:
+            I, Q = self.readout_pulse.channel.measure(self.readout_pulse.id, amplitude_scale=amp_scale)
+        else:
+            I, Q = self.readout_pulse.channel.measure(self.readout_pulse.id)
+
         align()
 
         return I, Q
@@ -126,7 +166,10 @@ class BasicInnerLoopAction(InnerLoopAction):
     def initial_action(self):
         self._last_x_voltage = declare(fixed, 0.0)
         self._last_y_voltage = declare(fixed, 0.0)
-        self.set_dc_offsets(0, 0)
+        if self.x_type == "voltage":
+            self.x_elem.set_dc_offset(0)
+        if self.y_type == "voltage":
+            self.y_elem.set_dc_offset(0)
         align()
 
     def final_action(self):
@@ -141,7 +184,10 @@ class BasicInnerLoopAction(InnerLoopAction):
             assign(self._last_x_voltage, 0.0)
             assign(self._last_y_voltage, 0.0)
         else:
-            self.set_dc_offsets(0, 0)
+            if self.x_type == "voltage":
+                self.x_elem.set_dc_offset(0)
+            if self.y_type == "voltage":
+                self.y_elem.set_dc_offset(0)
         align()
 
     def get_dash_components(self, include_subcomponents: bool = True) -> List[html.Div]:

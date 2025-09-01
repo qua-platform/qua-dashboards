@@ -24,6 +24,7 @@ from qm.qua import (
     set_dc_offset,
     wait,
     update_frequency,
+    amp
 )
 
 
@@ -70,21 +71,19 @@ class BasicInnerLoopAction(InnerLoopAction):
         self.y_type = y_type
 
     def _qua_command_by_type(self, kind: str, elem, value, last_v = None): 
-        elem = elem.name
         kind = kind if kind else "voltage"
 
         if kind == "frequency": 
-            freq = declare(int)
-            # assign(freq, Cast.to_int(value))
-            update_frequency(elem, freq)
-            return 
+            update_frequency(elem.name, value)
+            return
         
-        if kind == "voltage": 
-            set_dc_offset(elem, "single", value)
-            return 
-        
+        if kind == "voltage":
+            elem.set_dc_offset(value) 
+            #set_dc_offset(elem.name, "single", value)
+            return
+    
         if kind == "amplitude": 
-            raise NotImplementedError("Amplitude Sweep not implemented yet")
+            return
 
     def apply_axes(self, x:QuaVariableFloat, y:QuaVariableFloat):
         
@@ -142,13 +141,24 @@ class BasicInnerLoopAction(InnerLoopAction):
         self, x: QuaVariableFloat, y: QuaVariableFloat
     ) -> Tuple[QuaVariableFloat, QuaVariableFloat]:
         self.apply_axes(x, y)
-        align()
+
 
         pre_measurement_delay_cycles = int(self.pre_measurement_delay * 1e9 // 4)
         if pre_measurement_delay_cycles >= 4:
             wait(pre_measurement_delay_cycles)
 
-        I, Q = self.readout_pulse.channel.measure(self.readout_pulse.id)
+        
+        amp_scale = None
+        if self.x_type == "amplitude":
+            amp_scale = x
+        if self.y_type == "amplitude":
+            amp_scale = y
+
+        if amp_scale is not None:
+            I, Q = self.readout_pulse.channel.measure(self.readout_pulse.id, amplitude_scale=amp_scale)
+        else:
+            I, Q = self.readout_pulse.channel.measure(self.readout_pulse.id)
+
         align()
 
         return I, Q

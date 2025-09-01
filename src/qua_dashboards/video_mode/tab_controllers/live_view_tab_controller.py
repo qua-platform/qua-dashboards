@@ -34,6 +34,7 @@ class LiveViewTabController(BaseTabController):
     _TAB_LABEL = "Live View"
     _TAB_VALUE = "live-view-tab"
 
+    _APPLY_PARAMS_BUTTON_ID_SUFFIX = "apply-params-button"
     _TOGGLE_ACQ_BUTTON_ID_SUFFIX = "toggle-acq-button"
     _ACQUIRER_CONTROLS_DIV_ID_SUFFIX = "acquirer-controls-div"
     _ACQUIRER_STATUS_INDICATOR_ID_SUFFIX = "acquirer-status-indicator"
@@ -116,6 +117,20 @@ class LiveViewTabController(BaseTabController):
             if self._data_acquirer_instance
             else [html.P("Data acquirer components could not be loaded.")]
         )
+        apply_row = dbc.Row(
+            [
+                dbc.Col(
+                    dbc.Button(
+                        "Apply",
+                        id=self._get_id(self._APPLY_PARAMS_BUTTON_ID_SUFFIX),
+                        color="primary",
+                        style={"width": "100%"},
+                    ),
+                    width=4,
+                )
+            ],
+            className="mb-3",
+        )
 
         acquirer_controls_div = html.Div(
             id=self._get_id(self._ACQUIRER_CONTROLS_DIV_ID_SUFFIX),  # type: ignore
@@ -129,6 +144,7 @@ class LiveViewTabController(BaseTabController):
                 toggle_button_and_status,
                 html.Hr(),
                 html.H6("Acquirer Parameters", className="text-light"),
+                apply_row,
                 acquirer_controls_div,
                 html.Div(
                     id=self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX),  # type: ignore
@@ -304,28 +320,35 @@ class LiveViewTabController(BaseTabController):
 
         """Registers callback for data acquirer parameter updates."""
         all_acquirer_components = self._data_acquirer_instance.get_components()
-
-        dynamic_inputs = [
-            Input(component._get_id(ALL), "value")
-            for component in all_acquirer_components
-        ]
+        
         dynamic_states_ids = [
             State(component._get_id(ALL), "id") for component in all_acquirer_components
         ]
+        dynamic_states_values = [
+            State(component._get_id(ALL), "value") for component in all_acquirer_components
+        ]
+        opx_result_type_id = self._data_acquirer_instance._get_id("result-type")
+        result_type_state = State(opx_result_type_id, "value")
 
         @app.callback(
             Output(
                 self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX),
                 component_property="children",
             ),
-            dynamic_inputs,
+            Input(self._get_id(self._APPLY_PARAMS_BUTTON_ID_SUFFIX), 'n_clicks'),
+            dynamic_states_values,
             dynamic_states_ids,
+            result_type_state,
             prevent_initial_call=True,
         )
-        def handle_acquirer_parameter_update(*args: Any):
+        def handle_acquirer_parameter_update(n_clicks: Any, *args: Any):
+            if not n_clicks: 
+                return dash.no_update
+            
             num_comp_types = len(all_acquirer_components)
             values_by_type_list = args[:num_comp_types]
             ids_by_type_list = args[num_comp_types : 2 * num_comp_types]
+            opx_result_type_value = args[-1]
 
             parameters_to_update: Dict[str, Dict[str, Any]] = {}
 
@@ -340,6 +363,11 @@ class LiveViewTabController(BaseTabController):
                     continue
                 parameters_to_update[component.component_id] = component_params
 
+            if opx_result_type_value is not None:
+                acq_id = self._data_acquirer_instance.component_id
+                parameters_to_update.setdefault(acq_id, {})
+                parameters_to_update[acq_id]["result-type"] = opx_result_type_value
+                
             self._data_acquirer_instance.update_parameters(parameters_to_update)
 
             return dash.no_update

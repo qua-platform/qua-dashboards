@@ -145,7 +145,7 @@ data_acquirer = OPXDataAcquirer(
 # %% Run Video Mode Dashboard
 
 # Instantiate the main VideoModeComponent, providing the configured data_acquirer.
-save_path = 'C:\Users\ ...'
+save_path = r'C:\Users\ ...'
 video_mode_component = VideoModeComponent(
     data_acquirer=data_acquirer,
     data_polling_interval_s=0.5, 

@@ -235,6 +235,15 @@ class VideoModeComponent(BaseComponent):
                     ),
                     width=4,
                 ),
+                dbc.Col(
+                    dcc.Input(
+                        value = self.save_path,
+                        id = self._get_id("save-quam-path"), 
+                        className="form-control me-2 w-150",
+                        debounce=True,
+                        placeholder= r"C:/Users/ ... "
+                    )
+                )
             ],
             className="mb-3 g-2 justify-content-start",
         )
@@ -432,7 +441,22 @@ class VideoModeComponent(BaseComponent):
                 message,
                 color=color,
                 dismissable=True,
-    )
+            )
+        @app.callback(
+            Output(self._get_id(self._MAIN_STATUS_ALERT_ID_SUFFIX), "children", allow_duplicate = True), 
+            Input(self._get_id("save-quam-path"), "value"), 
+            prevent_initial_call = True
+        )
+        def set_quam_state_path(input_path):
+            if not input_path:
+                raise PreventUpdate
+            self.save_path = input_path
+            return dbc.Alert(
+                f"Save Path Updated to {input_path}", 
+                color = "info", 
+                dismissable = True, 
+                duration = 2000
+            )
 
     def _register_data_polling_interval_callback(self, app: Dash) -> None:
         """Registers callback for periodically polling the data acquirer."""

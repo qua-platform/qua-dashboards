@@ -22,6 +22,7 @@ from qua_dashboards.video_mode.utils.annotation_utils import (
     calculate_slopes,
     find_closest_line_id,
     compute_gate_compensation_ml,
+    compute_gate_compensation_al,
 )
 from qua_dashboards.video_mode.utils.data_utils import load_data
 from qua_dashboards.video_mode.data_acquirers.simulated_data_acquirer import SimulatedDataAcquirer
@@ -468,6 +469,7 @@ class AnnotationTabController(BaseTabController):
                 ## Simulated data acquirer
 
                 # Fixed parameters   MAYBE AS USER INPUT (WITH DEFAULT VALUES)?
+                method = "align-linear" # "align-linear", "autograd" implemented
                 N = 200
                 num_measurements = 6
 
@@ -491,12 +493,16 @@ class AnnotationTabController(BaseTabController):
                 # Computation of the gate compensation
                 flag_running = 1 if self.data_acquirer._acquisition_status == "running" else 0  
                 if flag_running:
-                    self.data_acquirer.stop_acquisition() # stop data acquisition
-                P_fit = compute_gate_compensation_ml(self.data_acquirer.ramp, central_point, sensor_id, ranges, num_measurements = num_measurements, N=N, num_trials=num_trials, max_iterations=max_iterations, epsilon=epsilon)
-                #P_fit, m_fit = compute_gate_compensation_al(self.data_acquirer.ramp, central_point, sensor_id, ranges, num_measurements = num_measurements, N=N, sigma_gaussian=sigma_gaussian, normalize_rows=True, plot=False)  
+                    self.data_acquirer.stop_acquisition() # stop data 
+                if method == "align-linear":
+                    P_fit = compute_gate_compensation_al(self.data_acquirer.ramp, central_point, sensor_id, ranges, num_measurements = num_measurements, N=N, sigma_gaussian=sigma_gaussian, normalize_rows=True, plot=False)  
+                elif method == "autograd":
+                    P_fit = compute_gate_compensation_ml(self.data_acquirer.ramp, central_point, sensor_id, ranges, num_measurements = num_measurements, N=N, num_trials=num_trials, max_iterations=max_iterations, epsilon=epsilon)
+                else:
+                    return "Unknown method."
                 if flag_running:
                     self.data_acquirer.start_acquisition() # start data acquisition
-                P_fit_formatted = np.array2string(P_fit, precision=3, suppress_small=True)
+                P_fit_formatted = np.array2string(P_fit, precision=4, suppress_small=True)
                 #m_fit_formatted = np.array2string(m_fit, precision=3, suppress_small=True)
                 #logger.info(f"Computed P_fit: {P_fit_formatted}, m_fit: {m_fit_formatted}")
                 logger.info(f"Computed P_fit: {P_fit_formatted}")

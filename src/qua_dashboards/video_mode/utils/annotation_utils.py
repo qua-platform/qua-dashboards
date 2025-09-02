@@ -19,6 +19,9 @@ import autograd.numpy as anp
 import autograd.scipy.stats as stat
 from autograd import value_and_grad
 import scipy.optimize
+from scipy.interpolate import interpn
+from scipy.optimize import minimize
+from scipy.ndimage import gaussian_filter1d
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +35,9 @@ __all__ = [
     "compute_gate_compensation_ml",
     # "Lines",
     # "Model",
+    # "align_linear",
+    # "amplitude_scan_2D",
+    "compute_gate_compensation_al",
 ]
 
 
@@ -589,4 +595,151 @@ def compute_gate_compensation_ml(ramp, central_point, sensor_id, ranges, num_mea
     
     # Note that only one row of P is modified: P[sensor_id,:]. All other rows stay as identity.
     # Note that only one entry of m is modified: m[sensor_id]. All other entries stay zero.
+    return P #, m
+
+
+def align_linear(values, sensor_gate_vs, ys, N_init=20,w_min=-1.2,w_max=1.2,use_mse=False):
+    """ 
+    Find a linear compensation factor (a slope comp_param) that explains how much the sensor's effective axis shifts with gate changes.
+    This is done by interpolating the measured data, testing different compensation factors, and optimizing with scipy.optimize.minimize.
+    """
+    
+    def interpolate(points,img):
+        results = []
+        for i in range(points.shape[0]):
+            p = interpn([sensor_gate_vs], img[i], points[i], method='linear', bounds_error=False, fill_value=1e100)
+            results.append(p)
+        return np.array(results)
+
+    def transform_data(comp_param, lag):
+        ys_diff = (ys[lag:]-ys[:-lag])
+        comp_sens_vs = sensor_gate_vs[None,:]+comp_param*ys_diff[:,None]
+        interp_data = interpolate(comp_sens_vs,values[lag:])
+        return interp_data
+    
+    def objective(comp_param,lag=2):
+        interp_data = transform_data(comp_param, lag)
+        diff = (values[:-lag]-interp_data)
+        mask = interp_data<100
+        sample_error = np.sum(np.abs(mask*diff),axis=1)/np.sum(mask,axis=1)
+
+        if use_mse:
+            return np.mean(sample_error)
+        else:
+            return np.mean(sample_error**0.5)
+
+    #optimize
+    ws_init = np.linspace(w_min,w_max,N_init)
+    dw = ws_init[1]-ws_init[0]
+    w_init = ws_init[np.argmin([objective(w) for w in ws_init])]
+    res = minimize(objective, w_init, method='Powell',bounds=((w_init-2*dw,w_init+2*dw),))
+    comp_param = res.x[0]
+
+    ys_diff = (ys-ys[0])
+    comp_sens_vs = sensor_gate_vs[None,:]+comp_param*ys_diff[:,None]
+    interp_data = interpolate(comp_sens_vs,values)
+    interp_data[interp_data>100]=np.mean(values)
+
+    return comp_param, interp_data
+
+
+def amplitude_scan_2D(ramp, ids, central_point, ranges, gate_values, N):
+    """
+    Perform a 2D amplitude scan: sweep one gate and, for each gate value,
+    perform a ramp along the sensor axis.
+
+    Parameters:
+    ramp: Function to perform the ramp measurement.
+    ids (list[int]): [gate_id, sensor_id], the indices of the gate to probe
+                     and the sensor to sweep.
+    central_point (np.array): Central voltage vector for the scan.
+    ranges: dictionary mapping gate/sensor IDs to their min/max amplitude value
+    N (int): Number of points in the sensor ramp.
+
+    Returns:
+    np.ndarray: 2D array of shape (num_measurements, resolution)
+                with sensor signal values.
+                Axis 0 = gate sweep, Axis 1 = sensor sweep.
+    """
+    
+    gate_id = ids[0]
+    sensor_id = ids[1]
+    ramp_start = central_point.copy() # make two copies of the central point to form the endpoints of a ramp - modify only the sensor_id dim of the start and end points to span the sensor's full range
+    ramp_end = central_point.copy()
+    ramp_start[sensor_id] = ranges[sensor_id][0]
+    ramp_end[sensor_id] = ranges[sensor_id][1]
+
+    observations = []
+    for val in gate_values:
+            # Update gate value in both ramp start and end
+            ramp_start_ = ramp_start.copy()
+            ramp_end_ = ramp_end.copy()
+            ramp_start_[gate_id] = val
+            ramp_end_[gate_id] = val
+
+            # Call the ramp function to compute the response between start and end
+            obs = ramp(ramp_start_, ramp_end_, N)
+            #print(f'raw observations: {obs}')
+            observations.append(obs)
+
+    return np.array(observations)  # shape (num_measurements, resolution)
+
+
+def compute_gate_compensation_al(ramp, central_point, sensor_id, ranges, num_measurements = 6, N=200, w_min=-2.0, w_max=0.2, sigma_gaussian=1.0, normalize_rows=True, plot=False):
+    '''
+    This function computes a linear model that compensates for the effect of other gates on a particular sensor.
+
+    Input parameters
+        ramp: function that takes two endpoints and returns sensor data? -- 
+              A ramp refers to a simulation/measurement fct that captures how the sensor respond when the system moves along a straight line ("ramp") in input space (specifically between two points)
+              Used to measure/simulate how a sensor's reading changes as one or more gate parameters are varied from a starting point to and ending point.
+        central_point: vector representing a central configuration point - chosen reference config that should remain invariant under compensation. Dimension: dim
+        sensor_id: index for which sensor to compensate
+        ranges: dictionary mapping gate/sensor IDs to their min/max amplitude value
+        num_measurements, N, max_w0, num_trials: optional parameters for tuning
+
+    Returns
+        P: transformation matrix (dim,dim) that models how other gate values influence the sensor input
+        m: offset vector (dim,) that ensures alignment at the central point
+    that neutralize the effects of other gates. Linear model adjusted_input = P*original_input + m to correct the sensor's input before performing readout.
+    '''
+    dim = len(central_point)  # dimension (number of gates/sensors)
+
+    P = np.eye(dim)    # initialize matrix for linear compensation
+    m = np.zeros(dim)  # initialize offset vector for compensation
+
+    # Create sensor values for fitting
+    sensor_values = np.linspace(ranges[sensor_id][0], ranges[sensor_id][1], N)
+
+    # loop over all gates
+    for gate_id in ranges.keys():
+
+        #skip the current sensor for compensation!!!
+        if gate_id == sensor_id:
+            continue
+        
+        print('meas:', gate_id, num_measurements, N)
+        
+        # Compute relative gate values for fitting
+        gate_values = np.linspace(ranges[gate_id][0], ranges[gate_id][1], num_measurements)
+
+        # Perform 2D amplitude scan: sweep gate, for each gate value perform a ramp along the sensor axis
+        observations = amplitude_scan_2D(ramp, [gate_id, sensor_id], central_point, ranges, gate_values, N)  # Shape: (num_measurements, N)
+
+        # Apply Gaussian filter to smooth out noise
+        observations = gaussian_filter1d(observations, sigma_gaussian, order=0,axis=1)  
+
+        # Normalize observations to zero mean, unit variance
+        if normalize_rows:  # row-wise normalization
+            observations -= np.mean(observations, axis=1)[:,None]  # np.mean(..., axis=1) gives shape (num_measurements,); [:,None] makes it (num_measurements,1)
+            observations /= np.std(observations, axis=1)[:,None]
+        else:  # global normalization
+            observations = (observations - np.mean(observations)) / np.std(observations)
+
+        # Fit compensation model
+        comp_factor, comp_obs = align_linear(observations, sensor_values, gate_values, w_min=w_min, w_max=w_max)
+        print(f"Fitted compensation factor for sensor {sensor_id} wrt gate {gate_id}: {comp_factor:.4f}")
+        P[sensor_id,gate_id] = -comp_factor
+        #m[sensor_id] -= P[sensor_id,gate_id] * central_point[gate_id]
+    
     return P #, m

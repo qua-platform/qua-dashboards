@@ -7,7 +7,7 @@ import dash
 import dash_bootstrap_components as dbc
 import numpy as np
 import xarray as xr
-from dash import Dash, Input, Output, State, html, ctx
+from dash import Dash, Input, Output, State, html, ctx, dcc, no_update
 from dash.exceptions import PreventUpdate
 from plotly import graph_objects as go
 
@@ -76,6 +76,7 @@ class AnnotationTabController(BaseTabController):
     _LOAD_FROM_DISK_BUTTON_SUFFIX = "load-from-disk-button"
     _LOAD_FROM_DISK_INPUT_SUFFIX = "load-from-disk-input"
     _SHOW_LABELS_CHECKLIST_SUFFIX = "show-labels-checklist"
+    _LINE_PROFILE_BUTTON_SUFFIX = "line-profile-button"
 
     def __init__(
         self,
@@ -257,9 +258,49 @@ class AnnotationTabController(BaseTabController):
                         "fontSize": "0.8em",
                     },
                 ),
-            ]
+                html.Hr(), 
+                html.H6("Select Line to Plot"), 
+                dbc.Col(
+                    dcc.Dropdown(
+                        id = f"{self.component_id}-line-selector", 
+                        options = [],  
+                        value = None, 
+                        placeholder = "Select line", 
+                        clearable = True, 
+                        style = {"color": "black"}
+                    ), 
+                width = 12),
+                dbc.Col(
+                    dcc.Checklist(
+                        id = self._get_id("interpolation_toggle"), 
+                        options = [{"label":"Toggle Interpolation", "value":"on"}], 
+                        value = [], 
+                        inline = True, 
+                        inputStyle={"margin":"0 5px 0 0"},
+                    )
+                ),
+                dbc.Row([
+                    dbc.Col(
+                        dbc.Button(
+                            "Plot Line Profile",
+                            id=self._get_id(self._LINE_PROFILE_BUTTON_SUFFIX),
+                            color="success",
+                            className="mt-2 w-100",
+                        ),
+                        width=6,
+                    ),
+                    dbc.Col(
+                        dbc.Button(
+                            "Show Original Plot",
+                            id=self._get_id("reset-2d-button"),
+                            color="secondary",
+                            className="mt-2 w-100",
+                        ),
+                        width=6,
+                    ),
+                ]),
+            ],
         )
-
         other_components = []
 
         return html.Div(
@@ -422,6 +463,15 @@ class AnnotationTabController(BaseTabController):
         self._register_mode_change(
             app, viewer_ui_state_store_id
         )
+        self._register_line_select(
+            app, viewer_data_store_id
+        )
+        self._register_line_profile_callback(
+            app, viewer_data_store_id
+        )
+        self._register_reset_2d_callback(
+            app, viewer_data_store_id
+        )
 
     def _register_mode_change(
             self,
@@ -497,6 +547,168 @@ class AnnotationTabController(BaseTabController):
                 f"{self.component_id}: Imported live frame. New static data version: {new_version}"
             )
             return {"key": data_registry.STATIC_DATA_KEY, "version": new_version}, viewer_ui_state_store_payload
+    def _register_line_select(self, app: Dash, viewer_data_store_id) -> None: 
+        @app.callback(
+            Output(f"{self.component_id}-line-selector", "options"), 
+            Output(f"{self.component_id}-line-selector", "value"), 
+            Input(viewer_data_store_id, "data"),
+            State(f"{self.component_id}-line-selector", "value"), 
+            prevent_initial_call = True
+        )
+        def _refresh_line_dropdown(viewer_ref: Optional[Dict[str,Any]], current_value: Optional[str]):
+            if (not viewer_ref or viewer_ref.get("key") != data_registry.STATIC_DATA_KEY):
+                raise PreventUpdate
+            
+            annotations = data_registry.get_data(data_registry.STATIC_DATA_KEY).get("annotations", {})
+            lines = annotations.get("lines", [])
+
+            options = [{"label": f'{ln["id"]} ({ln["start_point_id"]}-{ln["end_point_id"]})',"value": ln["id"],}
+            for ln in lines if "id" in ln]
+
+            if not options: 
+                return [], None
+            
+            valid_ids = {o["value"] for o in options}
+
+            if current_value in valid_ids:
+                return options, no_update
+
+            return options, None
+        
+    def _register_reset_2d_callback(self, app: Dash, viewer_data_store_id: Dict[str, str]) -> None:
+        @app.callback(
+            Output(viewer_data_store_id, "data", allow_duplicate=True),
+            Input(self._get_id("reset-2d-button"), "n_clicks"),
+            State(viewer_data_store_id, "data"),
+            prevent_initial_call=True,
+        )
+        def _reset_to_2d(n_clicks, current_viewer_data_ref):
+            if not current_viewer_data_ref or current_viewer_data_ref.get("key") != data_registry.STATIC_DATA_KEY:
+                raise PreventUpdate
+            static_obj = data_registry.get_data(data_registry.STATIC_DATA_KEY)
+            if not static_obj:
+                raise PreventUpdate
+            new_static = dict(static_obj)
+            new_static.pop("profile_plot", None)
+            new_version = data_registry.set_data(data_registry.STATIC_DATA_KEY, new_static)
+            return {"key": data_registry.STATIC_DATA_KEY, "version": new_version}
+    def _extract_1d_profile(
+            self,
+            data,
+            x0: float,
+            y0: float,
+            x1: float,
+            y1: float,
+            n_samples: int = 200,
+            interpolate: bool = False) -> Tuple[np.ndarray, np.ndarray]: 
+        if data.ndim != 2:
+            raise ValueError("Expected a 2D xarray")
+        y_dim, x_dim = data.dims
+        x_coordinates, y_coordinates = np.asarray(data.coords[x_dim].values), np.asarray(data.coords[y_dim].values)
+        x = np.linspace(x0, x1, n_samples)
+        y = np.linspace(y0, y1, n_samples)
+        dx = np.diff(x)
+        dy = np.diff(y)
+        s = np.concatenate([[0.0], np.cumsum(np.sqrt(dx**2 + dy**2))])
+
+        if not interpolate: 
+            ix = np.abs(x[:, None] - x_coordinates[None, :]).argmin(axis=1)
+            iy = np.abs(y[:, None] - y_coordinates[None, :]).argmin(axis=1)
+            
+            vals = data.values[iy, ix]
+            return s, vals
+        
+        A = data.values
+        def neighbours_and_weight(coord: np.ndarray, q: np.ndarray):
+            N = coord.size
+            asc = coord[0] <= coord[-1]
+
+            if asc: 
+                i1 = np.searchsorted(coord, q, side="left")
+                i1 = np.clip(i1, 1, N - 1)
+                i0 = i1 - 1
+            else:
+                coord_rev = coord[::-1]
+                j1 = np.searchsorted(coord_rev, q, side="left")
+                j1 = np.clip(j1, 1, N - 1)
+                j0 = j1 - 1
+                i0 = N - j1
+                i1 = N - j1 - 1
+
+            c0 = coord[i0]
+            c1 = coord[i1]
+            denom = (c1 - c0)
+            w = np.zeros_like(q, dtype=float)
+            valid = denom != 0
+            w[valid] = (q[valid] - c0[valid]) / denom[valid]
+            w = np.clip(w, 0.0, 1.0)
+            return i0, i1, w
+
+        i0_y, i1_y, wy = neighbours_and_weight(y_coordinates, y)
+        j0_x, j1_x, wx = neighbours_and_weight(x_coordinates, x)
+
+        v00 = A[i0_y, j0_x]
+        v10 = A[i0_y, j1_x]
+        v01 = A[i1_y, j0_x]
+        v11 = A[i1_y, j1_x]
+
+        vals = (1 - wx) * (1 - wy) * v00 \
+            + wx  * (1 - wy) * v10 \
+            + (1 - wx) * wy  * v01 \
+            + wx  * wy  * v11
+
+        return s, vals
+            
+    def _register_line_profile_callback(self, app: Dash, viewer_data_store_id: Dict[str, str]) -> None:
+
+        @app.callback(
+            Output(viewer_data_store_id, "data", allow_duplicate=True), 
+            Input(self._get_id(self._LINE_PROFILE_BUTTON_SUFFIX), "n_clicks"),
+            Input(self._get_id("interpolation_toggle"), "value"),
+            Input(f"{self.component_id}-line-selector", "value"),
+            State(viewer_data_store_id, "data"), 
+            prevent_initial_call = True,
+        )
+        def _extract_profile(_n_clicks: int, toggle_value, selected_line_id, current_viewer_data_ref: Optional[Dict[str,str]]):
+            if (not current_viewer_data_ref or current_viewer_data_ref.get("key") != data_registry.STATIC_DATA_KEY): 
+                raise PreventUpdate
+            
+            trig_id = ctx.triggered_id
+            dropdown_id = f"{self.component_id}-line-selector"
+            if trig_id == dropdown_id and selected_line_id is None: 
+                raise PreventUpdate
+            
+            static_data_object = data_registry.get_data(data_registry.STATIC_DATA_KEY)
+            interpolate = bool(toggle_value) and ("on" in toggle_value)
+            data = static_data_object.get("base_image_data")
+            annotations = static_data_object.get("annotations", {})
+            lines = annotations.get("lines", [])
+            points = {p["id"]: p for p in annotations.get("points", [])}
+            if len(lines) == 0 or len(points) < 2: 
+                raise PreventUpdate
+            
+            line_id = selected_line_id
+            line = next((ln for ln in lines if ln.get("id") == line_id), None)
+            if line is None: 
+                raise PreventUpdate
+            
+            p1 = points.get(line["start_point_id"])
+            p2 = points.get(line["end_point_id"])
+
+            if p1 is None or p2 is None: 
+                raise PreventUpdate
+            
+            x0, y0, x1, y1 = float(p1["x"]),  float(p1["y"]), float(p2["x"]), float(p2["y"])
+            s, vals = self._extract_1d_profile(data, x0, y0, x1, y1, 200, interpolate)
+            new_static = dict(static_data_object)
+            new_static["profile_plot"] = {
+                "s": s.tolist(),
+                "vals": vals.tolist(),
+                "name": f"Line {line['id']}",
+                "y_label": str(data.name or "Value"),
+            }
+            new_version = data_registry.set_data(data_registry.STATIC_DATA_KEY, new_static)
+            return {"key": data_registry.STATIC_DATA_KEY, "version": new_version}
 
     def _handle_point_mode_interaction(
         self,

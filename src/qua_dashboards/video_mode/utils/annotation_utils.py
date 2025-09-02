@@ -13,13 +13,11 @@ from typing import Dict, List, Optional, Tuple, Any
 import numpy as np
 import plotly.graph_objects as go
 
-from qdarts.experiment import Experiment
 from dataclasses import dataclass # dataclass decorator: automatically generates special methods (e.g. __init__, __repr__, __eq__, etc.) for classes primarily used to store data
 from typing import Callable
-import autograd
 import autograd.numpy as anp
 import autograd.scipy.stats as stat
-from autograd import value_and_grad, grad
+from autograd import value_and_grad
 import scipy.optimize
 
 logger = logging.getLogger(__name__)
@@ -31,7 +29,7 @@ __all__ = [
     "find_closest_line_id",
     "calculate_slopes",
     #"fit_compensation_parameters",  # Only internal helper
-    "compute_gate_compensation",
+    "compute_gate_compensation_ml",
     # "Lines",
     # "Model",
 ]
@@ -507,7 +505,7 @@ def fit_compensation_parameters(lines, N, mid_val_gate, min_w0  = 0.0, max_w0  =
     return Model(solution, model_par, mid_val_gate, res_best)   # return the best model
 
 
-def compute_gate_compensation(ramp, central_point, sensor_id, ranges, num_measurements = 6, N=200, max_w0=0.7, num_trials=2, max_iterations=1000000, epsilon=1.e-5):
+def compute_gate_compensation_ml(ramp, central_point, sensor_id, ranges, num_measurements = 6, N=200, max_w0=0.7, num_trials=2, max_iterations=1000000, epsilon=1.e-5):   ### DISCUSS: coordinate transformation here ???
     '''
     Compensation routine for a sensor based on the influence of other gates.
     This function computes a linear model that compensates for the effect of other gates on a particular sensor.
@@ -582,12 +580,13 @@ def compute_gate_compensation(ramp, central_point, sensor_id, ranges, num_measur
         midv = (minv+maxv)/2  # midpoint of a gate's range
         model = fit_compensation_parameters(lines, N, midv, min_w0=0.0, max_w0=max_w0, num_trials=num_trials, max_iterations=max_iterations, epsilon=epsilon)  # fitting function to learn how the current gate influences the sensor
         #save compensation parameters
+        logger.debug(f"model solution: {model.solution[0]}")
         P[sensor_id,gate_id] = -model.solution[0]  # learn slope: how does gate gate_id affect sensor sensor_id
         #compute offset such that the compensated model produces the gate values of central point
         #as we only change the coordinates of the sensor dot, only a change of the offset for the
         #sensor is needed
-        m[sensor_id] -= P[sensor_id,gate_id] * central_point[gate_id]  # offset needed so that the central point remains invariant after compensation -> compensation does NOT distort the sensor reading at the central point
+        #m[sensor_id] -= P[sensor_id,gate_id] * central_point[gate_id]  # offset needed so that the central point remains invariant after compensation -> compensation does NOT distort the sensor reading at the central point
     
     # Note that only one row of P is modified: P[sensor_id,:]. All other rows stay as identity.
     # Note that only one entry of m is modified: m[sensor_id]. All other entries stay zero.
-    return P, m
+    return P #, m

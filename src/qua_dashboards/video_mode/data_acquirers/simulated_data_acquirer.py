@@ -39,7 +39,7 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
         SNR: float = 20, # signal-to-noise ratio
         component_id: str = "simulated-data-acquirer",
         acquire_time: float = 0.05,  # Simulate 50ms acquisition time per frame
-        sensor_number: int = 0,  # Default to first sensor
+        sensor_number: int = 0,  # Default to first sensor, can only be different from 0 if there are multiple sensors
         # Other parameters like num_software_averages, acquisition_interval_s
         # are passed via **kwargs to Base2DDataAcquirer and then to BaseDataAcquirer.
         **kwargs: Any,
@@ -83,9 +83,10 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
 
 
     def _initialize_m(self) -> None:
-        """Initializes the m parameter and adds it to the rendering arguments."""
+        """Initializes the m parameter and adds it to the rendering arguments."""   ### DISCUSS: transform m ??? Or is it already transformed ???
         self.m = copy.deepcopy(self.experiment.tunneling_sim.boundaries(self.args_rendering["state_hint_lower_left"]).point_inside)  # Deepcopy needed that self.m does not have the same reference as polytope.point_inside
         logger.debug(f"initial m: {self.m}")
+
 
     def get_voltage_control_component(self, labels = None) -> VoltageControlComponent:
         """ Creates and returns a voltage control component for the simulated data acquirer.
@@ -172,7 +173,7 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
                 )
                 return np.array([[]])  # Return a 2D empty array to avoid downstream errors
 
-            # Generate the simulated image          
+            # Generate the simulated image          ### DISCUSS: Coordinates transformation here ??? Especially also in sensor_signalexp ???
             logger.info("Generating simulated data")
             state = self.experiment.tunneling_sim.poly_sim.find_state_of_voltage(v = self.m, 
                                                                                  state_hint = self.args_rendering["state_hint_lower_left"])
@@ -283,7 +284,9 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
                                                             resolution = N,
                                                             v_start_state_hint = state_hint,
                                                             )
-        return sensor_signal[:, 0]  # Return the sensor signal as a 1D numpy array
+        logger.info(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!! Ramp from {v_start} to {v_end} with {N} points generated.")
+        #logger.info(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!! Sensor signal: {sensor_signal[:, 0]}")
+        return sensor_signal[:, 0]  # Return the sensor signal as a 1D numpy array    ### DISCUSS: Transform coordinates ???
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
         """Updates SimulatedDataAcquirer parameters based on UI input.

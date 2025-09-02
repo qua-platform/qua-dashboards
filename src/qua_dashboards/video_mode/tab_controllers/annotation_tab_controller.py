@@ -21,7 +21,7 @@ from qua_dashboards.video_mode.utils.dash_utils import xarray_to_plotly
 from qua_dashboards.video_mode.utils.annotation_utils import (
     calculate_slopes,
     find_closest_line_id,
-    compute_gate_compensation,
+    compute_gate_compensation_ml,
 )
 from qua_dashboards.video_mode.utils.data_utils import load_data
 from qua_dashboards.video_mode.data_acquirers.simulated_data_acquirer import SimulatedDataAcquirer
@@ -469,28 +469,40 @@ class AnnotationTabController(BaseTabController):
 
                 # Fixed parameters   MAYBE AS USER INPUT (WITH DEFAULT VALUES)?
                 N = 200
+                num_measurements = 6
+
+                # slow method
                 num_trials = 4
                 max_iterations=1000000
-                epsilon=1.e-6 
+                epsilon=1.e-6
+
+                # fast method
+                sigma_gaussian = 1.0
+
+                delta_central_point = 0.015 #
                 dim = self.data_acquirer.experiment.capacitance_config["C_DD"].shape[0]  # dimension of the system (number of gates/sensors)
-                ranges = {i: (-0.015, 0.015) for i in range(dim)}
                 
                 # Other parameters
                 sensor_id = self.data_acquirer.experiment.sensor_config["sensor_dot_indices"][0]  # index of the sensor dot to compensate
                 state_hint = self.data_acquirer.args_rendering["state_hint_lower_left"]  # state hint for the sensor dot, used to find the state of the voltage
-                central_point = copy.deepcopy(self.data_acquirer.experiment.tunneling_sim.boundaries(state_hint).point_inside)
+                central_point = copy.deepcopy(self.data_acquirer.experiment.tunneling_sim.boundaries(state_hint).point_inside)   ### DISCUSS  coordinate transformation here ??? or is it already tronsformed ???
+                ranges = {i: (central_point[i]-delta_central_point, central_point[i]+delta_central_point) for i in range(dim)}
                 
                 # Computation of the gate compensation
                 flag_running = 1 if self.data_acquirer._acquisition_status == "running" else 0  
                 if flag_running:
                     self.data_acquirer.stop_acquisition() # stop data acquisition
-                P_fit, m_fit = compute_gate_compensation(self.data_acquirer.ramp, central_point, sensor_id, ranges, N=N, num_trials=num_trials, max_iterations=max_iterations, epsilon=epsilon)
+                P_fit = compute_gate_compensation_ml(self.data_acquirer.ramp, central_point, sensor_id, ranges, num_measurements = num_measurements, N=N, num_trials=num_trials, max_iterations=max_iterations, epsilon=epsilon)
+                #P_fit, m_fit = compute_gate_compensation_al(self.data_acquirer.ramp, central_point, sensor_id, ranges, num_measurements = num_measurements, N=N, sigma_gaussian=sigma_gaussian, normalize_rows=True, plot=False)  
                 if flag_running:
                     self.data_acquirer.start_acquisition() # start data acquisition
-                logger.info(f"Computed P_fit: {P_fit}, m_fit: {m_fit}")
+                P_fit_formatted = np.array2string(P_fit, precision=3, suppress_small=True)
+                #m_fit_formatted = np.array2string(m_fit, precision=3, suppress_small=True)
+                #logger.info(f"Computed P_fit: {P_fit_formatted}, m_fit: {m_fit_formatted}")
+                logger.info(f"Computed P_fit: {P_fit_formatted}")
                 # In general, I could define a function ramp = lambda v_start, v_end, N: self.data_acquirer.ramp(v_start, v_end, N)
                 #return f"Fitted P:\n{json.dumps(P_fit.tolist(), indent=2)}"
-                return f"Fitted compensation matrix P:\n {repr(P_fit)}"
+                return f"Fitted compensation matrix P:\n {P_fit_formatted}"
 
     def _register_mode_change(
             self,

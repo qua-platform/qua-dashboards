@@ -82,6 +82,8 @@ class AnnotationTabController(BaseTabController):
     _SHOW_LABELS_CHECKLIST_SUFFIX = "show-labels-checklist"
     _SENSOR_COMPENSATION_BUTTON_SUFFIX = "sensor-compensation-button"
     _SENSOR_COMPENSATION_RESULTS_SUFFIX = "sensor-compensation-results"
+    _GRADIENT_COMPUTATION_BUTTON_SUFFIX = "gradient-computation-button"
+    _GRADIENT_COMPUTATION_RESULTS_SUFFIX = "gradient-computation-results"
 
     def __init__(
         self,
@@ -280,6 +282,22 @@ class AnnotationTabController(BaseTabController):
                         "overflowY": "auto",
                         "fontSize": "0.8em",
                     },
+                ),
+                dbc.Button(
+                    "Compute Gradients",
+                    id=self._get_id(self._GRADIENT_COMPUTATION_BUTTON_SUFFIX),
+                    color="danger",
+                    size="sm",
+                    className="mb-2",
+                ),
+                html.Pre(
+                    id=self._get_id(self._GRADIENT_COMPUTATION_RESULTS_SUFFIX),
+                    className="border rounded analysis-results-dark p-1 mb-3",
+                    style={
+                        "maxHeight": "100px",
+                        "overflowY": "auto",
+                        "fontSize": "0.8em",
+                    },
                 ),                
             ]
         )
@@ -449,6 +467,29 @@ class AnnotationTabController(BaseTabController):
         self._register_compute_sensor_compensation(
             app,
         )
+        self._register_compute_gradients(
+            app,
+        )
+
+    def _register_compute_gradients(
+            self,
+            app:Dash,
+    ) -> None:
+        """Callback to compute the slopes using GMM on the gradients"""
+
+        @app.callback(
+            Output(self._get_id(self._GRADIENT_COMPUTATION_RESULTS_SUFFIX), "children"),
+            Input(self._get_id(self._GRADIENT_COMPUTATION_BUTTON_SUFFIX), "n_clicks"),
+            prevent_initial_call=True,
+        )
+        def _compute_gradients(n_clicks: int):
+            logger.info(f"{self._get_id(self._GRADIENT_COMPUTATION_BUTTON_SUFFIX)}: Compute slopes clicked.")
+
+            # static_data_obj = data_registry.get_data(data_registry.STATIC_DATA_KEY)
+            # #current_version = data_registry.get_current_version(
+            # #    data_registry.STATIC_DATA_KEY
+            # #)
+            # logger.debug(f"{static_data_obj}")
 
     def _register_compute_sensor_compensation(
             self,

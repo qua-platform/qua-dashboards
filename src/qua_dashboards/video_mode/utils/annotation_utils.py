@@ -22,6 +22,10 @@ import scipy.optimize
 from scipy.interpolate import interpn
 from scipy.optimize import minimize
 from scipy.ndimage import gaussian_filter1d
+import matplotlib.pyplot as plt
+import cv2 as cv
+import autograd.numpy as anp
+from autograd import value_and_grad
 
 logger = logging.getLogger(__name__)
 
@@ -743,3 +747,161 @@ def compute_gate_compensation_al(ramp, central_point, sensor_id, ranges, num_mea
         #m[sensor_id] -= P[sensor_id,gate_id] * central_point[gate_id]
     
     return P #, m
+
+
+def generate_2D_gradient_vector(img, plot=False):
+    """
+    Generates a dataset of 2D gradient vectors from the input image using Sobel filters.
+    Returns a 2D array where each row is a gradient vector [Gx, Gy] for each pixel, i.e. rows are observations (pixels), columns are variables (sobel_x, sobel_y).
+    """
+    print("Generating 2D gradient vectors using Sobel filters")
+    # Convert the image to uint8, i.e. range [0,255] (standard OpenCV format)
+    if img.dtype != anp.uint8:
+        img = (255 * (img - img.min()) / (img.max() - img.min())).astype(anp.uint8)
+
+    # Apply Gaussian blur to the image
+    blurred_img = cv.GaussianBlur(img, (0, 0), 1)   # Adjust the kernel size and sigma as needed!!!
+
+    # Apply Sobel filter to compute gradients
+    sobel_x = cv.Sobel(blurred_img, cv.CV_64F, 1, 0, ksize=5)  # Output image type is np.float64, adjust kernel size as needed
+    sobel_y = cv.Sobel(blurred_img, cv.CV_64F, 0, 1, ksize=5)
+
+    points = anp.stack([sobel_x,sobel_y],axis=-1).reshape(-1,2)  # dataset of 2D gradient vectors; stack along the last axis -> shape (N,N,2), then reshape to (N*N,2), i.e. rows are observations (pixels), columns are variables (sobel_x, sobel_y)
+
+    if plot:
+        fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+        axes[0].imshow(blurred_img,origin="lower")
+        axes[0].set_title("Gaussian blurred image")
+        axes[0].axis('off')
+        axes[1].imshow(sobel_x,origin="lower")
+        axes[1].set_title("Sobel X")
+        axes[2].imshow(sobel_y,origin="lower")
+        axes[2].set_title("Sobel Y")
+        plt.colorbar(axes[1].images[0])
+        plt.colorbar(axes[2].images[0])
+        plt.tight_layout()
+        plt.show()
+
+    return points
+
+
+def scale_data(points, scale, plot=False):
+    print(f"Scaling data using method: {scale}")
+    if scale == "overall":
+        data = points/anp.std(points)
+    elif scale == "per-dimension":
+        data = points.copy()
+        data[:,0] = data[:,0]/anp.std(data[:,0])
+        data[:,1] = data[:,1]/anp.std(data[:,1])
+
+    if plot:
+        plt.plot(data[:,0], data[:,1], '.', alpha=0.3, markersize=1)
+        plt.axis('equal')
+        plt.axhline(0, color='gray', lw=0.5)
+        plt.axvline(0, color='gray', lw=0.5)
+        plt.title("Scaled Sobel gradients")
+        plt.show()
+
+    return data
+
+
+def make_covariance_matrices(params,K,dim):
+    # Given parameters: p1x, p1y, p2x, p2y, tau, return covariance matrices for the Gaussian components
+    if K==2:
+        p1 = params[:2]  
+        p2 = params[2:4] 
+        sigma = anp.exp(params[4]) # positive!
+        I = anp.eye(dim)   
+
+        Sigma0 = sigma**2 * I
+        Sigma1 = anp.outer(p1, p1) + sigma**2 * I  # anp.outer computes the outer product: 2D matrix here
+        Sigma2 = anp.outer(p2, p2) + sigma**2 * I
+
+        return Sigma0, Sigma1, Sigma2
+    
+    elif K==3:
+        p1 = params[:2]  
+        p2 = params[2:4] 
+        p3 = params[4:6]
+        sigma = anp.exp(params[6]) # positive!
+        I = anp.eye(dim)   
+
+        Sigma0 = sigma**2 * I
+        Sigma1 = anp.outer(p1, p1) + sigma**2 * I  # anp.outer computes the outer product: 2D matrix here
+        Sigma2 = anp.outer(p2, p2) + sigma**2 * I
+        Sigma3 = anp.outer(p3, p3) + sigma**2 * I
+
+        return Sigma0, Sigma1, Sigma2, Sigma3    
+    
+
+def normal_distribution_2D_vectorized(X, cov):
+    # Multivariate normal distribution PDF for 2D data with zero mean.
+    # X: array of shape (N,2) where each row is a 2D data point
+    # cov: 2x2 covariance matrix
+    det = anp.linalg.det(cov)
+    inv_cov = anp.linalg.inv(cov)
+    quad_form = anp.sum((X @ inv_cov) * X, axis=1)
+    pdf = 1 / (2 * anp.pi * anp.sqrt(det)) * anp.exp(-0.5 * quad_form)
+    return pdf.reshape(-1,1) # Otherwise, shape (N,). Alternatively, use [:,None] to convert to column vector with shape (N,1)
+
+
+def plot_vector(points, p, title):
+    plt.scatter(points[:, 0], points[:, 1], alpha=0.3, s=1)
+    K = len(p)
+    #plt.quiver(0,0, p[0][0], p[0][1], angles='xy', scale_units='xy', scale=1, color='r', width=0.005, label='p_x') # p_x: red arrow
+    #plt.quiver(0,0, p[1][0], p[1][1], angles='xy', scale_units='xy', scale=1, color='g', width=0.005, label='p_y') # p_y: green arrow
+    plt.quiver(-p[0][0], -p[0][1], 2*p[0][0], 2*p[0][1], angles='xy', scale_units='xy', scale=1, color='r', width=0.005, label='p1') # p_1: red arrow
+    plt.quiver(-p[1][0], -p[1][1], 2*p[1][0], 2*p[1][1], angles='xy', scale_units='xy', scale=1, color='g', width=0.005, label='p2') # p_2: green arrow
+
+    if K==3:
+        #plt.quiver(0,0, p[2][0], p[2][1], angles='xy', scale_units='xy', scale=1, color='b', width=0.005, label='p_xy') 
+        plt.quiver(-p[2][0], -p[2][1], 2*p[2][0], 2*p[2][1], angles='xy', scale_units='xy', scale=1, color='b', width=0.005, label='p12') 
+    plt.title(title)
+    plt.axhline(0, color='gray', lw=0.5)
+    plt.axvline(0, color='gray', lw=0.5)
+    plt.axis('equal')
+    plt.legend()
+    plt.show()
+
+
+# f: function to minimize, i.e. negative log-likelihood of the Gaussian Mixture Model
+def gmm_log_likelihood(params,data,w,K):
+    # Compute the negative log-likelihood of the Gaussian Mixture Model
+    if K==2:
+        Sigma0, Sigma1, Sigma2 = make_covariance_matrices(params,K=2,dim=2)
+        likelihood = (w[0] * normal_distribution_2D_vectorized(data, Sigma0) +
+                      w[1] * normal_distribution_2D_vectorized(data, Sigma1) +
+                      w[2] * normal_distribution_2D_vectorized(data, Sigma2))
+    elif K==3:
+        Sigma0, Sigma1, Sigma2, Sigma3 = make_covariance_matrices(params,K=3,dim=2)
+        likelihood = (w[0] * normal_distribution_2D_vectorized(data, Sigma0) +
+                      w[1] * normal_distribution_2D_vectorized(data, Sigma1) +
+                      w[2] * normal_distribution_2D_vectorized(data, Sigma2) +
+                      w[3] * normal_distribution_2D_vectorized(data, Sigma3))
+    log_likelihood = anp.sum(anp.log(likelihood + 1e-10))  # Add small constant to avoid log(0)
+    return -log_likelihood
+
+
+def gmm_log_likelihood_reg(params,data,w,K):
+    # Compute the negative log-likelihood of the Gaussian Mixture Model
+    e1 = anp.array([1.0, 0.0])
+    e2 = anp.array([0.0, 1.0])
+    if K==2:
+        Sigma0, Sigma1, Sigma2 = make_covariance_matrices(params,K,dim=2)
+        likelihood = (w[0] * normal_distribution_2D_vectorized(data, Sigma0) +
+                    w[1] * normal_distribution_2D_vectorized(data, Sigma1) +
+                    w[2] * normal_distribution_2D_vectorized(data, Sigma2))
+    elif K==3:
+        Sigma0, Sigma1, Sigma2, Sigma3 = make_covariance_matrices(params,K,dim=2)
+        #print(params)
+        likelihood = (w[0] * normal_distribution_2D_vectorized(data, Sigma0) +
+                    w[1] * normal_distribution_2D_vectorized(data, Sigma1) +
+                    w[2] * normal_distribution_2D_vectorized(data, Sigma2) +
+                    w[3] * normal_distribution_2D_vectorized(data, Sigma3))
+    log_likelihood = anp.sum(anp.log(likelihood + 1e-10))  # Add small constant to avoid log(0)
+    if K==2:
+        reg = 1 * (anp.dot(params[0:2], e1)/(anp.linalg.norm(params[0:2])*anp.linalg.norm(e1))**2 + anp.dot(params[2:4], e2)/(anp.linalg.norm(params[2:4])*anp.linalg.norm(e2))**2)
+    if K==3:
+        reg = 0  ## TO DO: add regularization for 3 directions
+    #print("Regularization term:", reg)
+    return -log_likelihood + reg

@@ -23,9 +23,17 @@ from qua_dashboards.video_mode.utils.annotation_utils import (
     find_closest_line_id,
     compute_gate_compensation_ml,
     compute_gate_compensation_al,
+    generate_2D_gradient_vector,
+    scale_data,
+    plot_vector,
+    gmm_log_likelihood, 
+    gmm_log_likelihood_reg,
 )
 from qua_dashboards.video_mode.utils.data_utils import load_data
 from qua_dashboards.video_mode.data_acquirers.simulated_data_acquirer import SimulatedDataAcquirer
+
+from scipy.optimize import minimize   ### TODO: HAS TO GO TO ANNOTATION_UTILS.PY
+from autograd import value_and_grad
 
 logger = logging.getLogger(__name__)
 
@@ -252,7 +260,7 @@ class AnnotationTabController(BaseTabController):
                 html.Hr(),
                 html.H6("Analysis"),
                 dbc.Button(
-                    "Calculate Slopes",
+                    "Calculate Slopes from Added Lines",
                     id=self._get_id(self._CALCULATE_BUTTON_SUFFIX),
                     color="info",
                     size="sm",
@@ -284,7 +292,7 @@ class AnnotationTabController(BaseTabController):
                     },
                 ),
                 dbc.Button(
-                    "Compute Gradients",
+                    "Compute Slopes from Image Gradients",
                     id=self._get_id(self._GRADIENT_COMPUTATION_BUTTON_SUFFIX),
                     color="danger",
                     size="sm",
@@ -468,29 +476,87 @@ class AnnotationTabController(BaseTabController):
             app,
         )
         self._register_compute_gradients(
-            app,
+            app, viewer_data_store_id
         )
 
     def _register_compute_gradients(
             self,
             app:Dash,
+            viewer_data_store_id: Dict[str, str]
     ) -> None:
         """Callback to compute the slopes using GMM on the gradients"""
 
         @app.callback(
             Output(self._get_id(self._GRADIENT_COMPUTATION_RESULTS_SUFFIX), "children"),
             Input(self._get_id(self._GRADIENT_COMPUTATION_BUTTON_SUFFIX), "n_clicks"),
+            State(viewer_data_store_id, "data"),
             prevent_initial_call=True,
         )
-        def _compute_gradients(n_clicks: int):
+        def _compute_gradients(n_clicks: int, current_viewer_data_ref: Optional[Dict[str, str]]):
             logger.info(f"{self._get_id(self._GRADIENT_COMPUTATION_BUTTON_SUFFIX)}: Compute slopes clicked.")
 
-            # static_data_obj = data_registry.get_data(data_registry.STATIC_DATA_KEY)
-            # #current_version = data_registry.get_current_version(
-            # #    data_registry.STATIC_DATA_KEY
-            # #)
-            # logger.debug(f"{static_data_obj}")
+            # Fixed parameters     MAYBE AS USER INPUT (WITH DEFAULT VALUES)?
+            scale = "per-dimension"  # "overall" or "per-dimension"
+            likelihood = "without-reg"  # "without-reg" or "with-reg"
+            K = 3 # Number of gradient directions to estimate, either 2 or 3
+            weights = {'2': np.array([0.8, 0.1, 0.1]).reshape(-1, 1), '3': np.array([0.7, 0.1, 0.1, 0.1]).reshape(-1, 1)}  # Weights for the Gaussian components (mixing coefficients), values have shape (K+1, 1) for broadcasting
+            w = weights[str(K)]
+            initial_guess = {'2': np.array([0.1, 0.0, 0.0, 0.1, 0.0]), '3': np.array([0.1, 0.0, 0.0, 0.1, 0.1, -0.1, 0.0])}  #Initial guess: p1, p2 horizontal and vertical, p3 = p1-p2, tau = log_sigma = log(1.0) = 0.0
+            init_params = initial_guess[str(K)]
+            max_iterations=1000000
+            epsilon=1.e-4
+            dim = 2  # 2D
 
+            # Current base image
+            if (
+                not current_viewer_data_ref
+                or current_viewer_data_ref.get("key") != data_registry.STATIC_DATA_KEY
+            ):
+                return "Analysis requires static data to be active."
+
+            static_data_object = data_registry.get_data(data_registry.STATIC_DATA_KEY)
+            if not static_data_object or static_data_object.get("base_image_data") is None:
+                return "No image data found in static data for analysis."
+
+            image_data = static_data_object.get("base_image_data")
+            #logger.debug(f"image_data: {image_data}")
+            #logger.debug(f"image_data: {image_data.values}")
+            import matplotlib.pyplot as plt
+            #image_data.plot.imshow(robust=True)
+            #plt.show()
+
+            # Data fitting (GMM on gradients)
+            data = generate_2D_gradient_vector(image_data.values, plot=False)
+            data = scale_data(data, scale, plot=False)
+
+            logger.info(f"Optimizing GMM")
+            if likelihood=="without-reg":            
+                logger.info(f"Initial log-likelihood: {gmm_log_likelihood(init_params,data,w,K)}")
+                problem = value_and_grad(lambda params: gmm_log_likelihood(params,data,w,K))
+            if likelihood=="with-reg":
+                logger.info(f"Initial log-likelihood: {gmm_log_likelihood_reg(init_params,data,w,K)}")
+                problem = value_and_grad(lambda params: gmm_log_likelihood_reg(params,data,w,K))
+            result = minimize(problem, init_params, method="L-BFGS-B", jac=True, tol=0.0, options={'maxiter':max_iterations, 'gtol': epsilon})
+
+            #print(result)
+            if K==2:
+                p1 = result.x[:2]
+                p2 = result.x[2:4]                  
+                sigma = np.exp(result.x[4])                  
+            elif K==3:
+                p1 = result.x[:2]
+                p2 = result.x[2:4]
+                p3 = result.x[4:6]
+                sigma = np.exp(result.x[6])
+
+            if K==2:
+                #plot_vector(data, [p1, p2], f"Scaled data with estimated direction vectors p1 and p2")
+                return f"p1 = {p1}, m1 = {p1[1]/p1[0]} \np2 = {p2}, m2 = {p2[1]/p2[0]}"
+            elif K==3:
+                #plot_vector(data, [p1, p2, p3], f"Scaled data with estimated direction vectors p1, p2 and p3")
+                return f"p1 = {p1}, m1 = {p1[1]/p1[0]} \np2 = {p2}, m2 = {p2[1]/p2[0]} \np3 = {p3}, m3 = {p3[1]/p3[0]}"
+           
+            
     def _register_compute_sensor_compensation(
             self,
             app: Dash,

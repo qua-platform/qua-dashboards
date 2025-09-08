@@ -23,17 +23,10 @@ from qua_dashboards.video_mode.utils.annotation_utils import (
     find_closest_line_id,
     compute_gate_compensation_ml,
     compute_gate_compensation_al,
-    generate_2D_gradient_vector,
-    scale_data,
-    plot_vector,
-    gmm_log_likelihood, 
-    gmm_log_likelihood_reg,
+    compute_slopes_from_image_gradients,
 )
 from qua_dashboards.video_mode.utils.data_utils import load_data
 from qua_dashboards.video_mode.data_acquirers.simulated_data_acquirer import SimulatedDataAcquirer
-
-from scipy.optimize import minimize   ### TODO: HAS TO GO TO ANNOTATION_UTILS.PY
-from autograd import value_and_grad
 
 logger = logging.getLogger(__name__)
 
@@ -475,11 +468,11 @@ class AnnotationTabController(BaseTabController):
         self._register_compute_sensor_compensation(
             app,
         )
-        self._register_compute_gradients(
+        self._register_compute_slopes_from_gradients(
             app, viewer_data_store_id
         )
 
-    def _register_compute_gradients(
+    def _register_compute_slopes_from_gradients(
             self,
             app:Dash,
             viewer_data_store_id: Dict[str, str]
@@ -492,7 +485,7 @@ class AnnotationTabController(BaseTabController):
             State(viewer_data_store_id, "data"),
             prevent_initial_call=True,
         )
-        def _compute_gradients(n_clicks: int, current_viewer_data_ref: Optional[Dict[str, str]]):
+        def _compute_slopes_from_gradients(n_clicks: int, current_viewer_data_ref: Optional[Dict[str, str]]):
             logger.info(f"{self._get_id(self._GRADIENT_COMPUTATION_BUTTON_SUFFIX)}: Compute slopes clicked.")
 
             # Fixed parameters     MAYBE AS USER INPUT (WITH DEFAULT VALUES)?
@@ -505,7 +498,6 @@ class AnnotationTabController(BaseTabController):
             init_params = initial_guess[str(K)]
             max_iterations=1000000
             epsilon=1.e-4
-            dim = 2  # 2D
 
             # Current base image
             if (
@@ -521,40 +513,8 @@ class AnnotationTabController(BaseTabController):
             image_data = static_data_object.get("base_image_data")
             #logger.debug(f"image_data: {image_data}")
             #logger.debug(f"image_data: {image_data.values}")
-            import matplotlib.pyplot as plt
-            #image_data.plot.imshow(robust=True)
-            #plt.show()
 
-            # Data fitting (GMM on gradients)
-            data = generate_2D_gradient_vector(image_data.values, plot=False)
-            data = scale_data(data, scale, plot=False)
-
-            logger.info(f"Optimizing GMM")
-            if likelihood=="without-reg":            
-                logger.info(f"Initial log-likelihood: {gmm_log_likelihood(init_params,data,w,K)}")
-                problem = value_and_grad(lambda params: gmm_log_likelihood(params,data,w,K))
-            if likelihood=="with-reg":
-                logger.info(f"Initial log-likelihood: {gmm_log_likelihood_reg(init_params,data,w,K)}")
-                problem = value_and_grad(lambda params: gmm_log_likelihood_reg(params,data,w,K))
-            result = minimize(problem, init_params, method="L-BFGS-B", jac=True, tol=0.0, options={'maxiter':max_iterations, 'gtol': epsilon})
-
-            #print(result)
-            if K==2:
-                p1 = result.x[:2]
-                p2 = result.x[2:4]                  
-                sigma = np.exp(result.x[4])                  
-            elif K==3:
-                p1 = result.x[:2]
-                p2 = result.x[2:4]
-                p3 = result.x[4:6]
-                sigma = np.exp(result.x[6])
-
-            if K==2:
-                #plot_vector(data, [p1, p2], f"Scaled data with estimated direction vectors p1 and p2")
-                return f"p1 = {p1}, m1 = {p1[1]/p1[0]} \np2 = {p2}, m2 = {p2[1]/p2[0]}"
-            elif K==3:
-                #plot_vector(data, [p1, p2, p3], f"Scaled data with estimated direction vectors p1, p2 and p3")
-                return f"p1 = {p1}, m1 = {p1[1]/p1[0]} \np2 = {p2}, m2 = {p2[1]/p2[0]} \np3 = {p3}, m3 = {p3[1]/p3[0]}"
+            return compute_slopes_from_image_gradients(image_data.values, scale, likelihood, init_params, w, K, max_iterations, epsilon, plots = [True, True, True])
            
             
     def _register_compute_sensor_compensation(

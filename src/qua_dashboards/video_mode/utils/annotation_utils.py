@@ -26,6 +26,8 @@ import matplotlib.pyplot as plt
 import cv2 as cv
 import autograd.numpy as anp
 from autograd import value_and_grad
+import matplotlib.pyplot as plt
+
 
 logger = logging.getLogger(__name__)
 
@@ -905,3 +907,41 @@ def gmm_log_likelihood_reg(params,data,w,K):
         reg = 0  ## TO DO: add regularization for 3 directions
     #print("Regularization term:", reg)
     return -log_likelihood + reg
+
+
+def compute_slopes_from_image_gradients(img, scale, method, init_params, w, K, max_iterations, epsilon, plots = [False, False, False]):
+
+    # Image gradients
+    data = generate_2D_gradient_vector(img, plot=plots[0])
+
+    # Scale the image gradients
+    data = scale_data(data, scale, plot=plots[1])
+
+    # Data fitting (GMM on gradients)
+    logger.info(f"Optimizing GMM")
+    if method=="without-reg":            
+        logger.info(f"Initial log-likelihood: {gmm_log_likelihood(init_params,data,w,K)}")
+        problem = value_and_grad(lambda params: gmm_log_likelihood(params,data,w,K))
+    if method=="with-reg":
+        logger.info(f"Initial log-likelihood: {gmm_log_likelihood_reg(init_params,data,w,K)}")
+        problem = value_and_grad(lambda params: gmm_log_likelihood_reg(params,data,w,K))
+    result = minimize(problem, init_params, method="L-BFGS-B", jac=True, tol=0.0, options={'maxiter':max_iterations, 'gtol': epsilon})
+
+    if K==2:
+        p1 = result.x[:2]
+        p2 = result.x[2:4]                  
+        sigma = np.exp(result.x[4])                  
+    elif K==3:
+        p1 = result.x[:2]
+        p2 = result.x[2:4]
+        p3 = result.x[4:6]
+        sigma = np.exp(result.x[6])    
+
+    if K==2:
+        if plots[2]:
+            plot_vector(data, [p1, p2], f"Scaled data with estimated direction vectors p1 and p2")
+        return f"p1 = {p1}, m1 = {p1[1]/p1[0]} \np2 = {p2}, m2 = {p2[1]/p2[0]}"
+    elif K==3:
+        if plots[2]:
+            plot_vector(data, [p1, p2, p3], f"Scaled data with estimated direction vectors p1, p2 and p3")
+        return f"p1 = {p1}, m1 = {p1[1]/p1[0]} \np2 = {p2}, m2 = {p2[1]/p2[0]} \np3 = {p3}, m3 = {p3[1]/p3[0]}"

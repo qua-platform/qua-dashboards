@@ -64,13 +64,13 @@ machine = BasicQuam()
 
 # Define the first DC voltage output channel (e.g., for X-axis sweep)
 machine.channels["ch1"] = SingleChannel(
-    opx_output=("con1", 1),  # OPX controller and port
+    opx_output=("con1", 5, 1),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
     operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
 )
 # Define the second DC voltage output channel (e.g., for Y-axis sweep)
 machine.channels["ch2"] = SingleChannel(
-    opx_output=("con1", 2),  # OPX controller and port
+    opx_output=("con1", 5, 2),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
     operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
 )
@@ -78,10 +78,11 @@ machine.channels["ch2"] = SingleChannel(
 # Define the readout pulse and the channel used for measurement
 readout_pulse = pulses.SquareReadoutPulse(id="readout", length=1500, amplitude=0.1)
 machine.channels["ch1_readout"] = InOutSingleChannel(
-    opx_output=("con1", 3),  # Output for the readout pulse
-    opx_input=("con1", 1),  # Input for acquiring the measurement signal
+    opx_output=("con1", 5, 3),  # Output for the readout pulse
+    opx_input=("con1", 5, 1),  # Input for acquiring the measurement signal
     intermediate_frequency=0,  # Set IF for the readout channel
-    operations={"readout": readout_pulse},  # Assign the readout pulse to this channel
+    operations={"readout": readout_pulse},
+    time_of_flight = 28,  # Assign the readout pulse to this channel
 )
 
 # --- QMM Connection ---
@@ -94,7 +95,7 @@ config = machine.generate_config()
 
 # Open a connection to the Quantum Machine (QM)
 # This prepares the OPX with the generated configuration.
-qm = qmm.open_qm(config, close_other_machines=True)
+qm = qmm.open_qm(config, close_other_machines=True, validate_with_protobuf=True)
 
 
 # %% Configure Video Mode Components

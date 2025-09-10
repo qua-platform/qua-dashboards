@@ -61,16 +61,17 @@ logger = setup_logging(__name__)
 # This object will be used to define the quantum hardware configuration (channels, pulses, etc.)
 # and generate the QUA configuration for the OPX.
 machine = BasicQuam()
-con = 'con2'
+con = 'con1'
+fem = 5
 # Define the first DC voltage output channel (e.g., for X-axis sweep)
 machine.channels["ch1"] = SingleChannel(
-    opx_output=(con, 1),  # OPX controller and port
+    opx_output=(con, fem, 1),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
     operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
 )
 # Define the second DC voltage output channel (e.g., for Y-axis sweep)
 machine.channels["ch2"] = SingleChannel(
-    opx_output=(con, 2),  # OPX controller and port
+    opx_output=(con, fem, 2),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
     operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
 )
@@ -78,22 +79,22 @@ machine.channels["ch2"] = SingleChannel(
 # Define the readout pulse and the channel used for measurement
 readout_pulse = pulses.SquareReadoutPulse(id="readout", length=152, amplitude=0.1)
 machine.channels["ch1_readout"] = InOutSingleChannel(
-    opx_output=(con, 3),  # Output for the readout pulse
-    opx_input=(con, 1),  # Input for acquiring the measurement signal
+    opx_output=(con, fem, 3),  # Output for the readout pulse
+    opx_input=(con, fem, 1),  # Input for acquiring the measurement signal
     intermediate_frequency=20000000,  # Set IF for the readout channel
     operations={"readout": readout_pulse},  # Assign the readout pulse to this channel
 )
 readout_pulse2 = pulses.SquareReadoutPulse(id="readout", length=152, amplitude=0.1)
 machine.channels["ch2_readout"] = InOutSingleChannel(
-    opx_output=(con, 3),  # Output for the readout pulse
-    opx_input=(con, 1),  # Input for acquiring the measurement signal
+    opx_output=(con, fem, 3),  # Output for the readout pulse
+    opx_input=(con, fem, 1),  # Input for acquiring the measurement signal
     intermediate_frequency=10000000,  # Set IF for the readout channel
     operations={"readout": readout_pulse2},  # Assign the readout pulse to this channel
 )
 readout_pulse3 = pulses.SquareReadoutPulse(id="readout", length=152, amplitude=0.1)
 machine.channels["ch3_readout"] = InOutSingleChannel(
-    opx_output=(con, 3),  # Output for the readout pulse
-    opx_input=(con, 1),  # Input for acquiring the measurement signal
+    opx_output=(con, fem, 3),  # Output for the readout pulse
+    opx_input=(con, fem, 1),  # Input for acquiring the measurement signal
     intermediate_frequency=30000000,  # Set IF for the readout channel
     operations={"readout": readout_pulse3},  # Assign the readout pulse to this channel
 )
@@ -101,7 +102,7 @@ machine.channels["ch3_readout"] = InOutSingleChannel(
 # --- QMM Connection ---
 # Replace with your actual OPX host and cluster name
 # Example: qmm = QuantumMachinesManager(host="your_opx_ip", cluster_name="your_cluster")
-qmm = QuantumMachinesManager(host="172.16.33.101", cluster_name="CS_1")
+qmm = QuantumMachinesManager(host="`127.0.0.1", cluster_name="CS_1")
 
 # Generate the QUA configuration from the QUAM machine object
 config = machine.generate_config()

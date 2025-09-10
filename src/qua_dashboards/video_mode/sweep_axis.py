@@ -76,10 +76,6 @@ class SweepAxis(BaseUpdatableComponent):
             min_span=0.001,
             max_span=None,
         )
-        # return self.create_axis_layout(
-        #     min_span=0.001,
-        #     max_span=None,
-        # )
 
     def register_callbacks(self, app: Dash) -> None:
         pass

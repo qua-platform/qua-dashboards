@@ -190,6 +190,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             self.generate_qua_program()
 
         logger.info(f"Executing QUA program for {self.component_id}.")
+        if self.qm is None:
+            self.initialize_qm()
         self.qm_job = self.qm.execute(self.qua_program)  # type: ignore
 
         if validate_running:

@@ -126,6 +126,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         for channel in self.selected_readout_channels:
             I, Q = channel.measure("readout")
             result.extend([I, Q])
+        wait(2000)
         align()
 
         return result

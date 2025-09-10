@@ -6,10 +6,13 @@ from dash import html, ctx, ALL, no_update, Dash, Input, Output
 from qua_dashboards.video_mode.tab_controllers.base_tab_controller import (
     BaseTabController,
 )
+from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import (
+    BaseDataAcquirer
+)
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["LiveViewTabController"]
+__all__ = ["SettingsTabController"]
 
 
 class SettingsTabController(BaseTabController):
@@ -25,7 +28,7 @@ class SettingsTabController(BaseTabController):
 
     def __init__(
         self,
-        data_acquirer,
+        data_acquirer: BaseDataAcquirer,
         component_id: str = "settings-tab",
         is_active: bool = False,
         **kwargs: Any,

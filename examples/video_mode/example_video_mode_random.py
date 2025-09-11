@@ -73,8 +73,9 @@ def get_video_mode_component() -> VideoModeComponent:
     # This acquirer simulates data fetching by generating random 2D arrays.
     random_acquirer = RandomDataAcquirer(
         component_id="random-data-acquirer",  # Unique ID for Dash elements.
-        x_axis=x_axis,
-        y_axis=y_axis,
+        sweep_axes=[x_axis, y_axis],
+        x_axis_name=x_axis.name,
+        y_axis_name=y_axis.name,
         acquire_time=0.03,  # Simulated delay (seconds) for acquiring one raw frame.
         num_software_averages=5,  # Number of raw frames to average for display.
         acquisition_interval_s=0.5,  # Target time (seconds) between acquiring raw frames.

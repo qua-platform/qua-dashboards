@@ -190,6 +190,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             self.generate_qua_program()
 
         logger.info(f"Executing QUA program for {self.component_id}.")
+        if self.qm is None:
+            self.initialize_qm()
         self.qm_job = self.qm.execute(self.qua_program)  # type: ignore
 
         if validate_running:
@@ -293,6 +295,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
     def _regenerate_config_and_reopen_qm(self) -> None:
         logger.info(f"Regenerating QUA config for {self.component_id} from machine.")
         self.qua_config = self.machine.generate_config()
+        #Necessary to force qm to re-open 
+        self.qm = None
         self.initialize_qm()
         self.execute_program()
 

@@ -295,6 +295,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
     def _regenerate_config_and_reopen_qm(self) -> None:
         logger.info(f"Regenerating QUA config for {self.component_id} from machine.")
         self.qua_config = self.machine.generate_config()
+        #Necessary to force qm to re-open 
+        self.qm = None
         self.initialize_qm()
         self.execute_program()
 

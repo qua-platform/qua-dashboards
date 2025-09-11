@@ -20,8 +20,8 @@ class BasicInnerLoopAction(InnerLoopAction):
     Args:
         gate_set: The GateSet object containing voltage channels.
         readout_pulse: The QUAM Pulse object to measure.
-        x_channel_name: Name of the X-axis channel in the GateSet.
-        y_channel_name: Name of the Y-axis channel in the GateSet.
+        x_axis_name: Name of the X-axis channel in the GateSet.
+        y_axis_name: Name of the Y-axis channel in the GateSet.
         pre_measurement_delay: The optional delay before the measurement in ns..
         track_integrated_voltage: Whether to track integrated voltage (optional).
         use_dBm: Whether to use dBm for amplitude (optional).
@@ -31,8 +31,8 @@ class BasicInnerLoopAction(InnerLoopAction):
         self,
         gate_set: GateSet,
         readout_pulse,
-        x_channel_name: str,
-        y_channel_name: str,
+        x_axis_name: str,
+        y_axis_name: str,
         pre_measurement_delay: int = 0,
         track_integrated_voltage: bool = False,
         use_dBm=False,
@@ -40,8 +40,8 @@ class BasicInnerLoopAction(InnerLoopAction):
         super().__init__()
         self.gate_set = gate_set
         self.readout_pulse = readout_pulse
-        self.x_channel_name = x_channel_name
-        self.y_channel_name = y_channel_name
+        self.x_axis_name = x_axis_name
+        self.y_axis_name = y_axis_name
         self.pre_measurement_delay = pre_measurement_delay
         self.track_integrated_voltage = track_integrated_voltage
         self.use_dBm = use_dBm
@@ -50,8 +50,8 @@ class BasicInnerLoopAction(InnerLoopAction):
     def __call__(
         self, x: QuaVariableFloat, y: QuaVariableFloat
     ) -> Tuple[QuaVariableFloat, QuaVariableFloat]:
-        # Map sweep values to named channels via SweepAxis.name
-        levels = {self.x_channel_name: x, self.y_channel_name: y}
+        # Map sweep values to named channels via axis names
+        levels = {self.x_axis_name: x, self.y_axis_name: y}
 
         duration = self.readout_pulse.length
         if self.pre_measurement_delay > 0:

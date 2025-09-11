@@ -30,7 +30,7 @@ from qua_dashboards.video_mode.inner_loop_actions.inner_loop_action import (
 from qua_dashboards.video_mode.inner_loop_actions.basic_inner_loop_action import (
     BasicInnerLoopAction,
 )
-from quam_builder.architecture.quantum_dots.voltage_sequence import GateSet
+from quam_builder.architecture.quantum_dots import GateSet, VoltageGate
 
 
 logger = logging.getLogger(__name__)
@@ -58,9 +58,9 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         qmm: QuantumMachinesManager,
         machine: Any,
         gate_set: GateSet,
+        x_axis_name: str,
+        y_axis_name: str,
         scan_mode: ScanMode,
-        x_axis: SweepAxis,
-        y_axis: SweepAxis,
         readout_pulse,
         qua_inner_loop_action: Optional[InnerLoopAction] = None,
         component_id: str = "opx-data-acquirer",
@@ -80,8 +80,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             machine: The QUAM Machine instance to use for generating the QUA config.
             gate_set: The GateSet object containing voltage channels.
             scan_mode: The scan mode defining how the 2D grid is traversed.
-            x_axis: The X sweep axis (x_axis.name must match GateSet channel).
-            y_axis: The Y sweep axis (y_axis.name must match GateSet channel).
+            x_axis_name: Name of the X sweep axis (must match a GateSet channel or virtual gate).
+            y_axis_name: Name of the Y sweep axis (must match a GateSet channel or virtual gate).
             readout_pulse: The QUAM Pulse object to measure.
             qua_inner_loop_action: Optional custom QUA inner loop action. If not provided,
                                    BasicInnerLoopAction will be created automatically.
@@ -95,19 +95,11 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             inner_loop_kwargs: Additional arguments for BasicInnerLoopAction creation.
             **kwargs: Additional arguments for Base2DDataAcquirer.
         """
-        # Validate that sweep axis names exist in GateSet
-        if x_axis.name not in gate_set.channels:
-            raise ValueError(
-                f"X-axis channel '{x_axis.name}' not found in GateSet channels: {list(gate_set.channels.keys())}"
-            )
-        if y_axis.name not in gate_set.channels:
-            raise ValueError(
-                f"Y-axis channel '{y_axis.name}' not found in GateSet channels: {list(gate_set.channels.keys())}"
-            )
-
+        sweep_axes = self._generate_sweep_axes(gate_set)
         super().__init__(
-            x_axis=x_axis,
-            y_axis=y_axis,
+            sweep_axes=sweep_axes,
+            x_axis_name=x_axis_name,
+            y_axis_name=y_axis_name,
             component_id=component_id,
             num_software_averages=num_software_averages,
             acquisition_interval_s=acquisition_interval_s,
@@ -126,8 +118,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             self.qua_inner_loop_action = BasicInnerLoopAction(
                 gate_set=gate_set,
                 readout_pulse=readout_pulse,
-                x_channel_name=x_axis.name,
-                y_channel_name=y_axis.name,
+                x_axis_name=self.x_axis.name,
+                y_axis_name=self.y_axis.name,
                 **inner_loop_kwargs,
             )
         else:
@@ -144,6 +136,32 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self._raw_qua_results: Dict[str, np.ndarray] = {}
         self.stream_vars: List[str] = stream_vars or self.stream_vars_default
         self.result_types: List[str] = self.result_types_default
+
+    @staticmethod
+    def _generate_sweep_axes(gate_set: GateSet) -> List[SweepAxis]:
+        sweep_axes: List[SweepAxis] = []
+        for channel_name in gate_set.valid_channel_names:
+            if channel_name in gate_set.channels:
+                channel = gate_set.channels[channel_name]
+                if isinstance(channel, VoltageGate):
+                    attenuation = channel.attenuation
+                    offset_parameter = channel.offset_parameter
+                else:
+                    # Regular SingleChannel -> no attenuation or offset
+                    attenuation = 0
+                    offset_parameter = None
+            else:
+                # Virtual gate -> no channel -> no attenuation or offset
+                attenuation = 0
+                offset_parameter = None
+            sweep_axes.append(
+                SweepAxis(
+                    name=channel_name,
+                    offset_parameter=offset_parameter,
+                    attenuation=attenuation,
+                )
+            )
+        return sweep_axes
 
     def generate_qua_program(self) -> Program:
         """

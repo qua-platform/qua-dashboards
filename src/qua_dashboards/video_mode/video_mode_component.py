@@ -78,6 +78,7 @@ class VideoModeComponent(BaseComponent):
     def __init__(
         self,
         data_acquirer: BaseDataAcquirer,
+        save_path: str = None,
         tab_controllers: Optional[List[BaseTabController]] = None,
         default_tab_value: Optional[str] = None,
         component_id: str = DEFAULT_COMPONENT_ID,
@@ -103,7 +104,7 @@ class VideoModeComponent(BaseComponent):
         self.layout_rows = layout_rows
         if not isinstance(data_acquirer, BaseDataAcquirer):
             raise TypeError("data_acquirer must be an instance of BaseDataAcquirer.")
-
+        self.save_path = save_path
         self.data_acquirer: BaseDataAcquirer = data_acquirer
         self.shared_viewer: SharedViewerComponent = SharedViewerComponent(
             component_id=f"{self.component_id}-shared-viewer"
@@ -222,6 +223,24 @@ class VideoModeComponent(BaseComponent):
                     ),
                     width=3,
                 ),
+                dbc.Col(
+                    dbc.Button(
+                        "Save QUAM State",
+                        id=self._get_id("save-quam-button"),
+                        color="info",
+                        className="me-2",
+                    ),
+                    width=4,
+                ),
+                dbc.Col(
+                    dcc.Input(
+                        value = self.save_path,
+                        id = self._get_id("save-quam-path"), 
+                        className="form-control me-2 w-150",
+                        debounce=True,
+                        placeholder= r"C:/Users/ ... "
+                    )
+                )
             ],
             className="mb-3 g-2 justify-content-start",
         )
@@ -347,6 +366,7 @@ class VideoModeComponent(BaseComponent):
 
         self._register_data_polling_interval_callback(app)
         self._register_tab_switching_callback(app)
+        self._register_quam_save_button_callback(app)
 
         # Register save button callback
         @app.callback(
@@ -398,7 +418,45 @@ class VideoModeComponent(BaseComponent):
                 dismissable=True,
                 # No duration: stays until dismissed or replaced
             )
-
+    def _register_quam_save_button_callback(self, app: Dash) -> None:
+        @app.callback(
+            Output(self._get_id(self._MAIN_STATUS_ALERT_ID_SUFFIX), "children", allow_duplicate=True),
+            Input(self._get_id("save-quam-button"), "n_clicks"),
+            prevent_initial_call=True,
+        )
+        def handle_save_quam_button(n_clicks):
+            if not n_clicks:
+                raise PreventUpdate
+            try:
+                self.data_acquirer.machine.save(self.save_path) 
+                message = "QUAM state successfully saved."
+                color = "success"
+                print(message)
+            except Exception as e:
+                message = f"Failed to save QUAM state: {e}"
+                color = "danger"
+                print(message)
+            return dbc.Alert(
+                message,
+                color=color,
+                dismissable=True,
+            )
+        @app.callback(
+            Output(self._get_id(self._MAIN_STATUS_ALERT_ID_SUFFIX), "children", allow_duplicate = True), 
+            Input(self._get_id("save-quam-path"), "value"), 
+            prevent_initial_call = True
+        )
+        def set_quam_state_path(input_path):
+            if not input_path:
+                raise PreventUpdate
+            self.save_path = input_path
+            return dbc.Alert(
+                f"Save Path Updated to {input_path}", 
+                color = "info", 
+                dismissable = True, 
+                duration = 2000
+            )
+        
     def _register_data_polling_interval_callback(self, app: Dash) -> None:
         """Registers callback for periodically polling the data acquirer."""
 

@@ -144,10 +144,12 @@ data_acquirer = OPXDataAcquirer(
 
 # %% Run Video Mode Dashboard
 
+save_path = r"C:\Users\ ..."
 # Instantiate the main VideoModeComponent, providing the configured data_acquirer.
 video_mode_component = VideoModeComponent(
     data_acquirer=data_acquirer,
     data_polling_interval_s=0.5,  # How often the dashboard polls for new data
+    save_path = save_path
 )
 
 # Build the Dash application layout using the VideoModeComponent.

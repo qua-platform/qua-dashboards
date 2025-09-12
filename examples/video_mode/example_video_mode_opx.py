@@ -64,13 +64,13 @@ machine = BasicQuam()
 machine.channels["ch1"] = SingleChannel(
     opx_output=("con1", 1),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
-    operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
+    operations={"step": pulses.SquarePulse(amplitude=0.25, length=1000)},
 )
 # Define the second DC voltage output channel (e.g., for Y-axis sweep)
 machine.channels["ch2"] = SingleChannel(
     opx_output=("con1", 2),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
-    operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
+    operations={"step": pulses.SquarePulse(amplitude=0.25, length=1000)},
 )
 
 # Define the readout pulse and the channel used for measurement

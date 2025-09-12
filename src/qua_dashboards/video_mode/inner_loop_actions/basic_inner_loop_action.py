@@ -57,7 +57,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         if self.pre_measurement_delay > 0:
             duration += self.pre_measurement_delay
 
-        self.voltage_sequence.step_to_level(levels=levels, duration=duration)
+        self.voltage_sequence.step_to_voltages(voltages=levels, duration=duration)
 
         if self.pre_measurement_delay > 0:
             self.readout_pulse.channel.wait(self.pre_measurement_delay)
@@ -65,6 +65,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         I, Q = self.readout_pulse.channel.measure(self.readout_pulse.id)
 
         qua.align()
+        self.voltage_sequence.ramp_to_zero()
 
         return I, Q
 
@@ -74,7 +75,7 @@ class BasicInnerLoopAction(InnerLoopAction):
             track_integrated_voltage=self.track_integrated_voltage
         )
         # Initialize all channels to zero
-        self.voltage_sequence.step_to_level({}, duration=16)
+        self.voltage_sequence.step_to_voltages({}, duration=16)
 
     def final_action(self):
         # Use GateSet's built-in ramp to zero

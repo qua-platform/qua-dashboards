@@ -82,6 +82,38 @@ machine.channels["ch1_readout"] = InOutSingleChannel(
     operations={"readout": readout_pulse},  # Assign the readout pulse to this channel
 )
 
+# Configure a GateSet that defines the sweepable voltage gates.
+# NOTE: Replace the placeholder with your actual GateSet construction.
+# The GateSet must include channels matching the names used below (e.g., "ch1" and "ch2").
+
+# TODO: Build a GateSet aligned with your machine configuration
+# gate_set = GateSet(...)
+gate_set = None  # Placeholder. Replace with a real GateSet instance.
+
+# ## Example implementation of GateSet
+# from quam_builder.architecture.quantum_dots import GateSet  # Requires quam-builder
+# channels = {
+#     "ch1": machine.channels["ch1"].get_reference(), # .get_reference() necessary to avoid reparenting the Quam component
+#     "ch2": machine.channels["ch2"].get_reference(),
+# }
+# gate_set = GateSet(id = "Plungers", channels = channels)
+# machine.gate_set = gate_set
+
+
+# ## Example implementation of VirtualGateSet
+# from quam_builder.architecture.quantum_dots import VirtualGateSet  # Requires quam-builder
+# channels = {
+#     "ch1": machine.channels["ch1"].get_reference(), # .get_reference() necessary to avoid reparenting the Quam component
+#     "ch2": machine.channels["ch2"].get_reference(),
+# }
+# gate_set = GateSet(id = "Plungers", channels = channels)
+# gate_set.add_layer(
+#     source_gates = ["V1", "V2"], # Pick the virtual gate names here 
+#     target_gates = ["ch1", "ch2"], # Must be a subset of gates in the gate_set
+#     matrix = [[1, 0.2], [0.2, 1]] # Any example matrix
+# )
+# machine.gate_set = gate_set
+
 # --- QMM Connection ---
 # Replace with your actual OPX host and cluster name
 # Example: qmm = QuantumMachinesManager(host="your_opx_ip", cluster_name="your_cluster")
@@ -97,15 +129,6 @@ qm = qmm.open_qm(config, close_other_machines=True)
 
 # %% Configure Video Mode Components
 
-# Configure a GateSet that defines the sweepable voltage gates.
-# NOTE: Replace the placeholder with your actual GateSet construction.
-# The GateSet must include channels matching the names used below (e.g., "ch1" and "ch2").
-from quam_builder.architecture.quantum_dots import GateSet  # Requires quam-builder
-
-# TODO: Build a GateSet aligned with your machine configuration
-# gate_set = GateSet(...)
-gate_set = None  # Placeholder. Replace with a real GateSet instance.
-
 # Select the scan mode (how the 2D grid is traversed in QUA)
 # Options include: RasterScan, SpiralScan, SwitchRasterScan
 scan_mode = scan_modes.SwitchRasterScan()
@@ -116,8 +139,8 @@ data_acquirer = OPXDataAcquirer(
     qmm=qmm,
     machine=machine,
     gate_set=gate_set,  # Replace with your GateSet instance
-    x_axis_name="ch1",  # Must appear in gate_set.valid_channel_names
-    y_axis_name="ch2",  # Must appear in gate_set.valid_channel_names
+    x_axis_name="ch1",  # Must appear in gate_set.valid_channel_names; Virtual gate names also valid
+    y_axis_name="ch2",  # Must appear in gate_set.valid_channel_names; Virtual gate names also valid
     scan_mode=scan_mode,
     readout_pulse=readout_pulse,
     result_type="I",  # "I", "Q", "amplitude", or "phase"

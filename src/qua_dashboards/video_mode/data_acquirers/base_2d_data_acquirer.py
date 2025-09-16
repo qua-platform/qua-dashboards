@@ -3,7 +3,7 @@ from typing import Any, List, Dict
 import xarray as xr
 import numpy as np
 
-from dash import html
+from dash import html, dcc
 import dash_bootstrap_components as dbc
 
 from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import BaseDataAcquirer
@@ -86,6 +86,39 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         Returns Dash UI components for X and Y axis configuration.
         """
         components = super().get_dash_components(include_subcomponents)
+
+        selection_ui = [
+            html.Div(
+                [
+                    dbc.Row(
+                        [
+                            dbc.Col([
+                                html.H6("Select X Axis"),
+                                dcc.Dropdown(
+                                    id = self._get_id("gate-select-x"),
+                                    options = [{"label" : gate_name, "value" : gate_name} for gate_name in [axis.name for axis in self.sweep_axes]],
+                                    value = self.x_axis.name, 
+                                    style = {"color":"black"},
+                                    className="mb-2", 
+                                    clearable=False
+                                ),
+                            ]),
+                            dbc.Col([
+                                html.H6("Select Y Axis"),
+                                dcc.Dropdown(
+                                    id = self._get_id("gate-select-y"),
+                                    options = [{"label" : gate_name, "value" : gate_name} for gate_name in [axis.name for axis in self.sweep_axes]],
+                                    value = self.y_axis.name, 
+                                    style = {"color":"black"},
+                                    className="mb-2" 
+                                ),
+                            ]),
+                        ]
+                    )
+                ]
+            )
+        ]
+        components = components + selection_ui 
 
         axis_ui = [
             html.Div(

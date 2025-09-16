@@ -11,6 +11,9 @@ from qua_dashboards.utils.dash_utils import create_input_field
 
 __all__ = ["SweepAxis"]
 
+DEFAULT_SPAN = 0.03
+DEFAULT_POINTS = 51
+
 
 class SweepAxis(BaseUpdatableComponent):
     """Class representing a sweep axis.
@@ -28,8 +31,8 @@ class SweepAxis(BaseUpdatableComponent):
     def __init__(
         self,
         name: str,
-        span: float,
-        points: int,
+        span: Optional[float] = None,
+        points: Optional[int] = None,
         label: Optional[str] = None,
         units: Optional[str] = None,
         offset_parameter: Optional[BasicParameter] = None,
@@ -40,8 +43,8 @@ class SweepAxis(BaseUpdatableComponent):
             component_id = f"{name}-axis"
         super().__init__(component_id=component_id)
         self.name = name
-        self.span = span
-        self.points = points
+        self.span = span or DEFAULT_SPAN
+        self.points = points or DEFAULT_POINTS
         self.label = label
         self.units = units
         self.offset_parameter = offset_parameter

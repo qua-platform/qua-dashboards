@@ -29,8 +29,9 @@ class Base2DDataAcquirer(BaseDataAcquirer):
     def __init__(
         self,
         *,
-        x_axis: SweepAxis,
-        y_axis: SweepAxis,
+        sweep_axes: List[SweepAxis],
+        x_axis_name: str,
+        y_axis_name: str,
         component_id: str,
         acquisition_interval_s: float = 0.1,
         **kwargs: Any,
@@ -39,8 +40,9 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         Initializes the Base2DDataAcquirer.
 
         Args:
-            x_axis: The X sweep axis.
-            y_axis: The Y sweep axis.
+            sweep_axes: The list of available sweep axes.
+            x_axis_name: Name of the selected X sweep axis.
+            y_axis_name: Name of the selected Y sweep axis.
             component_id: Unique ID for Dash component namespacing.
             acquisition_interval_s: Target acquisition interval for background thread.
             **kwargs: Additional keyword arguments.
@@ -50,8 +52,34 @@ class Base2DDataAcquirer(BaseDataAcquirer):
             acquisition_interval_s=acquisition_interval_s,
             **kwargs,
         )
-        self.x_axis: SweepAxis = x_axis
-        self.y_axis: SweepAxis = y_axis
+        # Store all axes and resolve selected X/Y by name
+        self.sweep_axes: List[SweepAxis] = sweep_axes
+
+        if x_axis_name == y_axis_name:
+            raise ValueError("x_axis_name and y_axis_name must be different")
+        self.x_axis_name = x_axis_name
+        self.y_axis_name = y_axis_name
+
+    @property
+    def x_axis(self) -> SweepAxis:
+        inner_loop = getattr(self, "qua_inner_loop_action", None)
+        if inner_loop is not None: 
+            inner_loop.x_axis_name = self.x_axis_name
+        return self.find_sweepaxis(self.x_axis_name)
+    @property
+    def y_axis(self) -> SweepAxis:
+        inner_loop = getattr(self, "qua_inner_loop_action", None)
+        if inner_loop is not None: 
+            inner_loop.y_axis_name = self.y_axis_name
+        return self.find_sweepaxis(self.y_axis_name)
+    
+    def find_sweepaxis(self, axis_name:str) -> SweepAxis:
+        names = [ax.name for ax in self.sweep_axes]
+        if axis_name not in names:
+            raise ValueError(
+                f"axis_name '{axis_name}' not found in available axes: {names}"
+            )
+        return next(ax for ax in self.sweep_axes if ax.name == axis_name)
 
     def get_dash_components(self, include_subcomponents: bool = True) -> List[Any]:
         """

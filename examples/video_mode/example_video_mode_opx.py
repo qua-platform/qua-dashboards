@@ -43,12 +43,10 @@ from quam.components import (
 )
 
 from qua_dashboards.core import build_dashboard
-from qua_dashboards.utils import setup_logging, BasicParameter
+from qua_dashboards.utils import setup_logging
 from qua_dashboards.video_mode import (
-    SweepAxis,
     OPXDataAcquirer,
     scan_modes,
-    BasicInnerLoopAction,
     VideoModeComponent,
 )
 
@@ -66,13 +64,13 @@ machine = BasicQuam()
 machine.channels["ch1"] = SingleChannel(
     opx_output=("con1", 1),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
-    operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
+    operations={"step": pulses.SquarePulse(amplitude=0.25, length=1000)},
 )
 # Define the second DC voltage output channel (e.g., for Y-axis sweep)
 machine.channels["ch2"] = SingleChannel(
     opx_output=("con1", 2),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
-    operations={"step": pulses.SquarePulse(amplitude=0.1, length=1000)},
+    operations={"step": pulses.SquarePulse(amplitude=0.25, length=1000)},
 )
 
 # Define the readout pulse and the channel used for measurement
@@ -83,6 +81,38 @@ machine.channels["ch1_readout"] = InOutSingleChannel(
     intermediate_frequency=0,  # Set IF for the readout channel
     operations={"readout": readout_pulse},  # Assign the readout pulse to this channel
 )
+
+# Configure a GateSet that defines the sweepable voltage gates.
+# NOTE: Replace the placeholder with your actual GateSet construction.
+# The GateSet must include channels matching the names used below (e.g., "ch1" and "ch2").
+
+# TODO: Build a GateSet aligned with your machine configuration
+# gate_set = GateSet(...)
+gate_set = None  # Placeholder. Replace with a real GateSet instance.
+
+# ## Example implementation of GateSet
+# from quam_builder.architecture.quantum_dots import GateSet  # Requires quam-builder
+# channels = {
+#     "ch1": machine.channels["ch1"].get_reference(), # .get_reference() necessary to avoid reparenting the Quam component
+#     "ch2": machine.channels["ch2"].get_reference(),
+# }
+# gate_set = GateSet(id = "Plungers", channels = channels)
+# machine.gate_set = gate_set
+
+
+# ## Example implementation of VirtualGateSet
+# from quam_builder.architecture.quantum_dots import VirtualGateSet  # Requires quam-builder
+# channels = {
+#     "ch1": machine.channels["ch1"].get_reference(), # .get_reference() necessary to avoid reparenting the Quam component
+#     "ch2": machine.channels["ch2"].get_reference(),
+# }
+# gate_set = GateSet(id = "Plungers", channels = channels)
+# gate_set.add_layer(
+#     source_gates = ["V1", "V2"], # Pick the virtual gate names here 
+#     target_gates = ["ch1", "ch2"], # Must be a subset of gates in the gate_set
+#     matrix = [[1, 0.2], [0.2, 1]] # Any example matrix
+# )
+# machine.gate_set = gate_set
 
 # --- QMM Connection ---
 # Replace with your actual OPX host and cluster name
@@ -99,21 +129,6 @@ qm = qmm.open_qm(config, close_other_machines=True)
 
 # %% Configure Video Mode Components
 
-# Define BasicParameters for X and Y voltage offsets.
-# These can be replaced with QDAC channels.
-x_offset = BasicParameter(name="X Voltage Offset", initial_value=0.0)
-y_offset = BasicParameter(name="Y Voltage Offset", initial_value=0.0)
-
-# Define the action to be performed at each point in the QUA scan (inner loop).
-# BasicInnerLoopAction sets DC offsets on two elements and performs a measurement.
-inner_loop_action = BasicInnerLoopAction(
-    x_element=machine.channels["ch1"],  # QUAM element for X-axis voltage
-    y_element=machine.channels["ch2"],  # QUAM element for Y-axis voltage
-    readout_pulse=readout_pulse,  # QUAM readout pulse to use for measurement
-    # ramp_rate=1_000,                  # Optional: Voltage ramp rate (V/s)
-    use_dBm=True,  # If true, readout amplitude is in dBm
-)
-
 # Select the scan mode (how the 2D grid is traversed in QUA)
 # Options include: RasterScan, SpiralScan, SwitchRasterScan
 scan_mode = scan_modes.SwitchRasterScan()
@@ -123,11 +138,12 @@ scan_mode = scan_modes.SwitchRasterScan()
 data_acquirer = OPXDataAcquirer(
     qmm=qmm,
     machine=machine,
-    qua_inner_loop_action=inner_loop_action,
+    gate_set=gate_set,  # Replace with your GateSet instance
+    x_axis_name="ch1",  # Must appear in gate_set.valid_channel_names; Virtual gate names also valid
+    y_axis_name="ch2",  # Must appear in gate_set.valid_channel_names; Virtual gate names also valid
     scan_mode=scan_mode,
-    x_axis=SweepAxis("x", span=0.03, points=61, offset_parameter=x_offset),
-    y_axis=SweepAxis("y", span=0.03, points=61, offset_parameter=y_offset),
-    result_type="I",  # Specify the type of result to display (e.g., "I", "Q", "amplitude", "phase")
+    readout_pulse=readout_pulse,
+    result_type="I",  # "I", "Q", "amplitude", or "phase"
 )
 
 # %% (Optional) Test: Run QUA program once and acquire data directly

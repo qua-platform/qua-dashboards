@@ -28,8 +28,9 @@ class RandomDataAcquirer(Base2DDataAcquirer):
     def __init__(
         self,
         *,
-        x_axis: SweepAxis,
-        y_axis: SweepAxis,
+        sweep_axes: List[SweepAxis],
+        x_axis_name: str,
+        y_axis_name: str,
         component_id: str = "random-data-acquirer",
         acquire_time: float = 0.05,  # Simulate 50ms acquisition time per frame
         # Other parameters like num_software_averages, acquisition_interval_s
@@ -40,8 +41,9 @@ class RandomDataAcquirer(Base2DDataAcquirer):
 
         Args:
             component_id: Unique ID for Dash elements.
-            x_axis: The X sweep axis.
-            y_axis: The Y sweep axis.
+            sweep_axes: The list of available sweep axes.
+            x_axis_name: Name of the X sweep axis.
+            y_axis_name: Name of the Y sweep axis.
             acquire_time: Simulated time in seconds to 'acquire' one raw data frame.
             **kwargs: Additional arguments for Base2DDataAcquirer, including
                 num_software_averages and acquisition_interval_s for
@@ -54,7 +56,11 @@ class RandomDataAcquirer(Base2DDataAcquirer):
             f"acquire_time: {self.acquire_time}s"
         )
         super().__init__(
-            component_id=component_id, x_axis=x_axis, y_axis=y_axis, **kwargs
+            component_id=component_id,
+            sweep_axes=sweep_axes,
+            x_axis_name=x_axis_name,
+            y_axis_name=y_axis_name,
+            **kwargs,
         )
 
     def perform_actual_acquisition(self) -> np.ndarray:

@@ -51,7 +51,7 @@ This is the primary mode for conducting experiments on actual quantum hardware.
 - **How it Works**:
   - **`OPXDataAcquirer`**: This component is central. It connects to a `QuantumMachinesManager` and executes a QUA program on the OPX.
   - **QUA Program**: The QUA program is dynamically generated based on your settings. It typically involves:
-    - Iterating through the X and Y sweep values defined by `SweepAxis` objects, according to the chosen `ScanMode`.
+    - Iterating through the X and Y sweep values derived from the `GateSet` (selected via `x_axis_name`/`y_axis_name`) according to the chosen `ScanMode`.
     - At each point in the 2D grid, executing an `InnerLoopAction`. This action contains the QUA code for setting the appropriate DC offsets or playing pulses corresponding to the current X and Y values.
     - Performing a measurement (e.g., demodulation) as defined in the `InnerLoopAction`.
     - Streaming the measurement results (e.g., I and Q values) back to the host computer.
@@ -61,22 +61,18 @@ This is the primary mode for conducting experiments on actual quantum hardware.
 
 ## Basic Usage Workflow (Focus on OPX)
 
-1.  **Define Sweep Axes**: Create `SweepAxis` instances for your X and Y parameters (e.g., gate voltages).
-    Specify their `name`, `label`, `units`, `span`, and `points`.
-    Optionally, link them to `offset_parameter` for integration with voltage control components.
+1.  **Define Gate Set**: Build a `GateSet` that models your voltage gates (physical and virtual) and their relationships. Ensure it exposes the channels you intend to sweep.
 
 2.  **Configure QUAM `Machine`**: Ensure your QUAM `Machine` object correctly defines the QUA elements and operations you'll use for sweeping and measurement.
 
 3.  **Define Inner Loop Action**:
-    Create an instance of `BasicInnerLoopAction` or implement a custom class inheriting from `InnerLoopAction`.
-    This class will contain the QUA code to be executed at each point of the 2D scan (e.g., `set_dc_offset`, `measure`).
-    Pass the relevant QUAM elements and pulse definitions to it.
+    Use `BasicInnerLoopAction` (or a custom implementation) to set the sequence and measurement. When using `OPXDataAcquirer`, this action can be created automatically from the provided `GateSet`, `readout_pulse`, and the selected `x_axis_name`/`y_axis_name`.
 
 4.  **Choose Scan Mode**: Select a `ScanMode` (e.g., `RasterScan`, `SpiralScan`, `SwitchRasterScan`) to define the path of the 2D sweep.
 
 5.  **Instantiate `OPXDataAcquirer`**:
-    Provide the `QuantumMachinesManager` (qmm), your QUAM `Machine` object, the configured `InnerLoopAction`, `ScanMode`, and the `SweepAxis` objects.
-    Specify the `result_type` (e.g., "I", "Q", "amplitude", "phase") you want to display.
+    Provide the `QuantumMachinesManager` (qmm), your QUAM `Machine` object, the `GateSet`, `x_axis_name`/`y_axis_name`, `readout_pulse`, and the `ScanMode`.
+    Optionally set `result_type` (e.g., "I", "Q", "amplitude", "phase").
 
 6.  **Instantiate `VideoModeComponent`**: Pass the configured `OPXDataAcquirer` to the `VideoModeComponent`.
     Adjust `data_polling_interval_s` as needed.

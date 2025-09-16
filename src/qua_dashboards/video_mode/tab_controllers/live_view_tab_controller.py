@@ -198,6 +198,25 @@ class LiveViewTabController(BaseTabController):
         )
         self._register_acquisition_control_callback(app, orchestrator_stores)
         self._register_parameter_update_callback(app)
+        self._register_gate_selection_callback(app)
+
+    def _register_gate_selection_callback(
+            self, app:Dash
+    ) -> None:
+        """Registers callback for gate selection"""
+
+        @app.callback(
+            Output(self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX), "children", allow_duplicate=True), 
+            Input(self._data_acquirer_instance._get_id("gate-select-x"), "value"), 
+            Input(self._data_acquirer_instance._get_id("gate-select-y"), "value"), 
+            prevent_initial_call = True
+        )
+        def on_gate_select(x_gate, y_gate):
+            logger.info(f"New Gate Selected: x_axis {x_gate}, y_axis {y_gate}")
+            self._data_acquirer_instance.x_axis_name = x_gate
+            self._data_acquirer_instance.y_axis_name = y_gate
+            self._data_acquirer_instance._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
+            return ""
 
     def _register_acquisition_control_callback(
         self, app: Dash, orchestrator_stores: Dict[str, Any]

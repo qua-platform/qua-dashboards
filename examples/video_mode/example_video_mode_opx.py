@@ -64,13 +64,13 @@ machine = BasicQuam()
 machine.channels["ch1"] = SingleChannel(
     opx_output=("con1", 1),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
-    operations={"step": pulses.SquarePulse(amplitude=0.25, length=1000)},
+    operations={"half_max_square": pulses.SquarePulse(amplitude=0.25, length=1000)},
 )
 # Define the second DC voltage output channel (e.g., for Y-axis sweep)
 machine.channels["ch2"] = SingleChannel(
     opx_output=("con1", 2),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
-    operations={"step": pulses.SquarePulse(amplitude=0.25, length=1000)},
+    operations={"half_max_square": pulses.SquarePulse(amplitude=0.25, length=1000)},
 )
 
 # Define the readout pulse and the channel used for measurement
@@ -106,7 +106,7 @@ gate_set = None  # Placeholder. Replace with a real GateSet instance.
 #     "ch1": machine.channels["ch1"].get_reference(), # .get_reference() necessary to avoid reparenting the Quam component
 #     "ch2": machine.channels["ch2"].get_reference(),
 # }
-# gate_set = GateSet(id = "Plungers", channels = channels)
+# gate_set = VirtualGateSet(id = "Plungers", channels = channels)
 # gate_set.add_layer(
 #     source_gates = ["V1", "V2"], # Pick the virtual gate names here 
 #     target_gates = ["ch1", "ch2"], # Must be a subset of gates in the gate_set

@@ -167,13 +167,15 @@ video_mode_component = VideoModeComponent(
     data_polling_interval_s=0.5,  # How often the dashboard polls for new data
     save_path = save_path
 )
+from qua_dashboards.virtual_gating import VirtualLayerEditor, ui_update
+virtual_gating_component = VirtualLayerEditor(gateset = gate_set, component_id = 'Virtual Gates UI')
 
 # Build the Dash application layout using the VideoModeComponent.
 app = build_dashboard(
-    components=[video_mode_component],
+    components=[video_mode_component, virtual_gating_component],
     title="OPX Video Mode Dashboard",  # Title for the web page
 )
-
+ui_update(app, video_mode_component)
 logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
 # Run the Dash server.
 # `host="0.0.0.0"` makes it accessible on your network.

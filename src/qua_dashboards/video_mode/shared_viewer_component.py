@@ -168,7 +168,7 @@ class SharedViewerComponent(BaseComponent):
             fig.update_layout(
                 template="plotly_dark",
                 margin=dict(l=40, r=10, t=10, b=40),
-                xaxis_title="Distance (data units)",
+                xaxis_title="Arbitrary Units",
                 yaxis_title=y_label,
                 showlegend=False,
             )

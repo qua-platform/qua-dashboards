@@ -55,6 +55,12 @@ This is highly useful for fine-tuning experimental parameters during an experime
 More details can be found in the [Voltage Control README](./examples/voltage_control/README.md).
 Examples are provided for simulated channels ([examples/voltage_control/example_voltage_control.py](examples/voltage_control/example_voltage_control.py)) and for QDevil QDAC integration ([examples/voltage_control/example_voltage_control_qdac.py](examples/voltage_control/example_voltage_control_qdac.py)).
 
+### Virtual Gating
+
+The Virtual Gating component is a GUI to add and edit virtual gating matrix layers, in conjunction with quam_builder's VirtualGateSet. 
+This is particularly useful when correcting for cross-capacitance, defining arbitrary axes along the charge stability diagram, or rotating the frame of the stability diagram. 
+An example, with an example quam machine is provided in ([examples/virtual_gating/example_virtual_gating.py](examples/virtual_gating/example_virtual_gating.py))
+
 ## Combining Components
 
 A powerful feature of `qua-dashboards` is the ability to combine different components into a single, cohesive dashboard.

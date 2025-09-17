@@ -4,12 +4,13 @@ from typing import Any, Dict, Union
 
 import dash_bootstrap_components as dbc
 import dash
-from dash import Dash, Input, Output, State, html, ctx, ALL
+from dash import Dash, Input, Output, State, html, ctx, ALL, dcc
 
 from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import (
     BaseDataAcquirer,
     ModifiedFlags,
 )
+import numpy as np
 from qua_dashboards.video_mode.tab_controllers.base_tab_controller import (
     BaseTabController,
 )
@@ -89,23 +90,59 @@ class LiveViewTabController(BaseTabController):
                     width=8,  # Adjusted width
                 ),
                 dbc.Col(
-                    html.Div(
-                        dbc.Badge(
-                            "STOPPED",  # Initial status text
-                            id=self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX),
-                            color="secondary",  # Initial color for STOPPED
-                            className="ms-1 p-2",  # Added padding
-                            style={
-                                "fontSize": "0.9rem",
-                                "width": "100%",
-                                "textAlign": "center",
-                            },
+                    [
+                        html.Div(
+                            dbc.Badge(
+                                "STOPPED",  # Initial status text
+                                id=self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX),
+                                color="secondary",  # Initial color for STOPPED
+                                className="ms-1 p-2",  # Added padding
+                                style={
+                                    "fontSize": "0.9rem",
+                                    "width": "100%",
+                                    "textAlign": "center",
+                                },
+                            ),
+                            className=(
+                                "d-flex align-items-center justify-content-center h-100"
+                            ),
                         ),
-                        className=(
-                            "d-flex align-items-center justify-content-center h-100"
-                        ),
-                    ),
-                    width=4,  # Adjusted width
+                        html.Div(
+                            [
+                                dbc.Row(
+                                    dbc.Col(
+                                        dbc.Checklist(
+                                            id=self._get_id("center-marker-toggle"),
+                                            options=[{"label": "Gridlines", "value": "on"}],
+                                            value=[],
+                                            switch=True,
+                                        ),
+                                        width="auto",
+                                    ),
+                                    className="align-items-center g-1",
+                                ),
+
+                                dbc.Row(
+                                    dbc.Col(
+                                        html.Div(
+                                            dcc.Slider(
+                                                id=self._get_id("grid_opacity"),
+                                                min=0, max=100, step=5, value=40,
+                                                marks={0: "0%", 100: "100%"},
+                                                tooltip={"always_visible": False, "placement": "bottom"},
+                                                updatemode="drag",
+                                            ),
+                                            style={"width": "140px"},
+                                        ),
+                                        width="auto",
+                                    ),
+                                    className="mt-2", 
+                                ),
+                            ],
+                            className="mt-4",
+                        )
+                    ],
+                    width=4,
                 ),
             ],
             className="mb-3 align-items-center",
@@ -199,6 +236,57 @@ class LiveViewTabController(BaseTabController):
         self._register_acquisition_control_callback(app, orchestrator_stores)
         self._register_parameter_update_callback(app)
         self._register_gate_selection_callback(app)
+        self._register_gridlines_callback(app, shared_viewer_store_ids)
+
+    def _register_gridlines_callback(
+            self, 
+            app: Dash, 
+            shared_viewer_store_ids: Dict[str, Any]
+        ) -> None:
+        @app.callback(
+            Output(shared_viewer_store_ids["layout_config_store"], "data"),
+            Input(self._get_id("center-marker-toggle"), "value"),
+            Input(self._get_id("grid_opacity"), "value"),
+            State(shared_viewer_store_ids["layout_config_store"], "data"),
+            prevent_initial_call=True,
+        )
+        def _toggle_gridlines(toggle_val, opacity, existing_layout):
+            layout = existing_layout or {}
+            show = "on" in toggle_val
+            shapes = []
+            alpha = float(opacity)/100
+
+            if show: 
+                #Get the range from the data acquirer instance
+                xr = list(self._data_acquirer_instance.x_axis.sweep_values_unattenuated)
+                yr = list(self._data_acquirer_instance.y_axis.sweep_values_unattenuated)
+
+                #Set grid lines points, and ensure that 0 is included
+                xs, ys = np.linspace(xr[0], xr[-1], 15).tolist() + [0], np.linspace(yr[0], yr[-1], 15).tolist() + [0]
+
+                for xv in xs:
+                    #0 grid line has 5x higher alpha
+                    grid_color = f"rgba(0,0,0,{alpha*5})" if xv == 0 else f"rgba(0,0,0,{alpha})"
+                    shapes.append({
+                        "type": "line",
+                        "xref": "x", "yref": "paper",
+                        "x0": xv, "x1": xv, "y0": 0, "y1": 1,
+                        "line": {"width": 4, "color": grid_color},
+                        "layer": "above",
+                        "name": "grid-x",
+                    })
+                for yv in ys:
+                    grid_color = f"rgba(0,0,0,{alpha*5})" if yv == 0 else f"rgba(0,0,0,{alpha})"
+                    shapes.append({
+                        "type": "line",
+                        "xref": "paper", "yref": "y",
+                        "x0": 0, "x1": 1, "y0": yv, "y1": yv,
+                        "line": {"width": 4, "color": grid_color},
+                        "layer": "above",
+                        "name": "grid-y",
+                    })
+            layout["shapes"] = shapes
+            return layout
 
     def _register_gate_selection_callback(
             self, app:Dash
@@ -222,11 +310,6 @@ class LiveViewTabController(BaseTabController):
                 }
             }
             self._data_acquirer_instance.update_parameters(params)
-
-            # self._data_acquirer_instance.x_axis_name = x_gate
-            # self._data_acquirer_instance.y_axis_name = y_gate
-            # _ = self._data_acquirer_instance.y_axis
-
             return "", self._data_acquirer_instance.get_dash_components(include_subcomponents=True)
 
     def _register_acquisition_control_callback(

@@ -511,20 +511,13 @@ class AnnotationTabController(BaseTabController):
 
             image_data = static_data_object.get("base_image_data")
 
-            result = compute_transformation_matrix_from_image_gradients(image_data.values, scale, likelihood, init_params, w, max_iterations, epsilon, plots = [False, False, False])
-            p1 = result['p1']
-            p2 = result['p2']
-            m1 = result['m1']
-            m2 = result['m2']
-            # p1[1] = -p1[1]
-            # p2[1] = -p2[1]
-            # m1 = -m1
-            # m2 = -m2
+            p1, p2, m1, m2 = compute_transformation_matrix_from_image_gradients(image_data.values, scale, likelihood, init_params, w, max_iterations=max_iterations, epsilon=epsilon)
+            warp_image_with_normals(image_data.values,p1,p2)  # Creates a plot to check whether the transformation matrix is computed correctly
+
             A_inv, A = compute_transformation_matrix(p1,p2)
             A_inv_formatted = np.array2string(A_inv, precision=4, suppress_small=True)
-            warp_image_with_normals(image_data.values,p1,p2)
-            #output = f"p1 = {p1}, m1 = {m1} \np2 = {p2}, m2 = {m2}"
             output = f"Transformation matrix (compensated --> original coords):\n {A_inv_formatted}"
+            
             return output
            
             

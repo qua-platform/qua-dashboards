@@ -755,7 +755,7 @@ def compute_gate_compensation_al(ramp, central_point, sensor_id, ranges, num_mea
     return P #, m
 
 
-def generate_2D_gradient_vector(img, plot=False):
+def generate_2D_gradient_vector(img):
     """
     Generates a dataset of 2D gradient vectors from the input image using Sobel filters.
     Returns a 2D array where each row is a gradient vector [Gx, Gy] for each pixel, i.e. rows are observations (pixels), columns are variables (sobel_x, sobel_y).
@@ -774,27 +774,10 @@ def generate_2D_gradient_vector(img, plot=False):
 
     points = anp.stack([sobel_x,sobel_y],axis=-1).reshape(-1,2)  # dataset of 2D gradient vectors; stack along the last axis -> shape (N,N,2), then reshape to (N*N,2), i.e. rows are observations (pixels), columns are variables (sobel_x, sobel_y)
 
-    if plot:
-        fig, axes = plt.subplots(1, 3, figsize=(12, 4))
-        #axes[0].imshow(blurred_img,origin="lower")
-        axes[0].imshow(blurred_img)
-        axes[0].set_title("Gaussian blurred image")
-        axes[0].axis('off')
-        #axes[1].imshow(sobel_x,origin="lower")
-        axes[1].imshow(sobel_x)
-        axes[1].set_title("Sobel X")
-        #axes[2].imshow(sobel_y,origin="lower")
-        axes[2].imshow(sobel_y)
-        axes[2].set_title("Sobel Y")
-        plt.colorbar(axes[1].images[0])
-        plt.colorbar(axes[2].images[0])
-        plt.tight_layout()
-        plt.show()
-
     return points
 
 
-def scale_data(points, scale, plot=False):
+def scale_data(points, scale):
     print(f"Scaling data using method: {scale}")
     if scale == "overall":
         data = points/anp.std(points)
@@ -806,14 +789,6 @@ def scale_data(points, scale, plot=False):
         data[:,0] = data[:,0]/std_x
         data[:,1] = data[:,1]/std_y
         data_std = {'x': std_x, 'y': std_y}
-
-    if plot:
-        plt.plot(data[:,0], data[:,1], '.', alpha=0.3, markersize=1)
-        plt.axis('equal')
-        plt.axhline(0, color='gray', lw=0.5)
-        plt.axvline(0, color='gray', lw=0.5)
-        plt.title("Scaled Sobel gradients")
-        plt.show()
 
     return data, data_std
 
@@ -842,19 +817,6 @@ def normal_distribution_2D_vectorized(X, cov):
     pdf = 1 / (2 * anp.pi * anp.sqrt(det)) * anp.exp(-0.5 * quad_form)
 
     return pdf.reshape(-1,1) # Otherwise, shape (N,). Alternatively, use [:,None] to convert to column vector with shape (N,1)
-
-
-def plot_vector(points, p, title):
-    plt.scatter(points[:, 0], points[:, 1], alpha=0.3, s=1, c='blue')
-    plt.scatter(-points[:, 0], -points[:, 1], alpha=0.3, s=1, c='blue')
-    plt.quiver(-p[0][0], -p[0][1], 2*p[0][0], 2*p[0][1], angles='xy', scale_units='xy', scale=1, color='r', width=0.005, label='p1') # p_1: red arrow
-    plt.quiver(-p[1][0], -p[1][1], 2*p[1][0], 2*p[1][1], angles='xy', scale_units='xy', scale=1, color='g', width=0.005, label='p2') # p_2: green arrow 
-    plt.title(title)
-    plt.axhline(0, color='gray', lw=0.5)
-    plt.axvline(0, color='gray', lw=0.5)
-    plt.axis('equal')
-    plt.legend()
-    plt.show()
 
 
 # f: function to minimize, i.e. negative log-likelihood of the Gaussian Mixture Model
@@ -894,7 +856,7 @@ def compute_transformation_matrix(n1,n2):
     return A_inv, A
 
 
-def warp_image_with_normals(img, n1, n2, fill_value=1e-6, plot=True):
+def warp_image_with_normals(img, n1, n2, fill_value=1e-6):
     """
     Warp an image defined on a rectangular grid (xs, ys) so that lines with normals n1, n2
     become orthogonal in the transformed coordinates.
@@ -914,15 +876,6 @@ def warp_image_with_normals(img, n1, n2, fill_value=1e-6, plot=True):
     H, W = img.shape    # height, width of image
     xs = np.arange(W)   # original x-grid (cols)
     ys = np.arange(H)   # original y-grid (rows)
-
-    # # Build transformation
-    # B = np.column_stack([n1, n2])  # columns are normals
-    # B /=np.diag(B)[None,:]
-    # A = B.T                      # transformation: original coordinates -> new coordinates
-    # A_inv = np.linalg.inv(A)     # transformation: new -> original
-    # A_inv = A_inv @ np.diag(np.diag(A_inv)**(-1))
-    # A = np.linalg.inv(A_inv)
-    # print(A_inv)
 
     A_inv, A = compute_transformation_matrix(n1,n2)
 
@@ -954,27 +907,25 @@ def warp_image_with_normals(img, n1, n2, fill_value=1e-6, plot=True):
         fill_value=fill_value,
     ).reshape(ny, nx)  # converts it back to a 2D image
 
-    if plot:
-        fig, axs = plt.subplots(1, 2, figsize=(12, 6))
-        axs[0].imshow(img, origin="lower")
-        axs[0].set_title("Original")
-        #axs[1].imshow(warped, origin="lower")
-        axs[1].imshow(warped, origin="lower", extent=(new_xs.min(), new_xs.max(), new_ys.min(), new_ys.max()))
-        axs[1].set_title("Orthogonalized")
-        fig.suptitle(f"n1 = {n1}, n2 = {n2}")
-        plt.show()
+    fig, axs = plt.subplots(1, 2, figsize=(12, 6))
+    axs[0].imshow(img, origin="lower")
+    axs[0].set_title("Original")
+    axs[1].imshow(warped, origin="lower", extent=(new_xs.min(), new_xs.max(), new_ys.min(), new_ys.max()))
+    axs[1].set_title("Orthogonalized")
+    fig.suptitle(f"Normals: n1 = {np.array2string(n1, precision=4)}, n2 = {np.array2string(n2, precision=4)}")
+    plt.show()
 
 
-def compute_transformation_matrix_from_image_gradients(img, scale, method, init_params, w, max_iterations=1.e6, epsilon=1.e-4, plots = [False, False, False]):
+def compute_transformation_matrix_from_image_gradients(img, scale, method, init_params, w, max_iterations=1.e6, epsilon=1.e-4):
 
     # Opencv assumes that the origin is at upper left. Apply vertical flip to the image to convert origin at lower left to origin at upper left.
     img = np.flipud(img)
 
     # Image gradients
-    data = generate_2D_gradient_vector(img, plot=plots[0])
+    data = generate_2D_gradient_vector(img)
 
     # Scale the image gradients
-    data, data_std = scale_data(data, scale, plot=plots[1])
+    data, data_std = scale_data(data, scale)
 
     # Data fitting (GMM on gradients)
     logger.info(f"Optimizing GMM")
@@ -1003,10 +954,5 @@ def compute_transformation_matrix_from_image_gradients(img, scale, method, init_
     m1 = -m1
     m2 = -m2    
 
-    result = {'p1': p1_rescaled, 'm1': m1, 'p2': p2_rescaled, 'm2': m2}
-
-    if plots[2]:
-        plot_vector(data, [p1, p2], f"Scaled data with estimated direction vectors p1 and p2")
-    #warp_image_with_normals(img,p1_rescaled,p2_rescaled)
-    return result
+    return p1_rescaled, p2_rescaled, m1, m2
 

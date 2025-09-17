@@ -207,16 +207,27 @@ class LiveViewTabController(BaseTabController):
 
         @app.callback(
             Output(self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX), "children", allow_duplicate=True), 
+            Output(self._get_id(self._ACQUIRER_CONTROLS_DIV_ID_SUFFIX), "children", allow_duplicate=True),
             Input(self._data_acquirer_instance._get_id("gate-select-x"), "value"), 
             Input(self._data_acquirer_instance._get_id("gate-select-y"), "value"), 
             prevent_initial_call = True
         )
         def on_gate_select(x_gate, y_gate):
-            logger.info(f"New Gate Selected: x_axis {x_gate}, y_axis {y_gate}")
-            self._data_acquirer_instance.x_axis_name = x_gate
-            self._data_acquirer_instance.y_axis_name = y_gate
-            self._data_acquirer_instance._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
-            return ""
+            logger.info(f"New Gate Selected: x_axis {x_gate}, y_axis {y_gate}")           
+
+            params = {
+                self._data_acquirer_instance.component_id: {
+                    "gate-select-x": x_gate, 
+                    "gate-select-y": y_gate
+                }
+            }
+            self._data_acquirer_instance.update_parameters(params)
+
+            # self._data_acquirer_instance.x_axis_name = x_gate
+            # self._data_acquirer_instance.y_axis_name = y_gate
+            # _ = self._data_acquirer_instance.y_axis
+
+            return "", self._data_acquirer_instance.get_dash_components(include_subcomponents=True)
 
     def _register_acquisition_control_callback(
         self, app: Dash, orchestrator_stores: Dict[str, Any]

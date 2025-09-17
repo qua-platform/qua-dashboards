@@ -1,6 +1,6 @@
 import logging
 from typing import Any, Dict, List, Optional
-
+import numpy as np
 import plotly.graph_objects as go
 import xarray as xr
 from dash import Dash, Input, Output, State, dcc, html
@@ -116,6 +116,22 @@ class SharedViewerComponent(BaseComponent):
             return self._current_figure
 
         try:
+            if base_image_data.ndim == 2 and (1 in base_image_data.shape):
+                vals = np.asarray(base_image_data.values).ravel()
+                dims = base_image_data.dims
+                x_dim = dims[1] if base_image_data.shape[0] == 1 else dims[0]
+                coord = base_image_data.coords[x_dim]
+                x = np.asarray(coord.values)
+                x_label = coord.attrs.get("label") or str(x_dim)
+                if coord.attrs.get("units"):
+                    x_label = f"{x_label} [{coord.attrs['units']}]"
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=x, y=vals, mode="lines"))
+                fig.update_layout(template="plotly_dark",
+                                  xaxis_title=x_label,
+                                  yaxis_title="Value")
+                self._current_figure = fig
+                return fig
             self._current_figure = xarray_to_plotly(base_image_data)
         except Exception as e:
             logger.error(
@@ -152,6 +168,22 @@ class SharedViewerComponent(BaseComponent):
 
         if isinstance(base_image_data, xr.DataArray):
             try:
+                if base_image_data.ndim == 2 and (1 in base_image_data.shape):
+                    vals = np.asarray(base_image_data.values).ravel()
+                    dims = base_image_data.dims
+                    x_dim = dims[1] if base_image_data.shape[0] == 1 else dims[0]
+                    coord = base_image_data.coords[x_dim]
+                    x = np.asarray(coord.values)
+                    x_label = coord.attrs.get("label") or str(x_dim)
+                    if coord.attrs.get("units"):
+                        x_label = f"{x_label} [{coord.attrs['units']}]"
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(x=x, y=vals, mode="lines"))
+                    fig.update_layout(template="plotly_dark",
+                                    xaxis_title=x_label,
+                                    yaxis_title="Value")
+                    self._current_figure = fig
+                    return fig
                 fig = xarray_to_plotly(base_image_data)
             except Exception as e:
                 logger.error(

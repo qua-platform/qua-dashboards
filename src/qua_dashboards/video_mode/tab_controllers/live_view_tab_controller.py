@@ -109,28 +109,40 @@ class LiveViewTabController(BaseTabController):
                         ),
                         html.Div(
                             [
-                                html.Label("Gridlines"),
-                                dcc.Checklist(
-                                    id=self._get_id("center-marker-toggle"),
-                                    options=[{"label": "", "value": "on"}],
-                                    value=[],
-                                    inline=True,
-                                    inputStyle={"margin": "0 5px 0 0"},
+                                dbc.Row(
+                                    dbc.Col(
+                                        dbc.Checklist(
+                                            id=self._get_id("center-marker-toggle"),
+                                            options=[{"label": "Gridlines", "value": "on"}],
+                                            value=[],
+                                            switch=True,
+                                        ),
+                                        width="auto",
+                                    ),
+                                    className="align-items-center g-1",
                                 ),
-                                dcc.Input(
-                                    id = self._get_id("grid_opacity"), 
-                                    type = "number", 
-                                    min = 0, 
-                                    max = 100, 
-                                    step = 5, 
-                                    value = 40, 
-                                    style = {"width": "50px", "marginLeft": "10px"}
-                                )
+
+                                dbc.Row(
+                                    dbc.Col(
+                                        html.Div(
+                                            dcc.Slider(
+                                                id=self._get_id("grid_opacity"),
+                                                min=0, max=100, step=5, value=40,
+                                                marks={0: "0%", 100: "100%"},
+                                                tooltip={"always_visible": False, "placement": "bottom"},
+                                                updatemode="drag",
+                                            ),
+                                            style={"width": "140px"},
+                                        ),
+                                        width="auto",
+                                    ),
+                                    className="mt-2", 
+                                ),
                             ],
-                            className="mt-2",
-                        ),
+                            className="mt-4",
+                        )
                     ],
-                    width=4,  # Adjusted width
+                    width=4,
                 ),
             ],
             className="mb-3 align-items-center",
@@ -224,36 +236,13 @@ class LiveViewTabController(BaseTabController):
         self._register_acquisition_control_callback(app, orchestrator_stores)
         self._register_parameter_update_callback(app)
         self._register_gate_selection_callback(app)
+        self._register_gridlines_callback(app, shared_viewer_store_ids)
 
-    def _register_gate_selection_callback(
-            self, app:Dash
-    ) -> None:
-        """Registers callback for gate selection"""
-
-        @app.callback(
-            Output(self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX), "children", allow_duplicate=True), 
-            Output(self._get_id(self._ACQUIRER_CONTROLS_DIV_ID_SUFFIX), "children", allow_duplicate=True),
-            Input(self._data_acquirer_instance._get_id("gate-select-x"), "value"), 
-            Input(self._data_acquirer_instance._get_id("gate-select-y"), "value"), 
-            prevent_initial_call = True
-        )
-        def on_gate_select(x_gate, y_gate):
-            logger.info(f"New Gate Selected: x_axis {x_gate}, y_axis {y_gate}")           
-
-            params = {
-                self._data_acquirer_instance.component_id: {
-                    "gate-select-x": x_gate, 
-                    "gate-select-y": y_gate
-                }
-            }
-            self._data_acquirer_instance.update_parameters(params)
-
-            # self._data_acquirer_instance.x_axis_name = x_gate
-            # self._data_acquirer_instance.y_axis_name = y_gate
-            # _ = self._data_acquirer_instance.y_axis
-
-            return "", self._data_acquirer_instance.get_dash_components(include_subcomponents=True)
-
+    def _register_gridlines_callback(
+            self, 
+            app: Dash, 
+            shared_viewer_store_ids: Dict[str, Any]
+        ) -> None:
         @app.callback(
             Output(shared_viewer_store_ids["layout_config_store"], "data"),
             Input(self._get_id("center-marker-toggle"), "value"),
@@ -298,6 +287,30 @@ class LiveViewTabController(BaseTabController):
                     })
             layout["shapes"] = shapes
             return layout
+
+    def _register_gate_selection_callback(
+            self, app:Dash
+    ) -> None:
+        """Registers callback for gate selection"""
+
+        @app.callback(
+            Output(self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX), "children", allow_duplicate=True), 
+            Output(self._get_id(self._ACQUIRER_CONTROLS_DIV_ID_SUFFIX), "children", allow_duplicate=True),
+            Input(self._data_acquirer_instance._get_id("gate-select-x"), "value"), 
+            Input(self._data_acquirer_instance._get_id("gate-select-y"), "value"), 
+            prevent_initial_call = True
+        )
+        def on_gate_select(x_gate, y_gate):
+            logger.info(f"New Gate Selected: x_axis {x_gate}, y_axis {y_gate}")           
+
+            params = {
+                self._data_acquirer_instance.component_id: {
+                    "gate-select-x": x_gate, 
+                    "gate-select-y": y_gate
+                }
+            }
+            self._data_acquirer_instance.update_parameters(params)
+            return "", self._data_acquirer_instance.get_dash_components(include_subcomponents=True)
 
     def _register_acquisition_control_callback(
         self, app: Dash, orchestrator_stores: Dict[str, Any]

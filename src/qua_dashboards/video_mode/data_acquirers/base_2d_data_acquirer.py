@@ -59,6 +59,8 @@ class Base2DDataAcquirer(BaseDataAcquirer):
             raise ValueError("x_axis_name and y_axis_name must be different")
         self.x_axis_name = x_axis_name
         self.y_axis_name = y_axis_name
+        self._is_1d = y_axis_name is None
+        self._dummy_axis = SweepAxis(name="dummy", span=0.0, points=1, units="", attenuation=0, component_id=f"{self.component_id}-dummy")
 
     @property
     def x_axis(self) -> SweepAxis:
@@ -70,10 +72,17 @@ class Base2DDataAcquirer(BaseDataAcquirer):
     def y_axis(self) -> SweepAxis:
         inner_loop = getattr(self, "qua_inner_loop_action", None)
         if inner_loop is not None: 
+            if self.y_axis_name is None:
+                self._is_1d = True
+                inner_loop.y_axis_name = self._dummy_axis.name
+                return self._dummy_axis
+            self._is_1d = False
             inner_loop.y_axis_name = self.y_axis_name
         return self.find_sweepaxis(self.y_axis_name)
     
     def find_sweepaxis(self, axis_name:str) -> SweepAxis:
+        if axis_name is None: 
+            return self._dummy_axis
         names = [ax.name for ax in self.sweep_axes]
         if axis_name not in names:
             raise ValueError(
@@ -97,7 +106,7 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                                 dcc.Dropdown(
                                     id = self._get_id("gate-select-x"),
                                     options = [{"label" : gate_name, "value" : gate_name} for gate_name in [axis.name for axis in self.sweep_axes]],
-                                    value = self.x_axis.name, 
+                                    value = self.x_axis_name, 
                                     style = {"color":"black"},
                                     className="mb-2", 
                                     clearable=False
@@ -108,9 +117,10 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                                 dcc.Dropdown(
                                     id = self._get_id("gate-select-y"),
                                     options = [{"label" : gate_name, "value" : gate_name} for gate_name in [axis.name for axis in self.sweep_axes]],
-                                    value = self.y_axis.name, 
+                                    value = self.y_axis_name, 
                                     style = {"color":"black"},
-                                    className="mb-2" 
+                                    className="mb-2", 
+                                    placeholder="None",
                                 ),
                             ]),
                         ]
@@ -119,15 +129,12 @@ class Base2DDataAcquirer(BaseDataAcquirer):
             )
         ]
         components = components + selection_ui 
-
+        row = [self.x_axis.get_layout(), self.y_axis.get_layout()] if self.y_axis_name is not None else [self.x_axis.get_layout()]
         axis_ui = [
             html.Div(
                 [
                     dbc.Row(
-                        [
-                            self.x_axis.get_layout(),
-                            self.y_axis.get_layout(),
-                        ],
+                        row,
                         className="g-0",  # No gutters
                     ),
                 ]

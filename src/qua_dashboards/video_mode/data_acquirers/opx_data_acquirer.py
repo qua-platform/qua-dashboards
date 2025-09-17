@@ -15,7 +15,7 @@ from qm.qua import (
 )
 from dash import html
 import dash_bootstrap_components as dbc
-
+from qua_dashboards.video_mode.scan_modes import LineScan
 from qua_dashboards.core.base_updatable_component import BaseUpdatableComponent
 from qua_dashboards.video_mode.data_acquirers.base_2d_data_acquirer import (
     Base2DDataAcquirer,
@@ -125,7 +125,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         else:
             self.qua_inner_loop_action = qua_inner_loop_action
 
-        self.scan_mode: ScanMode = scan_mode
+        self.scan_2d: ScanMode = scan_mode
+        self.scan_1d: ScanMode = LineScan()
 
         self.initial_delay_s: Optional[float] = initial_delay_s
         self.qua_program: Optional[Program] = None
@@ -136,6 +137,13 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self._raw_qua_results: Dict[str, np.ndarray] = {}
         self.stream_vars: List[str] = stream_vars or self.stream_vars_default
         self.result_types: List[str] = self.result_types_default
+
+    @property
+    def scan_mode(self): 
+        if self._is_1d:
+            return self.scan_1d
+        else: 
+            return self.scan_2d
 
     @staticmethod
     def _generate_sweep_axes(gate_set: GateSet) -> List[SweepAxis]:
@@ -380,7 +388,19 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 self.result_type = params["result-type"]
                 flags |= ModifiedFlags.PARAMETERS_MODIFIED
 
-        self._compilation_flags = flags
+            if "gate-select-x" in params and params["gate-select-x"] != self.x_axis_name: 
+                self.x_axis_name = params["gate-select-x"]
+                _ = self.x_axis
+                flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
+            if "gate-select-y" in params:
+                new_y = params["gate-select-y"]
+                new_y = None if new_y in (None, "", "null", "dummy") else new_y
+                if new_y != self.y_axis_name: 
+                    self.y_axis_name = new_y
+                    _ = self.y_axis
+                    flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
+
+        self._compilation_flags |= flags
         return flags
 
     def get_dash_components(self, include_subcomponents: bool = True) -> List[Any]:
@@ -420,8 +440,9 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
     def get_components(self) -> List[BaseUpdatableComponent]:
         components = super().get_components()
-        components.extend(self.scan_mode.get_components())
-        components.extend(self.qua_inner_loop_action.get_components())
+        components.append(self.x_axis)
+        if self.y_axis is not None: 
+            components.append(self.y_axis)
         return components
 
     def stop_acquisition(self) -> None:

@@ -51,7 +51,10 @@ class BasicInnerLoopAction(InnerLoopAction):
         self, x: QuaVariableFloat, y: QuaVariableFloat
     ) -> Tuple[QuaVariableFloat, QuaVariableFloat]:
         # Map sweep values to named channels via axis names
-        levels = {self.x_axis_name: x, self.y_axis_name: y}
+        if y is None: 
+            levels = {self.x_axis_name: x}
+        else:
+            levels = {self.x_axis_name: x, self.y_axis_name: y}
 
         duration = self.readout_pulse.length
         if self.pre_measurement_delay > 0:

@@ -440,6 +440,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
     def get_components(self) -> List[BaseUpdatableComponent]:
         components = super().get_components()
+        components.extend(self.qua_inner_loop_action.get_components())
         components.append(self.x_axis)
         if self.y_axis is not None: 
             components.append(self.y_axis)

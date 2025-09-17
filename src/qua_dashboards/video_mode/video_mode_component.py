@@ -118,7 +118,7 @@ class VideoModeComponent(BaseComponent):
             )
             live_view_tab = LiveViewTabController(
                 component_id=f"{self.component_id}-live-view-tab",
-                data_acquirer=self.data_acquirer,  # Pass data_acquirer here
+                data_acquirer=self.data_acquirer, 
             )
             annotation_tab = AnnotationTabController(
                 component_id=f"{self.component_id}-annotation-tab",

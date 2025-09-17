@@ -144,7 +144,15 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             return self.scan_1d
         else: 
             return self.scan_2d
-
+    def ensure_axis(self) -> bool: 
+        gs = self.gate_set
+        have = {ax.name for ax in self.sweep_axes}
+        changed = False
+        for nm in gs.valid_channel_names:
+            if nm not in have:
+                self.sweep_axes.append(SweepAxis(name=nm))
+                changed = True
+        return changed
     @staticmethod
     def _generate_sweep_axes(gate_set: GateSet) -> List[SweepAxis]:
         sweep_axes: List[SweepAxis] = []
@@ -441,9 +449,6 @@ class OPXDataAcquirer(Base2DDataAcquirer):
     def get_components(self) -> List[BaseUpdatableComponent]:
         components = super().get_components()
         components.extend(self.qua_inner_loop_action.get_components())
-        components.append(self.x_axis)
-        if self.y_axis is not None: 
-            components.append(self.y_axis)
         return components
 
     def stop_acquisition(self) -> None:

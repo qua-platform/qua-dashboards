@@ -156,6 +156,25 @@ class SharedViewerComponent(BaseComponent):
             A Plotly Figure object with base image and annotations.
         """
         fig = self._get_default_figure()
+        profile = static_data_object.get("profile_plot")
+        if isinstance(profile, dict):
+            s = profile.get("s", [])
+            vals = profile.get("vals", [])
+            name = profile.get("name", "Line Profile")
+            y_label = profile.get("y_label", "Value")
+
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=s, y=vals, mode="lines", name=name))
+            fig.update_layout(
+                template="plotly_dark",
+                margin=dict(l=40, r=10, t=10, b=40),
+                xaxis_title="Arbitrary Units",
+                yaxis_title=y_label,
+                showlegend=False,
+            )
+            self._current_figure = fig
+            return fig
+        
         if not isinstance(static_data_object, dict):
             logger.warning(
                 f"SharedViewer ({self.component_id}): Static data object is not a dict "

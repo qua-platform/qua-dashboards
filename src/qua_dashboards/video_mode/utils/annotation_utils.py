@@ -27,6 +27,7 @@ import cv2 as cv
 import autograd.numpy as anp
 from autograd import value_and_grad
 import matplotlib.pyplot as plt
+from scipy.interpolate import interpn 
 
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,9 @@ __all__ = [
     # "align_linear",
     # "amplitude_scan_2D",
     "compute_gate_compensation_al",
+    "compute_transformation_matrix_from_image_gradients",
+    "compute_transformation_matrix",
+    "warp_image_with_normals"
 ]
 
 
@@ -772,12 +776,15 @@ def generate_2D_gradient_vector(img, plot=False):
 
     if plot:
         fig, axes = plt.subplots(1, 3, figsize=(12, 4))
-        axes[0].imshow(blurred_img,origin="lower")
+        #axes[0].imshow(blurred_img,origin="lower")
+        axes[0].imshow(blurred_img)
         axes[0].set_title("Gaussian blurred image")
         axes[0].axis('off')
-        axes[1].imshow(sobel_x,origin="lower")
+        #axes[1].imshow(sobel_x,origin="lower")
+        axes[1].imshow(sobel_x)
         axes[1].set_title("Sobel X")
-        axes[2].imshow(sobel_y,origin="lower")
+        #axes[2].imshow(sobel_y,origin="lower")
+        axes[2].imshow(sobel_y)
         axes[2].set_title("Sobel Y")
         plt.colorbar(axes[1].images[0])
         plt.colorbar(axes[2].images[0])
@@ -791,10 +798,14 @@ def scale_data(points, scale, plot=False):
     print(f"Scaling data using method: {scale}")
     if scale == "overall":
         data = points/anp.std(points)
+        data_std = {'x': 1, 'y': 1}
     elif scale == "per-dimension":
         data = points.copy()
-        data[:,0] = data[:,0]/anp.std(data[:,0])
-        data[:,1] = data[:,1]/anp.std(data[:,1])
+        std_x = anp.std(data[:,0])
+        std_y = anp.std(data[:,1])
+        data[:,0] = data[:,0]/std_x
+        data[:,1] = data[:,1]/std_y
+        data_std = {'x': std_x, 'y': std_y}
 
     if plot:
         plt.plot(data[:,0], data[:,1], '.', alpha=0.3, markersize=1)
@@ -804,36 +815,21 @@ def scale_data(points, scale, plot=False):
         plt.title("Scaled Sobel gradients")
         plt.show()
 
-    return data
+    return data, data_std
 
 
-def make_covariance_matrices(params,K,dim):
+def make_covariance_matrices(params):
     # Given parameters: p1x, p1y, p2x, p2y, tau, return covariance matrices for the Gaussian components
-    if K==2:
-        p1 = params[:2]  
-        p2 = params[2:4] 
-        sigma = anp.exp(params[4]) # positive!
-        I = anp.eye(dim)   
+    p1 = params[:2]  
+    p2 = params[2:4] 
+    sigma = anp.exp(params[4]) + 1.e-6*anp.linalg.norm(p1) + 1.e-6*anp.linalg.norm(p2)  # positive!
+    I = anp.eye(2)   
 
-        Sigma0 = sigma**2 * I
-        Sigma1 = anp.outer(p1, p1) + sigma**2 * I  # anp.outer computes the outer product: 2D matrix here
-        Sigma2 = anp.outer(p2, p2) + sigma**2 * I
+    Sigma0 = sigma**2 * I
+    Sigma1 = anp.outer(p1, p1) + sigma**2 * I  # anp.outer computes the outer product: 2D matrix here
+    Sigma2 = anp.outer(p2, p2) + sigma**2 * I
 
-        return Sigma0, Sigma1, Sigma2
-    
-    elif K==3:
-        p1 = params[:2]  
-        p2 = params[2:4] 
-        p3 = params[4:6]
-        sigma = anp.exp(params[6]) # positive!
-        I = anp.eye(dim)   
-
-        Sigma0 = sigma**2 * I
-        Sigma1 = anp.outer(p1, p1) + sigma**2 * I  # anp.outer computes the outer product: 2D matrix here
-        Sigma2 = anp.outer(p2, p2) + sigma**2 * I
-        Sigma3 = anp.outer(p3, p3) + sigma**2 * I
-
-        return Sigma0, Sigma1, Sigma2, Sigma3    
+    return Sigma0, Sigma1, Sigma2
     
 
 def normal_distribution_2D_vectorized(X, cov):
@@ -844,20 +840,15 @@ def normal_distribution_2D_vectorized(X, cov):
     inv_cov = anp.linalg.inv(cov)
     quad_form = anp.sum((X @ inv_cov) * X, axis=1)
     pdf = 1 / (2 * anp.pi * anp.sqrt(det)) * anp.exp(-0.5 * quad_form)
+
     return pdf.reshape(-1,1) # Otherwise, shape (N,). Alternatively, use [:,None] to convert to column vector with shape (N,1)
 
 
 def plot_vector(points, p, title):
-    plt.scatter(points[:, 0], points[:, 1], alpha=0.3, s=1)
-    K = len(p)
-    #plt.quiver(0,0, p[0][0], p[0][1], angles='xy', scale_units='xy', scale=1, color='r', width=0.005, label='p_x') # p_x: red arrow
-    #plt.quiver(0,0, p[1][0], p[1][1], angles='xy', scale_units='xy', scale=1, color='g', width=0.005, label='p_y') # p_y: green arrow
+    plt.scatter(points[:, 0], points[:, 1], alpha=0.3, s=1, c='blue')
+    plt.scatter(-points[:, 0], -points[:, 1], alpha=0.3, s=1, c='blue')
     plt.quiver(-p[0][0], -p[0][1], 2*p[0][0], 2*p[0][1], angles='xy', scale_units='xy', scale=1, color='r', width=0.005, label='p1') # p_1: red arrow
-    plt.quiver(-p[1][0], -p[1][1], 2*p[1][0], 2*p[1][1], angles='xy', scale_units='xy', scale=1, color='g', width=0.005, label='p2') # p_2: green arrow
-
-    if K==3:
-        #plt.quiver(0,0, p[2][0], p[2][1], angles='xy', scale_units='xy', scale=1, color='b', width=0.005, label='p_xy') 
-        plt.quiver(-p[2][0], -p[2][1], 2*p[2][0], 2*p[2][1], angles='xy', scale_units='xy', scale=1, color='b', width=0.005, label='p12') 
+    plt.quiver(-p[1][0], -p[1][1], 2*p[1][0], 2*p[1][1], angles='xy', scale_units='xy', scale=1, color='g', width=0.005, label='p2') # p_2: green arrow 
     plt.title(title)
     plt.axhline(0, color='gray', lw=0.5)
     plt.axvline(0, color='gray', lw=0.5)
@@ -867,81 +858,143 @@ def plot_vector(points, p, title):
 
 
 # f: function to minimize, i.e. negative log-likelihood of the Gaussian Mixture Model
-def gmm_log_likelihood(params,data,w,K):
+def gmm_log_likelihood(params,data,w):
     # Compute the negative log-likelihood of the Gaussian Mixture Model
-    if K==2:
-        Sigma0, Sigma1, Sigma2 = make_covariance_matrices(params,K=2,dim=2)
-        likelihood = (w[0] * normal_distribution_2D_vectorized(data, Sigma0) +
-                      w[1] * normal_distribution_2D_vectorized(data, Sigma1) +
-                      w[2] * normal_distribution_2D_vectorized(data, Sigma2))
-    elif K==3:
-        Sigma0, Sigma1, Sigma2, Sigma3 = make_covariance_matrices(params,K=3,dim=2)
-        likelihood = (w[0] * normal_distribution_2D_vectorized(data, Sigma0) +
-                      w[1] * normal_distribution_2D_vectorized(data, Sigma1) +
-                      w[2] * normal_distribution_2D_vectorized(data, Sigma2) +
-                      w[3] * normal_distribution_2D_vectorized(data, Sigma3))
+    Sigma0, Sigma1, Sigma2 = make_covariance_matrices(params)
+    likelihood = (w[0] * normal_distribution_2D_vectorized(data, Sigma0) +
+                  w[1] * normal_distribution_2D_vectorized(data, Sigma1) +
+                  w[2] * normal_distribution_2D_vectorized(data, Sigma2))
     log_likelihood = anp.sum(anp.log(likelihood + 1e-10))  # Add small constant to avoid log(0)
+
     return -log_likelihood
 
 
-def gmm_log_likelihood_reg(params,data,w,K):
+def gmm_log_likelihood_reg(params,data,w):
     # Compute the negative log-likelihood of the Gaussian Mixture Model
     e1 = anp.array([1.0, 0.0])
     e2 = anp.array([0.0, 1.0])
-    if K==2:
-        Sigma0, Sigma1, Sigma2 = make_covariance_matrices(params,K,dim=2)
-        likelihood = (w[0] * normal_distribution_2D_vectorized(data, Sigma0) +
-                    w[1] * normal_distribution_2D_vectorized(data, Sigma1) +
-                    w[2] * normal_distribution_2D_vectorized(data, Sigma2))
-    elif K==3:
-        Sigma0, Sigma1, Sigma2, Sigma3 = make_covariance_matrices(params,K,dim=2)
-        #print(params)
-        likelihood = (w[0] * normal_distribution_2D_vectorized(data, Sigma0) +
-                    w[1] * normal_distribution_2D_vectorized(data, Sigma1) +
-                    w[2] * normal_distribution_2D_vectorized(data, Sigma2) +
-                    w[3] * normal_distribution_2D_vectorized(data, Sigma3))
+    Sigma0, Sigma1, Sigma2 = make_covariance_matrices(params)
+    likelihood = (w[0] * normal_distribution_2D_vectorized(data, Sigma0) +
+                  w[1] * normal_distribution_2D_vectorized(data, Sigma1) +
+                  w[2] * normal_distribution_2D_vectorized(data, Sigma2))
     log_likelihood = anp.sum(anp.log(likelihood + 1e-10))  # Add small constant to avoid log(0)
-    if K==2:
-        reg = 1 * (anp.dot(params[0:2], e1)/(anp.linalg.norm(params[0:2])*anp.linalg.norm(e1))**2 + anp.dot(params[2:4], e2)/(anp.linalg.norm(params[2:4])*anp.linalg.norm(e2))**2)
-    if K==3:
-        reg = 0  ## TO DO: add regularization for 3 directions
-    #print("Regularization term:", reg)
+    reg = 1 * (anp.dot(params[0:2], e1)/(anp.linalg.norm(params[0:2])*anp.linalg.norm(e1))**2 + anp.dot(params[2:4], e2)/(anp.linalg.norm(params[2:4])*anp.linalg.norm(e2))**2)
+
     return -log_likelihood + reg
 
 
-def compute_slopes_from_image_gradients(img, scale, method, init_params, w, K, max_iterations, epsilon, plots = [False, False, False]):
+def compute_transformation_matrix(n1,n2):
+    # Build transformation
+    B = np.column_stack([n1, n2])  # columns are normals
+    B /=np.diag(B)[None,:] # divide each column by its diagonal element; np.diag(B)[None,:] is the row vector [n11,n22] of shape (1,2)
+    A = B.T                      # transformation: original coordinates -> new coordinates
+    A_inv = np.linalg.inv(A)     # transformation: new -> original
+    A_inv = A_inv @ np.diag(np.diag(A_inv)**(-1))
+    A = np.linalg.inv(A_inv)
+    return A_inv, A
+
+
+def warp_image_with_normals(img, n1, n2, fill_value=1e-6, plot=True):
+    """
+    Warp an image defined on a rectangular grid (xs, ys) so that lines with normals n1, n2
+    become orthogonal in the transformed coordinates.
+
+    Parameters
+    ----------
+    img : 2D xarray (shape (len(ys), len(xs)))
+    n1, n2 : (2,) arrays, the two normalized line normals
+    nx, ny : resolution of the output grid (default: same as input)
+    fill_value : value for points outside the input domain
+
+    Returns
+    -------
+    warped : 2D array (ny, nx)
+    new_xs, new_ys : 1D arrays of the new rectilinear grid in transformed coords
+    """
+    H, W = img.shape    # height, width of image
+    xs = np.arange(W)   # original x-grid (cols)
+    ys = np.arange(H)   # original y-grid (rows)
+
+    # # Build transformation
+    # B = np.column_stack([n1, n2])  # columns are normals
+    # B /=np.diag(B)[None,:]
+    # A = B.T                      # transformation: original coordinates -> new coordinates
+    # A_inv = np.linalg.inv(A)     # transformation: new -> original
+    # A_inv = A_inv @ np.diag(np.diag(A_inv)**(-1))
+    # A = np.linalg.inv(A_inv)
+    # print(A_inv)
+
+    A_inv, A = compute_transformation_matrix(n1,n2)
+
+    # Output grid
+    nx = W  # output image size as the original image
+    ny = H
+
+    XX, YY = np.meshgrid(xs, ys, indexing="xy")      # original grid, 2D arrays of all x and y coordinates (Cartesian)
+    pts = np.column_stack([XX.ravel(), YY.ravel()])  # list of pixel coordinates (points), shape (H*W,2), i.e. one row per pixel
+    new_pts = (A @ pts.T).T                          # transformed coordinates of all original pixels, shape (H*W,2), i.e. one row per pixel
+
+    x_min, x_max = new_pts[:,0].min(), new_pts[:,0].max()   # determine bounding box in transformed space (both in x- and y-direction) --> how big the new image grid needs to be!
+    y_min, y_max = new_pts[:,1].min(), new_pts[:,1].max()
+    new_xs = np.linspace(x_min, x_max, nx)   # define a rectangular grid in transformed space
+    new_ys = np.linspace(y_min, y_max, ny)
+    grid_x, grid_y = np.meshgrid(new_xs, new_ys, indexing="xy")  # grid for the output image (covers the whole transformed image)
+
+    # Map new coords back to original coords
+    Yq = np.column_stack([grid_x.ravel(), grid_y.ravel()]) # list of output pixel coordinates (points)
+    Xq = (A_inv @ Yq.T).T                                  # output pixel coordinates mapped back to original image coordinates --> need to be able to interpolate the image values at the new positions
+
+    # Interpolate at these mapped coordinates Xq
+    warped = interpn(
+        points=(xs, ys), # original coordinates (xs, ys), pixels
+        values=img.T,    # image values at these coordinates (first index is x, second index is y)
+        xi=Xq,           # mapped coordinates, where we want to know the values
+        method="linear",
+        bounds_error=False,
+        fill_value=fill_value,
+    ).reshape(ny, nx)  # converts it back to a 2D image
+
+    if plot:
+        fig, axs = plt.subplots(1, 2, figsize=(12, 6))
+        axs[0].imshow(img, origin="lower")
+        axs[0].set_title("Original")
+        #axs[1].imshow(warped, origin="lower")
+        axs[1].imshow(warped, origin="lower", extent=(new_xs.min(), new_xs.max(), new_ys.min(), new_ys.max()))
+        axs[1].set_title("Orthogonalized")
+        fig.suptitle(f"n1 = {n1}, n2 = {n2}")
+        plt.show()
+
+
+def compute_transformation_matrix_from_image_gradients(img, scale, method, init_params, w, max_iterations=1.e6, epsilon=1.e-4, plots = [False, False, False]):
 
     # Image gradients
     data = generate_2D_gradient_vector(img, plot=plots[0])
 
     # Scale the image gradients
-    data = scale_data(data, scale, plot=plots[1])
+    data, data_std = scale_data(data, scale, plot=plots[1])
 
     # Data fitting (GMM on gradients)
     logger.info(f"Optimizing GMM")
     if method=="without-reg":            
-        logger.info(f"Initial log-likelihood: {gmm_log_likelihood(init_params,data,w,K)}")
-        problem = value_and_grad(lambda params: gmm_log_likelihood(params,data,w,K))
+        logger.info(f"Initial log-likelihood: {gmm_log_likelihood(init_params,data,w)}")
+        problem = value_and_grad(lambda params: gmm_log_likelihood(params,data,w))
     if method=="with-reg":
-        logger.info(f"Initial log-likelihood: {gmm_log_likelihood_reg(init_params,data,w,K)}")
-        problem = value_and_grad(lambda params: gmm_log_likelihood_reg(params,data,w,K))
+        logger.info(f"Initial log-likelihood: {gmm_log_likelihood_reg(init_params,data,w)}")
+        problem = value_and_grad(lambda params: gmm_log_likelihood_reg(params,data,w))
     result = minimize(problem, init_params, method="L-BFGS-B", jac=True, tol=0.0, options={'maxiter':max_iterations, 'gtol': epsilon})
 
-    if K==2:
-        p1 = result.x[:2]
-        p2 = result.x[2:4]                  
-        sigma = np.exp(result.x[4])                  
-    elif K==3:
-        p1 = result.x[:2]
-        p2 = result.x[2:4]
-        p3 = result.x[4:6]
-        sigma = np.exp(result.x[6])    
+    p1 = result.x[:2]
+    p2 = result.x[2:4]
+    p1_rescaled = np.array([p1[0]*data_std['x'],p1[1]*data_std['y']])
+    p2_rescaled = np.array([p2[0]*data_std['x'],p2[1]*data_std['y']])
+    p1_rescaled = p1_rescaled / np.linalg.norm(p1_rescaled)
+    p2_rescaled = p2_rescaled / np.linalg.norm(p2_rescaled)
+    m1 = -p1[0]*data_std['x']/(p1[1]*data_std['y'])
+    m2 = -p2[0]*data_std['x']/(p2[1]*data_std['y'])
+    result = {'p1': p1_rescaled, 'm1': m1, 'p2': p2_rescaled, 'm2': m2}
 
-    if K==2:
-        if plots[2]:
-            plot_vector(data, [p1, p2], f"Scaled data with estimated direction vectors p1 and p2")
-        return f"p1 = {p1}, m1 = {p1[1]/p1[0]} \np2 = {p2}, m2 = {p2[1]/p2[0]}"
-    elif K==3:
-        if plots[2]:
-            plot_vector(data, [p1, p2, p3], f"Scaled data with estimated direction vectors p1, p2 and p3")
-        return f"p1 = {p1}, m1 = {p1[1]/p1[0]} \np2 = {p2}, m2 = {p2[1]/p2[0]} \np3 = {p3}, m3 = {p3[1]/p3[0]}"
+    if plots[2]:
+        plot_vector(data, [p1, p2], f"Scaled data with estimated direction vectors p1 and p2")
+    #warp_image_with_normals(img,p1_rescaled,p2_rescaled)
+    return result
+

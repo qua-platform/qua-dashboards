@@ -23,7 +23,9 @@ from qua_dashboards.video_mode.utils.annotation_utils import (
     find_closest_line_id,
     compute_gate_compensation_ml,
     compute_gate_compensation_al,
-    compute_slopes_from_image_gradients,
+    compute_transformation_matrix_from_image_gradients,
+    compute_transformation_matrix,
+    warp_image_with_normals,
 )
 from qua_dashboards.video_mode.utils.data_utils import load_data
 from qua_dashboards.video_mode.data_acquirers.simulated_data_acquirer import SimulatedDataAcquirer
@@ -253,7 +255,7 @@ class AnnotationTabController(BaseTabController):
                 html.Hr(),
                 html.H6("Analysis"),
                 dbc.Button(
-                    "Calculate Slopes from Added Lines",
+                    "Calculate Slopes of Added Lines",
                     id=self._get_id(self._CALCULATE_BUTTON_SUFFIX),
                     color="info",
                     size="sm",
@@ -285,7 +287,7 @@ class AnnotationTabController(BaseTabController):
                     },
                 ),
                 dbc.Button(
-                    "Compute Slopes from Image Gradients",
+                    "Compute Transformation Matrix",
                     id=self._get_id(self._GRADIENT_COMPUTATION_BUTTON_SUFFIX),
                     color="danger",
                     size="sm",
@@ -468,11 +470,11 @@ class AnnotationTabController(BaseTabController):
         self._register_compute_sensor_compensation(
             app,
         )
-        self._register_compute_slopes_from_gradients(
+        self._register_compute_transformation_matrix_from_gradients(
             app, viewer_data_store_id
         )
 
-    def _register_compute_slopes_from_gradients(
+    def _register_compute_transformation_matrix_from_gradients(
             self,
             app:Dash,
             viewer_data_store_id: Dict[str, str]
@@ -485,17 +487,15 @@ class AnnotationTabController(BaseTabController):
             State(viewer_data_store_id, "data"),
             prevent_initial_call=True,
         )
-        def _compute_slopes_from_gradients(n_clicks: int, current_viewer_data_ref: Optional[Dict[str, str]]):
+        def _compute_transformation_matrix_from_gradients(n_clicks: int, current_viewer_data_ref: Optional[Dict[str, str]]):
             logger.info(f"{self._get_id(self._GRADIENT_COMPUTATION_BUTTON_SUFFIX)}: Compute slopes clicked.")
 
             # Fixed parameters     MAYBE AS USER INPUT (WITH DEFAULT VALUES)?
             scale = "per-dimension"  # "overall" or "per-dimension"
-            likelihood = "without-reg"  # "without-reg" or "with-reg"
-            K = 3 # Number of gradient directions to estimate, either 2 or 3
-            weights = {'2': np.array([0.8, 0.1, 0.1]).reshape(-1, 1), '3': np.array([0.7, 0.1, 0.1, 0.1]).reshape(-1, 1)}  # Weights for the Gaussian components (mixing coefficients), values have shape (K+1, 1) for broadcasting
-            w = weights[str(K)]
-            initial_guess = {'2': np.array([0.1, 0.0, 0.0, 0.1, 0.0]), '3': np.array([0.1, 0.0, 0.0, 0.1, 0.1, -0.1, 0.0])}  #Initial guess: p1, p2 horizontal and vertical, p3 = p1-p2, tau = log_sigma = log(1.0) = 0.0
-            init_params = initial_guess[str(K)]
+            likelihood = "with-reg"  # "without-reg" or "with-reg"
+            #K = 2 # Number of gradient directions to estimate, either 2 or 3
+            w = np.array([0.8, 0.1, 0.1]).reshape(-1, 1)  # Weights for the Gaussian components (mixing coefficients), values have shape (K+1, 1) for broadcasting
+            init_params = np.array([0.1, 0.0, 0.0, 0.1, 0.0])  #Initial guess: p1, p2 horizontal and vertical, tau = log_sigma = log(1.0) = 0.0
             max_iterations=1000000
             epsilon=1.e-4
 
@@ -511,10 +511,27 @@ class AnnotationTabController(BaseTabController):
                 return "No image data found in static data for analysis."
 
             image_data = static_data_object.get("base_image_data")
+            img_opencv = np.flipud(image_data.values)  # vertical flip to convert origin at lower left to origin at upper left
+            #logger.debug(f"!!!!!!!!!!!!!!!!!!!!!!!!!!! image_data.shape: {image_data.shape}")
             #logger.debug(f"image_data: {image_data}")
             #logger.debug(f"image_data: {image_data.values}")
+            #logger.debug(f"img_opencv: {img_opencv}")
 
-            return compute_slopes_from_image_gradients(image_data.values, scale, likelihood, init_params, w, K, max_iterations, epsilon, plots = [True, True, True])
+            result = compute_transformation_matrix_from_image_gradients(img_opencv, scale, likelihood, init_params, w, max_iterations, epsilon, plots = [False, False, False])
+            p1 = result['p1']
+            p2 = result['p2']
+            m1 = result['m1']
+            m2 = result['m2']
+            p1[1] = -p1[1]
+            p2[1] = -p2[1]
+            m1 = -m1
+            m2 = -m2
+            A_inv, A = compute_transformation_matrix(p1,p2)
+            A_inv_formatted = np.array2string(A_inv, precision=4, suppress_small=True)
+            warp_image_with_normals(image_data.values,p1,p2)
+            #output = f"p1 = {p1}, m1 = {m1} \np2 = {p2}, m2 = {m2}"
+            output = f"Transformation matrix (compensated --> original coords):\n {A_inv_formatted}"
+            return output
            
             
     def _register_compute_sensor_compensation(
@@ -575,7 +592,7 @@ class AnnotationTabController(BaseTabController):
                 logger.info(f"Computed P_fit: {P_fit_formatted}")
                 # In general, I could define a function ramp = lambda v_start, v_end, N: self.data_acquirer.ramp(v_start, v_end, N)
                 #return f"Fitted P:\n{json.dumps(P_fit.tolist(), indent=2)}"
-                return f"Fitted compensation matrix P:\n {P_fit_formatted}"
+                return f"Fitted compensation matrix:\n {P_fit_formatted}"
 
     def _register_mode_change(
             self,

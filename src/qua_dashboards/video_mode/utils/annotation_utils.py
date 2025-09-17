@@ -967,6 +967,9 @@ def warp_image_with_normals(img, n1, n2, fill_value=1e-6, plot=True):
 
 def compute_transformation_matrix_from_image_gradients(img, scale, method, init_params, w, max_iterations=1.e6, epsilon=1.e-4, plots = [False, False, False]):
 
+    # Opencv assumes that the origin is at upper left. Apply vertical flip to the image to convert origin at lower left to origin at upper left.
+    img = np.flipud(img)
+
     # Image gradients
     data = generate_2D_gradient_vector(img, plot=plots[0])
 
@@ -991,6 +994,15 @@ def compute_transformation_matrix_from_image_gradients(img, scale, method, init_
     p2_rescaled = p2_rescaled / np.linalg.norm(p2_rescaled)
     m1 = -p1[0]*data_std['x']/(p1[1]*data_std['y'])
     m2 = -p2[0]*data_std['x']/(p2[1]*data_std['y'])
+
+    # Convert results back to origin at lower left, i.e. apply vertical flip.
+    p1[1] = -p1[1]
+    p2[1] = -p2[1]
+    p1_rescaled[1] = -p1_rescaled[1]
+    p2_rescaled[1] = -p2_rescaled[1]
+    m1 = -m1
+    m2 = -m2    
+
     result = {'p1': p1_rescaled, 'm1': m1, 'p2': p2_rescaled, 'm2': m2}
 
     if plots[2]:

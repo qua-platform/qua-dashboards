@@ -490,16 +490,15 @@ class AnnotationTabController(BaseTabController):
         def _compute_transformation_matrix_from_gradients(n_clicks: int, current_viewer_data_ref: Optional[Dict[str, str]]):
             logger.info(f"{self._get_id(self._GRADIENT_COMPUTATION_BUTTON_SUFFIX)}: Compute slopes clicked.")
 
-            # Fixed parameters     MAYBE AS USER INPUT (WITH DEFAULT VALUES)?
-            scale = "per-dimension"  # "overall" or "per-dimension"
-            likelihood = "with-reg"  # "without-reg" or "with-reg"
-            #K = 2 # Number of gradient directions to estimate, either 2 or 3
-            w = np.array([0.8, 0.1, 0.1]).reshape(-1, 1)  # Weights for the Gaussian components (mixing coefficients), values have shape (K+1, 1) for broadcasting
-            init_params = np.array([0.1, 0.0, 0.0, 0.1, 0.0])  #Initial guess: p1, p2 horizontal and vertical, tau = log_sigma = log(1.0) = 0.0
-            max_iterations=1000000
-            epsilon=1.e-4
+            # Parameters     MAYBE AS USER INPUT (WITH DEFAULT VALUES)?
+            scale = "per-dimension"                             # "overall" or "per-dimension"
+            likelihood = "with-reg"                             # "without-reg" or "with-reg"
+            w = np.array([0.8, 0.1, 0.1]).reshape(-1, 1)        # Weights for the Gaussian components (mixing coefficients), values have shape (3,1) for broadcasting
+            init_params = np.array([0.1, 0.0, 0.0, 0.1, 0.0])   # Initial guess: p1, p2 horizontal and vertical, tau = log_sigma = log(1.0) = 0.0
+            max_iterations = 1000000
+            epsilon = 1.e-4
 
-            # Current base image
+            # Get current base image
             if (
                 not current_viewer_data_ref
                 or current_viewer_data_ref.get("key") != data_registry.STATIC_DATA_KEY
@@ -511,21 +510,16 @@ class AnnotationTabController(BaseTabController):
                 return "No image data found in static data for analysis."
 
             image_data = static_data_object.get("base_image_data")
-            img_opencv = np.flipud(image_data.values)  # vertical flip to convert origin at lower left to origin at upper left
-            #logger.debug(f"!!!!!!!!!!!!!!!!!!!!!!!!!!! image_data.shape: {image_data.shape}")
-            #logger.debug(f"image_data: {image_data}")
-            #logger.debug(f"image_data: {image_data.values}")
-            #logger.debug(f"img_opencv: {img_opencv}")
 
-            result = compute_transformation_matrix_from_image_gradients(img_opencv, scale, likelihood, init_params, w, max_iterations, epsilon, plots = [False, False, False])
+            result = compute_transformation_matrix_from_image_gradients(image_data.values, scale, likelihood, init_params, w, max_iterations, epsilon, plots = [False, False, False])
             p1 = result['p1']
             p2 = result['p2']
             m1 = result['m1']
             m2 = result['m2']
-            p1[1] = -p1[1]
-            p2[1] = -p2[1]
-            m1 = -m1
-            m2 = -m2
+            # p1[1] = -p1[1]
+            # p2[1] = -p2[1]
+            # m1 = -m1
+            # m2 = -m2
             A_inv, A = compute_transformation_matrix(p1,p2)
             A_inv_formatted = np.array2string(A_inv, precision=4, suppress_small=True)
             warp_image_with_normals(image_data.values,p1,p2)
@@ -571,7 +565,7 @@ class AnnotationTabController(BaseTabController):
                 # Other parameters
                 sensor_id = self.data_acquirer.experiment.sensor_config["sensor_dot_indices"][0]  # index of the sensor dot to compensate
                 state_hint = self.data_acquirer.args_rendering["state_hint_lower_left"]  # state hint for the sensor dot, used to find the state of the voltage
-                central_point = copy.deepcopy(self.data_acquirer.experiment.tunneling_sim.boundaries(state_hint).point_inside)   ### DISCUSS  coordinate transformation here ??? or is it already tronsformed ???
+                central_point = copy.deepcopy(self.data_acquirer.experiment.tunneling_sim.boundaries(state_hint).point_inside)
                 ranges = {i: (central_point[i]-delta_central_point, central_point[i]+delta_central_point) for i in range(dim)}
                 
                 # Computation of the gate compensation

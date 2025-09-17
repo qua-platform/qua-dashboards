@@ -1,5 +1,5 @@
 """
-Example Script: Video Mode with OPX
+Example Script: Video Mode with OPX with Virtual Gating
 
 This script demonstrates how to use the VideoModeComponent with an OPXDataAcquirer
 to perform live 2D scans on a quantum device. It sets up a QUA program to sweep
@@ -14,11 +14,6 @@ Quick How-to-Use:
         Ensure `ch1`, `ch2` (for sweeping) and `ch1_readout` (or your measurement
         channel) are correctly defined.
 2.  **Adjust Scan Parameters**:
-    * Modify `x_axis` and `y_axis` (`SweepAxis` objects) with your desired span,
-        points, and any offset parameters.
-    * Review `inner_loop_action` (`BasicInnerLoopAction`) and ensure the
-        `x_element`, `y_element`, and `readout_pulse` correspond to your QUAM machine
-        definitions. Adjust `use_dBm` or other parameters as needed.
     * Select a `scan_mode` (e.g., `SwitchRasterScan`, `RasterScan`).
     * Set `result_type` in `OPXDataAcquirer` (e.g., "I", "Q", "amplitude", "phase").
 3.  **Run the Script**: Execute this Python file.
@@ -64,7 +59,7 @@ machine = BasicQuam()
 machine.channels["ch1"] = SingleChannel(
     opx_output=("con1", 1),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
-    operations={"half_max_square": pulses.SquarePulse(amplitude=0.25, length=1000)},
+    operations={"half_max_square": pulses.SquarePulse(amplitude=0.25, length=1000)}, #Ensure operation "half_max_square" exists in the channel object
 )
 # Define the second DC voltage output channel (e.g., for Y-axis sweep)
 machine.channels["ch2"] = SingleChannel(

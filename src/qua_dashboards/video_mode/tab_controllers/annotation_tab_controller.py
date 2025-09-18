@@ -495,6 +495,9 @@ class AnnotationTabController(BaseTabController):
             likelihood = "with-reg"                             # "without-reg" or "with-reg"
             w = np.array([0.8, 0.1, 0.1]).reshape(-1, 1)        # Weights for the Gaussian components (mixing coefficients), values have shape (3,1) for broadcasting
             init_params = np.array([0.1, 0.0, 0.0, 0.1, 0.0])   # Initial guess: p1, p2 horizontal and vertical, tau = log_sigma = log(1.0) = 0.0
+            sigmaX_blur = sigmaY_blur = 1
+            ksize_sobelX = ksize_sobelY = 5
+            frac = 0.7
             max_iterations = 1000000
             epsilon = 1.e-4
 
@@ -511,7 +514,9 @@ class AnnotationTabController(BaseTabController):
 
             image_data = static_data_object.get("base_image_data")
 
-            p1, p2, m1, m2 = compute_transformation_matrix_from_image_gradients(image_data.values, scale, likelihood, init_params, w, max_iterations=max_iterations, epsilon=epsilon)
+            p1, p2, m1, m2 = compute_transformation_matrix_from_image_gradients(image_data.values, scale, likelihood, init_params, w, 
+                                                                                sigmaX_blur=sigmaX_blur, sigmaY_blur=sigmaY_blur, ksize_sobelX=ksize_sobelX, ksize_sobelY=ksize_sobelY, frac=frac, 
+                                                                                max_iterations=max_iterations, epsilon=epsilon)          
             warp_image_with_normals(image_data.values,p1,p2)  # Creates a plot to check whether the transformation matrix is computed correctly
 
             A_inv, A = compute_transformation_matrix(p1,p2)

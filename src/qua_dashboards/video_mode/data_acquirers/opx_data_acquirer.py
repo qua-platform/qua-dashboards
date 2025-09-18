@@ -423,7 +423,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self._compilation_flags |= flags
         return flags
 
-    def get_dash_components(self, include_subcomponents: bool = True, *, include_inner_loop_controls: bool = True) -> List[Any]:
+    def get_dash_components(self, include_subcomponents: bool = True, *, include_inner_loop_controls: bool = False) -> List[Any]:
         components = super().get_dash_components(include_subcomponents)
 
         if include_subcomponents:

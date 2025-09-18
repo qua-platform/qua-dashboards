@@ -10,7 +10,7 @@ import xarray as xr
 from dash import Dash, Input, Output, State, html, ctx, dcc, no_update
 from dash.exceptions import PreventUpdate
 from plotly import graph_objects as go
-
+import logging
 from qua_dashboards.utils import get_axis_limits
 from qua_dashboards.video_mode.tab_controllers.base_tab_controller import (
     BaseTabController,
@@ -334,15 +334,21 @@ class AnnotationTabController(BaseTabController):
             )
             base_image = self._extract_base_image_from_live_data()
             default_obj = self._get_default_static_data_object(base_image=base_image)
-            current_version = data_registry.set_data(
-                data_registry.STATIC_DATA_KEY, default_obj
-            )
-            self._reset_transient_state()  # Reset IDs if creating new
-            # Update click tolerance if there's a base image in the default
-            if default_obj.get("base_image_data") is not None:
-                fig = xarray_to_plotly(default_obj["base_image_data"])
-                self._update_click_tolerance(fig=fig)
-            # Ensure static_data_obj is set for counter logic
+            current_version = data_registry.set_data(data_registry.STATIC_DATA_KEY, default_obj)
+            self._reset_transient_state()
+            bi = default_obj.get("base_image_data")
+            if isinstance(bi, xr.DataArray) and bi.ndim == 2 and "readout" not in bi.dims:
+                try:
+                    fig = xarray_to_plotly(bi)
+                    self._update_click_tolerance(fig=fig)
+                except Exception as e:
+                    logger.warning(
+                        f"{self.component_id}: xarray_to_plotly failed on tab activate ({e}); using default tolerance."
+                    )
+                    self._update_click_tolerance()
+            else:
+                self._update_click_tolerance()
+
             static_data_obj = default_obj
 
         annotations = static_data_obj.get("annotations", {}) if static_data_obj else {}
@@ -371,56 +377,53 @@ class AnnotationTabController(BaseTabController):
         logger.info(f"{self.component_id} deactivated.")
         self._reset_transient_state()  # Clear selections when tab is left
 
+    def _is_subplot_mode(self) -> bool:
+        """Check if current data has subplots (readout dimension)"""
+        static_data = data_registry.get_data(data_registry.STATIC_DATA_KEY)
+        if not static_data:
+            return False
+        base_image = static_data.get("base_image_data")
+        return (isinstance(base_image, xr.DataArray) and 
+                base_image.ndim == 3 and 
+                "readout" in base_image.dims)
     def _update_click_tolerance(
         self,
         base_image_data: Optional[xr.DataArray] = None,
         fig: Optional[go.Figure] = None,
     ) -> None:
-        """Updates the absolute click tolerance based on figure dimensions."""
-        if base_image_data is None and fig is None:
-            logger.warning(
-                f"{self.component_id}: No base image or figure dict provided. "
-                "Using default tolerance."
-            )
-            self._absolute_click_tolerance = 0.025  # Default small absolute
-            return
-
-        if isinstance(base_image_data, xr.DataArray):
-            fig = xarray_to_plotly(base_image_data)
+        """Updates absolute click tolerance. Only builds a fig for plain 2D (y,x) arrays."""
+        if fig is None and isinstance(base_image_data, xr.DataArray):
+            if base_image_data.ndim == 2 and "readout" not in base_image_data.dims:
+                try:
+                    fig = xarray_to_plotly(base_image_data)
+                except Exception as e:
+                    logger.warning(
+                        f"{self.component_id}: xarray_to_plotly failed in tolerance calc ({e}); using default tolerance."
+                    )
+                    fig = None
+            else:
+                fig = None  
 
         if fig is None:
-            logger.warning(
-                f"{self.component_id}: No figure or base image provided. "
-                "Using default tolerance."
-            )
-            self._absolute_click_tolerance = 0.025  # Default small absolute
+            self._absolute_click_tolerance = float(self._relative_click_tolerance)
             return
 
         try:
             x_limits, y_limits = get_axis_limits(fig=fig)
             if x_limits is None or y_limits is None:
-                logger.warning(
-                    f"{self.component_id}: Could not determine figure range for "
-                    f"tolerance from base_image_data. Using default. "
-                    f"x_limits: {x_limits}, y_limits: {y_limits}"
-                )
                 self._absolute_click_tolerance = 0.025
                 return
 
             x_span, y_span = x_limits[1] - x_limits[0], y_limits[1] - y_limits[0]
-            diag = np.sqrt(x_span**2 + y_span**2)
-            if diag > 1e-9:  # Avoid division by zero or tiny diagonals
-                self._absolute_click_tolerance = diag * self._relative_click_tolerance
-            else:
-                self._absolute_click_tolerance = 0.025  # Fallback for zero-size image
-
+            diag = float(np.hypot(x_span, y_span))
+            self._absolute_click_tolerance = diag * self._relative_click_tolerance if diag > 1e-9 else 0.025
             logger.debug(
                 f"{self.component_id}: Absolute click tolerance set to: "
                 f"{self._absolute_click_tolerance:.4g}"
             )
         except Exception as e:
             logger.warning(
-                f"{self.component_id}: Error calculating tolerance from base_image_data: {e}"
+                f"{self.component_id}: Error calculating tolerance from fig: {e}"
             )
             self._absolute_click_tolerance = 0.025
 
@@ -540,8 +543,17 @@ class AnnotationTabController(BaseTabController):
                 "selected_point_for_line": self._selected_indices_for_line,
                 "show_labels": self._show_labels,
             }
-
-            self._update_click_tolerance(base_image_data=base_image)
+            bi = new_static_object.get("base_image_data")
+            if isinstance(bi, xr.DataArray) and bi.ndim == 2 and "readout" not in bi.dims:
+                try:
+                    self._update_click_tolerance(base_image_data=bi)
+                except Exception as e:
+                    logger.warning(
+                        f"{self.component_id}: tolerance from base_image failed ({e}); using default."
+                    )
+                    self._update_click_tolerance()
+            else:
+                self._update_click_tolerance()
 
             logger.info(
                 f"{self.component_id}: Imported live frame. New static data version: {new_version}"
@@ -680,7 +692,18 @@ class AnnotationTabController(BaseTabController):
             
             static_data_object = data_registry.get_data(data_registry.STATIC_DATA_KEY)
             interpolate = bool(toggle_value) and ("on" in toggle_value)
-            data = static_data_object.get("base_image_data")
+            bi = static_data_object.get("base_image_data")
+            target_readout = None
+            if isinstance(bi, xr.DataArray) and bi.ndim == 3 and "readout" in bi.dims:
+                rd = bi.coords["readout"].values[0]     # default: first readout
+                target_readout = str(rd)
+                data_2d = bi.sel(readout=rd).drop_vars("readout", errors="ignore").squeeze(drop=True)
+            elif isinstance(bi, xr.DataArray) and bi.ndim == 2:
+                data_2d = bi
+            else:
+                # Nothing we can profile
+                raise PreventUpdate
+
             annotations = static_data_object.get("annotations", {})
             lines = annotations.get("lines", [])
             points = {p["id"]: p for p in annotations.get("points", [])}
@@ -699,13 +722,17 @@ class AnnotationTabController(BaseTabController):
                 raise PreventUpdate
             
             x0, y0, x1, y1 = float(p1["x"]),  float(p1["y"]), float(p2["x"]), float(p2["y"])
-            s, vals = self._extract_1d_profile(data, x0, y0, x1, y1, 200, interpolate)
+            s, vals = self._extract_1d_profile(data_2d, x0, y0, x1, y1, 200, interpolate)
+            target_col = int(line.get("subplot_col", 1))
             new_static = dict(static_data_object)
             new_static["profile_plot"] = {
                 "s": s.tolist(),
                 "vals": vals.tolist(),
                 "name": f"Line {line['id']}",
-                "y_label": str(data.name or "Value"),
+                "y_label": str((data_2d.name or "Value")),
+                "x_label": "Distance",
+                "readout": target_readout,
+                "subplot_col": target_col, 
             }
             new_version = data_registry.set_data(data_registry.STATIC_DATA_KEY, new_static)
             return {"key": data_registry.STATIC_DATA_KEY, "version": new_version}
@@ -716,6 +743,7 @@ class AnnotationTabController(BaseTabController):
         y: float,
         clicked_annotation_point_id: Optional[str],  # Now string ID
         current_annotations: Dict[str, List[Dict[str, Any]]],
+        subplot_col: int = 1, 
     ) -> bool:
         """Handles graph interactions for 'point' mode. Modifies current_annotations. Returns True if changed."""
         points_list = current_annotations["points"]
@@ -738,19 +766,22 @@ class AnnotationTabController(BaseTabController):
                 "is_moving": True,
                 "point_id": clicked_annotation_point_id,
             }
-            # No change to data yet, just UI state
-        else:  # Click on background, add new point
+        else: 
             new_point_id = self._get_new_point_id()
-            points_list.append({"id": new_point_id, "x": x, "y": y})
+            new_point = {"id": new_point_id, "x": x, "y": y}
+            if self._is_subplot_mode():
+                new_point["subplot_col"] = subplot_col
+            points_list.append(new_point)
             changed = True
         return changed
 
     def _handle_line_mode_interaction(
         self,
-        clicked_annotation_point_id: Optional[str],  # Now string ID
+        clicked_annotation_point_id: Optional[str],
         current_annotations: Dict[str, List[Dict[str, Any]]],
+        subplot_col: int = 1,
     ) -> bool:
-        """Handles graph interactions for 'line' mode. Modifies current_annotations. Returns True if changed."""
+        """Handles graph interactions for 'line' mode."""
         if clicked_annotation_point_id is None:
             return False
 
@@ -779,74 +810,153 @@ class AnnotationTabController(BaseTabController):
             )
             if not is_dup and id1 != id2:
                 new_line_id = self._get_new_line_id()
-                lines_list.append(
-                    {
-                        "id": new_line_id,
-                        "start_point_id": id1,
-                        "end_point_id": id2,
-                    }
-                )
+                new_line = {
+                    "id": new_line_id,
+                    "start_point_id": id1,
+                    "end_point_id": id2,
+                }
+                if self._is_subplot_mode():
+                    new_line["subplot_col"] = subplot_col
+                lines_list.append(new_line)
                 changed = True
             self._selected_indices_for_line.clear()
         return changed
+
+    def extract_click_data(self, point_info):
+        """Extract click data with minimal complexity - revert to original logic"""
+        x, y = point_info["x"], point_info["y"]
+        name = str(point_info.get("name", ""))  # e.g. "annotations_points" or heatmap trace name
+        cd = point_info.get("customdata", None)
+
+        # --- subplot_col (safe) ---
+        subplot_col = 1
+        # case 1: numeric customdata from heatmap (panel index)
+        if isinstance(cd, (int, float)):
+            subplot_col = int(cd)
+        elif isinstance(cd, list) and cd and isinstance(cd[0], (int, float)):
+            subplot_col = int(cd[0])
+        else:
+            # case 2: derive from xaxis id (e.g., "x", "x2", "x3")
+            xaxis_id = point_info.get("xaxis")
+            if isinstance(xaxis_id, str) and xaxis_id.startswith("x"):
+                try:
+                    subplot_col = 1 if xaxis_id == "x" else int(xaxis_id[1:])
+                except Exception:
+                    subplot_col = 1
+
+        # --- clicked_annotation_point_id (old behaviour) ---
+        clicked_annotation_point_id = None
+        if name.startswith("annotations_point"):
+            # our point traces set customdata=[[pid], ...] or customdata="p_#"
+            if isinstance(cd, list) and cd and isinstance(cd[0], str):
+                clicked_annotation_point_id = cd[0]
+            elif isinstance(cd, str):
+                clicked_annotation_point_id = cd
+            
+        return x, y, subplot_col, clicked_annotation_point_id
 
     def _handle_delete_mode_interaction(
         self,
         x: float,
         y: float,
-        clicked_annotation_point_id: Optional[str],  # Now string ID
+        clicked_annotation_point_id: Optional[str],
         current_annotations: Dict[str, List[Dict[str, Any]]],
+        subplot_col: int = 1,
     ) -> bool:
-        """Handles graph interactions for 'delete' mode. Modifies current_annotations. Returns True if changed."""
+        """Handles graph interactions for 'delete' mode."""
         points_list = current_annotations["points"]
         lines_list = current_annotations["lines"]
         changed = False
 
+        if not self._is_subplot_mode():
+            if clicked_annotation_point_id is not None:
+                original_len = len(points_list)
+                current_annotations["points"] = [
+                    p for p in points_list if p["id"] != clicked_annotation_point_id
+                ]
+                if len(current_annotations["points"]) < original_len:
+                    changed = True
+                    current_annotations["lines"] = [
+                        line for line in lines_list
+                        if line["start_point_id"] != clicked_annotation_point_id
+                        and line["end_point_id"] != clicked_annotation_point_id
+                    ]
+            else:
+                line_to_delete_id = find_closest_line_id(
+                    x, y, current_annotations, self._absolute_click_tolerance
+                )
+                if line_to_delete_id is not None:
+                    original_len = len(lines_list)
+                    current_annotations["lines"] = [
+                        line for line in lines_list if line["id"] != line_to_delete_id
+                    ]
+                    if len(current_annotations["lines"]) < original_len:
+                        changed = True
+            return changed
+        
+        def _pcol(pid: str) -> int:
+            for p in points_list:
+                if p["id"] == pid:
+                    return int(p.get("subplot_col", 1))
+            return 1
+            
         if clicked_annotation_point_id is not None:
+            if _pcol(clicked_annotation_point_id) != subplot_col:
+                return False
             original_len = len(points_list)
             current_annotations["points"] = [
                 p for p in points_list if p["id"] != clicked_annotation_point_id
             ]
             if len(current_annotations["points"]) < original_len:
                 changed = True
-                # Also remove lines connected to this point
                 current_annotations["lines"] = [
-                    line
-                    for line in lines_list
-                    if line["start_point_id"] != clicked_annotation_point_id
-                    and line["end_point_id"] != clicked_annotation_point_id
+                    ln for ln in lines_list
+                    if not (
+                        (ln["start_point_id"] == clicked_annotation_point_id
+                        or ln["end_point_id"] == clicked_annotation_point_id)
+                        and int(ln.get("subplot_col", _pcol(ln.get("start_point_id","")))) == subplot_col
+                    )
                 ]
-        else:
-            line_to_delete_id = find_closest_line_id(
-                x, y, current_annotations, self._absolute_click_tolerance
-            )
-            if line_to_delete_id is not None:
-                original_len = len(lines_list)
-                current_annotations["lines"] = [
-                    line for line in lines_list if line["id"] != line_to_delete_id
-                ]
-                if len(current_annotations["lines"]) < original_len:
-                    changed = True
+            return changed
+            
+        pts_subset = [p for p in points_list if int(p.get("subplot_col", 1)) == subplot_col]
+        pt_ids_subset = {p["id"] for p in pts_subset}
+        lines_subset = [
+            ln for ln in lines_list
+            if int(ln.get("subplot_col", _pcol(ln.get("start_point_id","")))) == subplot_col
+            and ln.get("start_point_id") in pt_ids_subset
+            and ln.get("end_point_id") in pt_ids_subset
+        ]
+        if not lines_subset:
+            return False
+        subset_ann = {"points": pts_subset, "lines": lines_subset}
+        line_to_delete_id = find_closest_line_id(
+            x, y, subset_ann, self._absolute_click_tolerance
+        )
+        if line_to_delete_id is not None:
+            original_len = len(lines_list)
+            current_annotations["lines"] = [
+                ln for ln in lines_list if ln["id"] != line_to_delete_id
+            ]
+            if len(current_annotations["lines"]) < original_len:
+                changed = True
         return changed
-    
+        
     def _handle_translate_all_mode_interaction(
-            self,
-            x: float,
-            y: float,
+        self,
+        x: float,
+        y: float,
     ) -> None:
-        """Handles graph interactions for 'translate all' mode. """
-        # After first click: True (turn translation mode on); after second click: False (turn translation mode off)
+        """Handles graph interactions for 'translate all' mode."""
         self._translate_all['translate'] = not self._translate_all['translate']
 
-        # Add the clicked point when translation mode is turned on
         if self._translate_all['translate'] == True:
             self._translate_all['clicked_point_x'] = x
             self._translate_all['clicked_point_y'] = y
-        # Remove the clicked point when translation mode is turned off
         else: 
             self._translate_all['clicked_point_x'] = None
             self._translate_all['clicked_point_y'] = None
-        logging.debug(f'_translate_all: {self._translate_all}')
+        logger.debug(f'_translate_all: {self._translate_all}')  # Use logger, not logging
         return
 
     def _handle_hover_interaction(
@@ -964,7 +1074,21 @@ class AnnotationTabController(BaseTabController):
 
             graph_id_json_str = json.dumps(shared_viewer_graph_id, sort_keys=True)
             interaction_type = list(ctx.triggered_prop_ids)[0].split(".")[-1]
-            logger.debug(f"triggered_prop_id: {interaction_type}")
+            logger.debug(f"triggered_prop_id (normalized): {interaction_type}")
+
+            if interaction_type == "clickData":
+                if click_data and click_data.get("points"):
+                    pt = click_data["points"][0]
+                    sig = (pt.get("curveNumber"), pt.get("pointNumber"), pt.get("x"), pt.get("y"))
+                    if getattr(self, "_last_click_sig", None) == sig:
+                        raise PreventUpdate
+                    self._last_click_sig = sig
+            elif interaction_type == "hoverData":
+                pass
+            else:
+                raise PreventUpdate
+
+            logger.debug(f"triggered_prop_id (normalized): {interaction_type}")
 
             if (
                 interaction_type == "clickData"
@@ -972,31 +1096,32 @@ class AnnotationTabController(BaseTabController):
                 and click_data.get("points")
             ):
                 point_info = click_data["points"][0]
-                x, y = point_info["x"], point_info["y"]
-                logger.debug(f"  clickData point_info: {point_info}")
-                curve_name = point_info.get("name", "")
-                logger.debug(f"  curve_name: {curve_name}")
-                custom_data_val = point_info.get("customdata")
-                logger.debug(f"  custom_data_val: {custom_data_val}")
-                clicked_annotation_point_id = None
-                if isinstance(custom_data_val, list) and len(custom_data_val) > 0:
-                    clicked_annotation_point_id = str(custom_data_val[0])
-                elif isinstance(
-                    custom_data_val, (str, int, float)
-                ):  # If it's a direct ID
-                    clicked_annotation_point_id = str(custom_data_val)
+                x, y, subplot_col, clicked_annotation_point_id = self.extract_click_data(point_info)
+                # self._last_click_x, self._last_click_y = x, y      
 
+                if mode == "line" and clicked_annotation_point_id is None:
+                    pts = annotations_copy.get("points", [])
+                    if self._is_subplot_mode():
+                        pts = [p for p in pts if int(p.get("subplot_col", 1)) == int(subplot_col)]
+                    tol = self._absolute_click_tolerance
+                    best_id, best_d2 = None, None
+                    for p in pts:
+                        dx, dy = float(p["x"]) - x, float(p["y"]) - y
+                        d2 = dx*dx + dy*dy
+                        if d2 <= tol*tol and (best_d2 is None or d2 < best_d2):
+                            best_id, best_d2 = p["id"], d2
+                    clicked_annotation_point_id = best_id 
                 if mode == "point":
                     interaction_changed_data = self._handle_point_mode_interaction(
-                        x, y, clicked_annotation_point_id, annotations_copy
+                        x, y, clicked_annotation_point_id, annotations_copy, subplot_col
                     )
                 elif mode == "line":
                     interaction_changed_data = self._handle_line_mode_interaction(
-                        clicked_annotation_point_id, annotations_copy
+                        clicked_annotation_point_id, annotations_copy, subplot_col
                     )
                 elif mode == "delete":
                     interaction_changed_data = self._handle_delete_mode_interaction(
-                        x, y, clicked_annotation_point_id, annotations_copy
+                        x, y, clicked_annotation_point_id, annotations_copy, subplot_col
                     )
                 elif mode == "translate-all":
                     self._handle_translate_all_mode_interaction(
@@ -1020,6 +1145,7 @@ class AnnotationTabController(BaseTabController):
             viewer_ui_state_store_payload = {
                 "selected_point_to_move": self._selected_point_to_move["point_id"],
                 "selected_point_for_line": self._selected_indices_for_line,
+                "selected_points_for_line": self._selected_indices_for_line,
                 "show_labels": self._show_labels,
             }
 

@@ -13,12 +13,14 @@ from qm.qua import (
     stream_processing,
     wait,
 )
-from dash import html
+import xarray as xr
+from dash import html, dcc
 import dash_bootstrap_components as dbc
 from qua_dashboards.video_mode.scan_modes import LineScan
 from qua_dashboards.core.base_updatable_component import BaseUpdatableComponent
 from qua_dashboards.video_mode.data_acquirers.base_2d_data_acquirer import (
     Base2DDataAcquirer,
+    BaseDataAcquirer
 )
 from qua_dashboards.core import ModifiedFlags
 from qua_dashboards.video_mode.sweep_axis import SweepAxis
@@ -30,7 +32,7 @@ from qua_dashboards.video_mode.inner_loop_actions.inner_loop_action import (
 from qua_dashboards.video_mode.inner_loop_actions.basic_inner_loop_action import (
     BasicInnerLoopAction,
 )
-from quam_builder.architecture.quantum_dots import GateSet, VoltageGate
+from quam_builder.architecture.quantum_dots.components import GateSet, VoltageGate
 
 
 logger = logging.getLogger(__name__)
@@ -157,6 +159,24 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 self.qua_config = self.machine.generate_config()
                 self.qm = None
                 self.initialize_qm()
+        self.readout_channel_names = []
+        self.available_readout_channels = {}
+        for name, channel in machine.channels.items():
+            if type(channel).__name__ == "InOutSingleChannel" and "readout" in channel.operations:
+                self.available_readout_channels[name] = channel
+                self.readout_channel_names.append(name)
+        self.selected_readout_channel = [self.available_readout_channels[self.readout_channel_names[0]]] if self.available_readout_channels else []
+        self.display_readout_name = (self.selected_readout_channel[0].name if self.selected_readout_channel else None)
+
+        self._rebuild_stream_vars()
+    def _rebuild_stream_vars(self):
+        if len(self.selected_readout_channel) <= 1: 
+            self.stream_vars = self.stream_vars_default.copy()
+        else: 
+            svars = []
+            for channel in self.selected_readout_channel:
+                svars = svars + [f"I:{channel.name}", f"Q:{channel.name}"]
+            self.stream_vars = svars
 
     @property
     def scan_mode(self): 
@@ -204,7 +224,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         """
         x_qua_values = list(self.x_axis.sweep_values_unattenuated)
         y_qua_values = list(self.y_axis.sweep_values_unattenuated)
-
+        self.qua_inner_loop_action.selected_readout_channels = self.selected_readout_channel
         with program() as prog:
             qua_streams = {var: declare_stream() for var in self.stream_vars}
 
@@ -222,7 +242,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                     )
 
                     if not isinstance(measured_qua_values, tuple):
-                        measured_qua_values = (measured_qua_values,)
+                        measured_qua_values = tuple(measured_qua_values,)
 
                     if len(measured_qua_values) != len(self.stream_vars):
                         raise ValueError(
@@ -291,6 +311,15 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                     f"QM job for {self.component_id} failed to start or produce initial values: {e}"
                 )
                 raise
+    def _flat_to_2d(self, flat: np.ndarray) -> np.ndarray:
+        shape = (self.y_axis.points, self.x_axis.points)
+        output_data_2d = np.zeros(shape, dtype=flat.dtype)
+        x_indices, y_indices = self.scan_mode.get_idxs(
+            x_points=self.x_axis.points, y_points=self.y_axis.points
+        )
+        for i, (y, x) in enumerate(zip(y_indices, x_indices)):
+            output_data_2d[y, x] = flat[i]
+        return output_data_2d
 
     def _process_fetched_results(self, fetched_qua_results: Tuple) -> np.ndarray:
         """
@@ -304,60 +333,80 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             )
 
         self._raw_qua_results = dict(zip(self.stream_vars, fetched_qua_results))
-
-        if self.result_type == "I" and "I" in self._raw_qua_results:
-            output_data_flat = self._raw_qua_results["I"]
-        elif self.result_type == "Q" and "Q" in self._raw_qua_results:
-            output_data_flat = self._raw_qua_results["Q"]
-        elif self.result_type == "amplitude":
-            if "I" not in self._raw_qua_results or "Q" not in self._raw_qua_results:
-                raise ValueError(
-                    "Cannot calculate amplitude without 'I' and 'Q' streams."
-                )
-            output_data_flat = np.abs(
-                self._raw_qua_results["I"] + 1j * self._raw_qua_results["Q"]
-            )
-        elif self.result_type == "phase":
-            if "I" not in self._raw_qua_results or "Q" not in self._raw_qua_results:
-                raise ValueError("Cannot calculate phase without 'I' and 'Q' streams.")
-            output_data_flat = np.angle(
-                self._raw_qua_results["I"] + 1j * self._raw_qua_results["Q"]
-            )
-        else:
-            part1 = "Invalid result_type: '{}'.".format(self.result_type)
-            part2 = " Must be one of {} ".format(self.result_types)
-            part3 = "or a direct stream variable name from {}.".format(self.stream_vars)
-            error_msg = part1 + part2 + part3
-            raise ValueError(error_msg)
-        
         expected_points = self.x_axis.points * self.y_axis.points
+        num_sel = len(self.selected_readout_channel)
 
-        # If we got more than one frame concatenated (rare but possible), keep the last full frame
-        if output_data_flat.size > expected_points:
-            output_data_flat = np.asarray(output_data_flat)[-expected_points:]
+        def _normalize_flat(flat: np.ndarray) -> np.ndarray:
+            # keep last full frame if concatenated
+            if flat.size > expected_points:
+                flat = np.asarray(flat)[-expected_points:]
+            # if not enough, return placeholder (so viewer waits gracefully)
+            if flat.size < expected_points:
+                return np.full(
+                    (self.y_axis.points, self.x_axis.points),
+                    np.nan,
+                    dtype=np.asarray(flat).dtype,
+                )
+            return self._flat_to_2d(flat)
 
-        # If we don't yet have enough samples for the new resolution, return a placeholder frame
-        if output_data_flat.size < expected_points:
-            logger.info(
-                f"{self.component_id}: Fetched {output_data_flat.size} samples but "
-                f"need {expected_points} for current resolution. Returning placeholder and waiting for next frame."
-            )
-            return np.full(
-                (self.y_axis.points, self.x_axis.points),
-                np.nan,
-                dtype=np.asarray(output_data_flat).dtype,
-            )
+        if num_sel <= 1:
+            if self.result_type == "I" and "I" in self._raw_qua_results:
+                flat = self._raw_qua_results["I"]
+            elif self.result_type == "Q" and "Q" in self._raw_qua_results:
+                flat = self._raw_qua_results["Q"]
+            elif self.result_type == "amplitude":
+                if "I" not in self._raw_qua_results or "Q" not in self._raw_qua_results:
+                    raise ValueError("Cannot calculate amplitude without 'I' and 'Q' streams.")
+                flat = np.abs(self._raw_qua_results["I"] + 1j * self._raw_qua_results["Q"])
+            elif self.result_type == "phase":
+                if "I" not in self._raw_qua_results or "Q" not in self._raw_qua_results:
+                    raise ValueError("Cannot calculate phase without 'I' and 'Q' streams.")
+                flat = np.angle(self._raw_qua_results["I"] + 1j * self._raw_qua_results["Q"])
+            else:
+                raise ValueError(f"Invalid result_type: '{self.result_type}'. "
+                                f"Must be one of {self.result_types} or a direct stream var: {self.stream_vars}")
+            return _normalize_flat(flat)
 
+        else:
+            # Multi-readout: return (R, X) in 1D, (R, Y, X) in 2D
+            is_1d = (self.y_axis_name is None) or (self.y_axis.points == 1)
+            expected_points = self.x_axis.points * (1 if is_1d else self.y_axis.points)
 
-        shape = (self.y_axis.points, self.x_axis.points)
-        output_data_2d = np.zeros(shape, dtype=output_data_flat.dtype)
-        x_indices, y_indices = self.scan_mode.get_idxs(
-            x_points=self.x_axis.points, y_points=self.y_axis.points
-        )
-        for i, (y, x) in enumerate(zip(y_indices, x_indices)):
-            output_data_2d[y, x] = output_data_flat[i]
+            output_layers = []
+            names = [ch.name for ch in self.selected_readout_channel]
+            for name in names:
+                if self.result_type == "I":
+                    key = f"I:{name}"
+                    flat = np.asarray(self._raw_qua_results[key])
+                elif self.result_type == "Q":
+                    key = f"Q:{name}"
+                    flat = np.asarray(self._raw_qua_results[key])
+                elif self.result_type == "amplitude":
+                    kI, kQ = f"I:{name}", f"Q:{name}"
+                    flat = np.abs(np.asarray(self._raw_qua_results[kI]) + 1j * np.asarray(self._raw_qua_results[kQ]))
+                elif self.result_type == "phase":
+                    kI, kQ = f"I:{name}", f"Q:{name}"
+                    flat = np.angle(np.asarray(self._raw_qua_results[kI]) + 1j * np.asarray(self._raw_qua_results[kQ]))
+                else:
+                    raise ValueError(f"Invalid result_type '{self.result_type}'.")
 
-        return output_data_2d
+                # trim/pad per-layer
+                if flat.size > expected_points:
+                    flat = flat[-expected_points:]
+                if flat.size < expected_points:
+                    if is_1d:
+                        return np.full((len(names), self.x_axis.points), np.nan, dtype=flat.dtype)
+                    else:
+                        return np.full((self.y_axis.points, self.x_axis.points), np.nan, dtype=flat.dtype)
+
+                # shape per-layer
+                if is_1d:
+                    layer = flat.reshape(self.x_axis.points)
+                else:
+                    layer = self._flat_to_2d(flat)
+                output_layers.append(layer)
+
+            return np.stack(output_layers, axis=0)
 
     def perform_actual_acquisition(self) -> np.ndarray:
         if self._compilation_flags & ModifiedFlags.CONFIG_MODIFIED:
@@ -366,6 +415,11 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             self._compilation_flags = ModifiedFlags.NONE
         elif self._compilation_flags & ModifiedFlags.PROGRAM_MODIFIED:
             logger.info(f"Program recompile triggered for {self.component_id}.")
+            if self.qm_job is not None and getattr(self.qm_job, "status", None) == "running":
+                try:
+                    self.qm_job.halt()
+                except Exception as e:
+                    logger.warning(f"Halting previous QM job failed: {e}")
             self.qua_program = None  # Clear the program to force a re-generation
             self.execute_program()
             self._compilation_flags = ModifiedFlags.NONE
@@ -442,7 +496,21 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                     _ = self.y_axis
                     flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
 
-        self._compilation_flags |= flags
+            if "readouts" in params:
+                new_names = [n for n in params["readouts"] if n in self.available_readout_channels]
+                new_objs  = [self.available_readout_channels[n] for n in new_names]
+                if [ch.name for ch in self.selected_readout_channel] != new_names:
+                    self.selected_readout_channel = new_objs
+                    self.qua_inner_loop_action.selected_readout_channels = self.selected_readout_channel
+                    if self.display_readout_name not in new_names:
+                        self.display_readout_name = new_names[0] if new_names else None
+                    self._rebuild_stream_vars()
+                    flags |= ModifiedFlags.PROGRAM_MODIFIED
+
+            if "display-readout" in params and params["display-readout"] != self.display_readout_name:
+                self.display_readout_name = params["display-readout"]
+                flags |= ModifiedFlags.PARAMETERS_MODIFIED
+        self._compilation_flags |= (flags & (ModifiedFlags.PROGRAM_MODIFIED | ModifiedFlags.CONFIG_MODIFIED))
         return flags
 
     def get_dash_components(self, include_subcomponents: bool = True, *, include_inner_loop_controls: bool = False) -> List[Any]:
@@ -460,8 +528,121 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                     )
                 )
 
+        ro_options = [{"label": n, "value": n} for n in self.available_readout_channels.keys()]
+        if ro_options:
+            components.append(
+                dbc.Row(
+                    [
+                        dbc.Label("Readouts to acquire", width="auto", className="col-form-label"),
+                        dbc.Col(
+                            dcc.Dropdown(
+                                id=self._get_id("readouts"),
+                                options=ro_options,
+                                value=[ch.name for ch in self.selected_readout_channel],
+                                multi=True,
+                                clearable=False,
+                                style = {"color": "black"}
+                            ),
+                            width=True,
+                        ),
+                    ],
+                    className="mb-2 align-items-center",
+                )
+            )
         return components
+    def get_latest_data(self) -> Dict[str, Any]:
+        """
+        Retrieves the latest processed data, converts it to an xarray.DataArray,
+        and includes status/error information.
+        """
+        if len(self.selected_readout_channel) <= 1:
+            return super().get_latest_data()
+        else: 
 
+            processed = BaseDataAcquirer.get_latest_data(self)
+            data_np = processed.get("data")
+            error = processed.get("error")
+            status = processed.get("status")
+
+            if error is not None or data_np is None:
+                return processed
+            if not isinstance(data_np, np.ndarray) or data_np.ndim not in (2, 3):
+                dim_str = data_np.ndim if hasattr(data_np, "ndim") else "N/A"
+                logger.warning(
+                    f"{self.component_id}: Expected a 2D or 3D numpy array for xarray conversion "
+                    f"but got {type(data_np)} with {dim_str} dimensions. Returning raw data."
+                )
+                return processed
+            try:
+                labels = [ch.name for ch in self.selected_readout_channel]
+                if data_np.shape[0] != len(labels):
+                    labels = [f"" for i in range(data_np.shape[0])]
+                if isinstance(data_np, np.ndarray) and data_np.ndim == 3 and data_np.shape[1] == 1:
+                    data_np = data_np[:, 0, :]
+
+                actual_is_1d = (data_np.ndim == 2)  
+
+                if actual_is_1d:
+                    x_len = data_np.shape[-1]
+                    x_coords = list(self.x_axis.sweep_values_with_offset)
+                    if len(x_coords) != x_len:
+                        if len(x_coords) >= 2:
+                            x_coords = np.linspace(x_coords[0], x_coords[-1], x_len)
+                        else:
+                            x_coords = np.arange(x_len)
+
+                    data_xr = xr.DataArray(
+                        data_np,
+                        dims=("readout", self.x_axis.name),
+                        coords={"readout": labels, self.x_axis.name: x_coords},
+                        attrs={"long_name": "Signal"},
+                    )
+                    x_attrs = {"label": self.x_axis.label or self.x_axis.name}
+                    if self.x_axis.units is not None:
+                        x_attrs["units"] = self.x_axis.units
+                    data_xr.coords[self.x_axis.name].attrs.update(x_attrs)
+                    return {"data": data_xr, "error": None, "status": status}
+
+                x_len = data_np.shape[-1]
+                y_len = data_np.shape[-2]
+                x_coords = list(self.x_axis.sweep_values_with_offset)
+                y_coords = list(self.y_axis.sweep_values_with_offset)
+
+                if len(x_coords) != x_len:
+                    if len(x_coords) >= 2:
+                        x_coords = np.linspace(x_coords[0], x_coords[-1], x_len)
+                    else:
+                        x_coords = np.arange(x_len)
+
+                if len(y_coords) != y_len:
+                    if len(y_coords) >= 2:
+                        y_coords = np.linspace(y_coords[0], y_coords[-1], y_len)
+                    else:
+                        y_coords = np.arange(y_len)
+
+                data_xr = xr.DataArray(
+                    data_np,
+                    dims=("readout", self.y_axis.name, self.x_axis.name),
+                    coords={"readout": labels, self.y_axis.name: y_coords, self.x_axis.name: x_coords},
+                    attrs={"long_name": "Signal"},
+                )
+                for axis in [self.x_axis, self.y_axis]:
+                    attrs = {"label": axis.label or axis.name}
+                    if axis.units is not None:
+                        attrs["units"] = self.x_axis.units if axis is self.x_axis else self.y_axis.units
+                    data_xr.coords[axis.name].attrs.update(attrs)
+
+                return {"data": data_xr, "error": None, "status": status}
+            except Exception as e:
+                logger.error(
+                    f"Error converting numpy data to xarray.DataArray in "
+                    f"{self.component_id}: {e}"
+                )
+                return {
+                    "data": None,
+                    "error": e,
+                    "status": "error",
+                }
     def get_components(self) -> List[BaseUpdatableComponent]:
         components = super().get_components()
         components.extend(self.qua_inner_loop_action.get_components())

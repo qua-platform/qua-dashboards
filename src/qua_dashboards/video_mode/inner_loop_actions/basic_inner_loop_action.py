@@ -6,7 +6,7 @@ from qua_dashboards.video_mode.inner_loop_actions.inner_loop_action import (
     InnerLoopAction,
 )
 from qua_dashboards.utils.qua_types import QuaVariableFloat
-from quam_builder.architecture.quantum_dots import GateSet
+from quam_builder.architecture.quantum_dots.components import GateSet
 
 from qm import qua
 
@@ -47,6 +47,12 @@ class BasicInnerLoopAction(InnerLoopAction):
         self.use_dBm = use_dBm
         self.voltage_sequence = None
         self.ramp_duration = 16
+        self.selected_readout_channels = []
+    @property
+    def selected_readout_names(self) -> list[str]:
+        return [ch.name for ch in getattr(self, "selected_readout_channels", [])]
+    def _pulse_for(self, ch):
+        return ch.operations["readout"]
 
     def __call__(
         self, x: QuaVariableFloat, y: QuaVariableFloat
@@ -76,7 +82,10 @@ class BasicInnerLoopAction(InnerLoopAction):
             self.readout_pulse.channel.wait(self.pre_measurement_delay)
 
         qua.align()
-        I, Q = self.readout_pulse.channel.measure(self.readout_pulse.id)
+        result = []
+        for channel in self.selected_readout_channels:
+            I, Q = channel.measure("readout")
+            result.extend([I, Q])        
         qua.align()
 
         qua.assign(self.last_v_x, x)
@@ -86,10 +95,13 @@ class BasicInnerLoopAction(InnerLoopAction):
         qua.assign(self.last_v_x, (self.last_v_x >> 12) << 12)
         if y is not None:
             qua.assign(self.last_v_y, (self.last_v_y >> 12) << 12)
-        qua.ramp_to_zero(self.readout_pulse.channel.name, duration = self.ramp_duration)
+        
+        for channel in self.selected_readout_channels: 
+            qua.ramp_to_zero(channel.name, duration = self.ramp_duration)
         qua.align()
+        qua.wait(2000)
 
-        return I, Q
+        return result
 
     def initial_action(self):
         # Create VoltageSequence within QUA program context
@@ -109,47 +121,57 @@ class BasicInnerLoopAction(InnerLoopAction):
         # Use GateSet's built-in ramp to zero
         self.voltage_sequence.ramp_to_zero()
 
+    def build_readout_controls(self, channels = None):
+        channels = getattr(self, "selected_readout_channels", []) or [self.readout_pulse.channel]
+        rows = []
+        for ch in channels: 
+            pulse = self._pulse_for(ch)
+            name = ch.name
+
+            additional_components = [
+                create_input_field(
+                    id=self._get_id(f"{name}-readout_frequency"),
+                    label=f"{name} frequency",
+                    value=pulse.channel.intermediate_frequency,
+                    input_style={"width": "200px"},
+                    units="Hz",
+                ),
+                create_input_field(
+                    id=self._get_id(f"{name}-readout_duration"),
+                    label=f"{name} duration",
+                    value=pulse.length,
+                    units="ns",
+                    step=10,
+                ),
+            ]
+            if self.use_dBm:
+                additional_components.append(
+                    create_input_field(
+                        id=self._get_id(f"{name}-readout_power"),
+                        label=f"{name} power",
+                        value=unit.volts2dBm(pulse.amplitude),
+                        units="dBm",
+                    ),
+                )
+            else:
+                additional_components.append(
+                    create_input_field(
+                        id=self._get_id(f"{name}-readout_amplitude"),
+                        label=f"{name} amplitude",
+                        value=pulse.amplitude,
+                        units="V",
+                    ),
+                )
+            rows.append(html.Div(additional_components, id = f"{self.component_id}-ro-params-{name}"))
+        return rows
+
     def get_dash_components(self, include_subcomponents: bool = True) -> List[html.Div]:
         components = super().get_dash_components(include_subcomponents)
 
-        additional_components = [
-            create_input_field(
-                id=self._get_id("readout_frequency"), 
-                label="Readout frequency",
-                value=self.readout_pulse.channel.intermediate_frequency,
-                input_style={"width": "200px"},
-                units="Hz",
-            ),
-            create_input_field(
-                id=self._get_id("readout_duration"), 
-                label="Readout duration",
-                value=self.readout_pulse.length,
-                units="ns",
-                step=10,
-            ),
-        ]
-
-        if self.use_dBm:
-            additional_components.append(
-                create_input_field(
-                    id=self._get_id("readout_power"),
-                    label="Readout power",
-                    value=unit.volts2dBm(self.readout_pulse.amplitude),
-                    units="dBm",
-                ),
-            )
-        else:
-            additional_components.append(
-                create_input_field(
-                    id=self._get_id("readout_amplitude"),
-                    label="Readout amplitude",
-                    value=self.readout_pulse.amplitude,
-                    units="V",
-                ),
-            )
-
-        components.append(html.Div(additional_components))
-
+        components.append(html.Div(
+            id=f"{self.component_id}-readout-params-container",
+            children=self.build_readout_controls(),
+        ))
         return components
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
@@ -160,33 +182,48 @@ class BasicInnerLoopAction(InnerLoopAction):
         params = parameters[self.component_id]
 
         flags = ModifiedFlags.NONE
-        if "readout_frequency" in params and (
-                self.readout_pulse.channel.intermediate_frequency != params["readout_frequency"]
+
+        channels = getattr(self, "selected_readout_channels", []) or [self.readout_pulse.channel]
+        for ch in channels: 
+            pulse = self._pulse_for(ch)
+            name = ch.name
+
+            f_key = f"{name}-readout_frequency"
+            d_key = f"{name}-readout_duration"
+            p_key = f"{name}-readout_power"
+            v_key = f"{name}-readout_amplitude"
+
+            freq = params.get(f_key, params.get("readout_frequency"))
+            dur  = params.get(d_key,  params.get("readout_duration"))
+            amp_dbm = params.get(p_key, params.get("readout_power"))
+            amp_v = params.get(v_key, params.get("readout_amplitude"))
+
+            if freq is not None and (
+                pulse.channel.intermediate_frequency
+                != freq
             ):
-            self.readout_pulse.channel.intermediate_frequency = params[
-                "readout_frequency"
-            ]
-            flags |= ModifiedFlags.PARAMETERS_MODIFIED
-            flags |= ModifiedFlags.PROGRAM_MODIFIED
-            flags |= ModifiedFlags.CONFIG_MODIFIED
-
-        if "readout_duration" in params and self.readout_pulse.length != params["readout_duration"]:
-            self.readout_pulse.length = params["readout_duration"]
-            flags |= ModifiedFlags.PARAMETERS_MODIFIED
-            flags |= ModifiedFlags.PROGRAM_MODIFIED
-            flags |= ModifiedFlags.CONFIG_MODIFIED
-
-        if self.use_dBm:
-            if "readout_power" in params and unit.volts2dBm(self.readout_pulse.amplitude) != params["readout_power"]:
-                self.readout_pulse.amplitude = unit.dBm2volts(params["readout_power"])
+                pulse.channel.intermediate_frequency = freq
                 flags |= ModifiedFlags.PARAMETERS_MODIFIED
                 flags |= ModifiedFlags.PROGRAM_MODIFIED
                 flags |= ModifiedFlags.CONFIG_MODIFIED
-        else:
-            if "readout_amplitude" in params and self.readout_pulse.amplitude != params["readout_amplitude"]:
-                self.readout_pulse.amplitude = params["readout_amplitude"]
+
+            if dur is not None and pulse.length != dur:
+                pulse.length = dur
                 flags |= ModifiedFlags.PARAMETERS_MODIFIED
                 flags |= ModifiedFlags.PROGRAM_MODIFIED
                 flags |= ModifiedFlags.CONFIG_MODIFIED
+
+            if self.use_dBm:
+                if amp_dbm is not None and unit.volts2dBm(pulse.amplitude) != amp_dbm:
+                    pulse.amplitude = unit.dBm2volts(amp_dbm)
+                    flags |= ModifiedFlags.PARAMETERS_MODIFIED
+                    flags |= ModifiedFlags.PROGRAM_MODIFIED
+                    flags |= ModifiedFlags.CONFIG_MODIFIED
+            else:
+                if amp_v is not None and pulse.amplitude != amp_v:
+                    pulse.amplitude = amp_v
+                    flags |= ModifiedFlags.PARAMETERS_MODIFIED
+                    flags |= ModifiedFlags.PROGRAM_MODIFIED
+                    flags |= ModifiedFlags.CONFIG_MODIFIED
 
         return flags

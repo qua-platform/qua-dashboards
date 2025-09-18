@@ -29,6 +29,7 @@ from qua_dashboards.video_mode.utils.annotation_utils import (
 )
 from qua_dashboards.video_mode.utils.data_utils import load_data
 from qua_dashboards.video_mode.data_acquirers.simulated_data_acquirer import SimulatedDataAcquirer
+from qua_dashboards.video_mode.utils.config import TransformationMatrixConfig
 
 logger = logging.getLogger(__name__)
 
@@ -488,18 +489,11 @@ class AnnotationTabController(BaseTabController):
             prevent_initial_call=True,
         )
         def _compute_transformation_matrix_from_gradients(n_clicks: int, current_viewer_data_ref: Optional[Dict[str, str]]):
-            logger.info(f"{self._get_id(self._GRADIENT_COMPUTATION_BUTTON_SUFFIX)}: Compute slopes clicked.")
+            logger.info(f"{self._get_id(self._GRADIENT_COMPUTATION_BUTTON_SUFFIX)}: Compute transformation matrix clicked.")
 
-            # Parameters     MAYBE AS USER INPUT (WITH DEFAULT VALUES)?
-            scale = "per-dimension"                             # "overall" or "per-dimension"
-            likelihood = "with-reg"                             # "without-reg" or "with-reg"
-            w = np.array([0.8, 0.1, 0.1]).reshape(-1, 1)        # Weights for the Gaussian components (mixing coefficients), values have shape (3,1) for broadcasting
-            init_params = np.array([0.1, 0.0, 0.0, 0.1, 0.0])   # Initial guess: p1, p2 horizontal and vertical, tau = log_sigma = log(1.0) = 0.0
-            sigmaX_blur = sigmaY_blur = 1
-            ksize_sobelX = ksize_sobelY = 5
-            frac = 0.7
-            max_iterations = 1000000
-            epsilon = 1.e-4
+            # Parameters from config.py in utils
+            cfg = TransformationMatrixConfig()
+            logger.info(f"Config: {cfg}")
 
             # Get current base image
             if (
@@ -514,12 +508,13 @@ class AnnotationTabController(BaseTabController):
 
             image_data = static_data_object.get("base_image_data")
 
-            p1, p2, m1, m2 = compute_transformation_matrix_from_image_gradients(image_data.values, scale, likelihood, init_params, w, 
-                                                                                sigmaX_blur=sigmaX_blur, sigmaY_blur=sigmaY_blur, ksize_sobelX=ksize_sobelX, ksize_sobelY=ksize_sobelY, frac=frac, 
-                                                                                max_iterations=max_iterations, epsilon=epsilon)          
-            warp_image_with_normals(image_data.values,p1,p2)  # Creates a plot to check whether the transformation matrix is computed correctly
+            # Compute the normals
+            p1, p2, m1, m2 = compute_transformation_matrix_from_image_gradients(image_data.values, cfg)
+            # Warp the image --> Creates a plot to check whether the transformation matrix is computed correctly
+            warp_image_with_normals(image_data.values,p1,p2)
 
-            A_inv, A = compute_transformation_matrix(p1,p2)
+            # Compute the transformation matrix
+            A_inv, A = compute_transformation_matrix(p1,p2) 
             A_inv_formatted = np.array2string(A_inv, precision=4, suppress_small=True)
             output = f"Transformation matrix (compensated --> original coords):\n {A_inv_formatted}"
             

@@ -769,7 +769,7 @@ def subtract_low_norm_mean(img, frac=0.7):
     return img - mean_value
 
 
-def image_gradients(img, sigmaX_blur=1, sigmaY_blur=1, ksize_sobelX=5, ksize_sobelY=5, frac=0.7):
+def image_gradients(img, cfg):
     """
     Compute the gradients in x- and y-direction of an image using Sobel filters. 
     Apply Gaussian blurring before computing the gradients. Subtract the mean of pixels with small norm from the gradient images.
@@ -788,20 +788,20 @@ def image_gradients(img, sigmaX_blur=1, sigmaY_blur=1, ksize_sobelX=5, ksize_sob
     """
 
     # Apply Gaussian blur to the image
-    blurred_img = cv.GaussianBlur(img, (0, 0), sigmaX_blur, sigmaY_blur)   # (0,0) means that the kernel size is automatically computed based on sigmaX and sigmaY; sigmaX=sigmaY
+    blurred_img = cv.GaussianBlur(img, (0, 0), cfg.sigmaX_blur, cfg.sigmaY_blur)   # (0,0) means that the kernel size is automatically computed based on sigmaX and sigmaY; sigmaX=sigmaY
 
     # Apply Sobel filter to compute gradients
-    sobel_x = cv.Sobel(blurred_img, cv.CV_64F, 1, 0, ksize=ksize_sobelX)  # Output image type is np.float64
-    sobel_y = cv.Sobel(blurred_img, cv.CV_64F, 0, 1, ksize=ksize_sobelY)
+    sobel_x = cv.Sobel(blurred_img, cv.CV_64F, 1, 0, ksize=cfg.ksize_sobelX)  # Output image type is np.float64
+    sobel_y = cv.Sobel(blurred_img, cv.CV_64F, 0, 1, ksize=cfg.ksize_sobelY)
 
     # Subtract mean of pixels with small norm
-    sobel_x = subtract_low_norm_mean(sobel_x, frac=frac)  
-    sobel_y = subtract_low_norm_mean(sobel_y, frac=frac)
+    sobel_x = subtract_low_norm_mean(sobel_x, frac=cfg.frac)  
+    sobel_y = subtract_low_norm_mean(sobel_y, frac=cfg.frac)
 
     return sobel_x, sobel_y
 
 
-def generate_2D_gradient_vector(img, *, sigmaX_blur=1, sigmaY_blur=1, ksize_sobelX=5, ksize_sobelY=5, frac=0.7):
+def generate_2D_gradient_vector(img, cfg):
     """
     Generates a dataset of 2D gradient vectors from the input image using Sobel filters. Only one channel is considered.
 
@@ -823,7 +823,7 @@ def generate_2D_gradient_vector(img, *, sigmaX_blur=1, sigmaY_blur=1, ksize_sobe
         img = (255 * (img - img.min()) / (img.max() - img.min())).astype(np.uint8)
 
     # Compute gradients
-    sobel_x, sobel_y = image_gradients(img, sigmaX_blur=sigmaX_blur, sigmaY_blur=sigmaY_blur, ksize_sobelX=ksize_sobelX, ksize_sobelY=ksize_sobelY, frac=frac)
+    sobel_x, sobel_y = image_gradients(img, cfg)
 
     # Generate 2D gradient vector
     points = np.stack([sobel_x,sobel_y],axis=-1).reshape(-1,2)  # stack along the last axis -> shape (H,W,2), then reshape to (H*W,2), i.e. rows are observations (pixels), columns are variables (sobel_x, sobel_y)
@@ -970,26 +970,30 @@ def warp_image_with_normals(img, n1, n2, fill_value=1e-6):
     plt.show()
 
 
-def compute_transformation_matrix_from_image_gradients(img, scale, method, init_params, w, sigmaX_blur=1, sigmaY_blur=1, ksize_sobelX=5, ksize_sobelY=5, frac=0.7, max_iterations=1.e6, epsilon=1.e-4):
+def compute_transformation_matrix_from_image_gradients(img, cfg):
+
+    # Turn tuples into arrays (they do not change values during optimization)
+    w = np.array(cfg.model.w).reshape(-1, 1)  # values have shape (3,1) for broadcasting
+    init_params = np.array(cfg.model.init_params, dtype=float)
 
     # Opencv assumes that the origin is at upper left. Apply vertical flip to the image to convert origin at lower left to origin at upper left.
     img = np.flipud(img)
 
     # Image gradients
-    data = generate_2D_gradient_vector(img, sigmaX_blur=sigmaX_blur, sigmaY_blur=sigmaY_blur, ksize_sobelX=ksize_sobelX, ksize_sobelY=ksize_sobelY, frac=frac)
+    data = generate_2D_gradient_vector(img, cfg.gradient)
 
     # Scale the image gradients
-    data, data_std = scale_data(data, scale)
+    data, data_std = scale_data(data, cfg.model.scale)
 
     # Data fitting (GMM on gradients)
-    logger.info(f"Optimizing GMM")
-    if method=="without-reg":            
+    logger.info(f"Optimizing GMM")            
+    if cfg.model.likelihood == "without-reg":
         logger.info(f"Initial log-likelihood: {gmm_log_likelihood(init_params,data,w)}")
         problem = value_and_grad(lambda params: gmm_log_likelihood(params,data,w))
-    if method=="with-reg":
+    if cfg.model.likelihood == "with-reg":
         logger.info(f"Initial log-likelihood: {gmm_log_likelihood_reg(init_params,data,w)}")
         problem = value_and_grad(lambda params: gmm_log_likelihood_reg(params,data,w))
-    result = minimize(problem, init_params, method="L-BFGS-B", jac=True, tol=0.0, options={'maxiter':max_iterations, 'gtol': epsilon})
+    result = minimize(problem, init_params, method="L-BFGS-B", jac=True, tol=0.0, options={'maxiter':cfg.optimization.max_iterations, 'gtol': cfg.optimization.epsilon})
 
     p1 = result.x[:2]  # normal aligned with x-axis
     p2 = result.x[2:4] # normal aligned with y-axis

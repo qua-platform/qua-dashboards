@@ -218,5 +218,4 @@ class Base2DDataAcquirer(BaseDataAcquirer):
 
     def get_components(self) -> List[BaseUpdatableComponent]:
         components = super().get_components()
-        components = components + self.sweep_axes
         return components

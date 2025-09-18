@@ -81,19 +81,19 @@ class SweepAxis(BaseUpdatableComponent):
     def register_callbacks(self, app: Dash) -> None:
         pass
 
-    def create_axis_layout(
-        self,
-        min_span: float,
-        max_span: Optional[float] = None,
-    ):
+    def create_axis_layout(self, min_span: float, max_span: Optional[float] = None):
+        """Modified to use pattern-matching IDs"""
         if not self.name.replace("_", "").isalnum():
             raise ValueError(
                 f"Axis {self.name} must only contain alphanumeric characters and underscores."
             )
+        
+        # Use pattern-matching IDs instead of regular IDs
         ids = {
-            "span": self._get_id("span"),
-            "points": self._get_id("points"),
+            "span": {"type": "number-input", "index": f"{self.component_id}::span"},
+            "points": {"type": "number-input", "index": f"{self.component_id}::points"},
         }
+        
         return dbc.Col(
             dbc.Card(
                 [

@@ -1,0 +1,123 @@
+import logging
+from typing import Any
+import dash_bootstrap_components as dbc
+from dash import html, ctx, ALL, no_update, Dash, Input, Output, State, no_update
+
+from qua_dashboards.video_mode.tab_controllers.base_tab_controller import (
+    BaseTabController,
+)
+from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import (
+    BaseDataAcquirer
+)
+
+logger = logging.getLogger(__name__)
+
+__all__ = ["SettingsTabController"]
+
+
+class SettingsTabController(BaseTabController):
+    """
+    Controls the 'Settings' tab in the Video Mode application.
+    This tab allows the user to adjust the settings of the measurement, such as the readout power and frequency, or the readout parameter (I/Q/R/Phase)
+    """
+
+    _TAB_LABEL = "Settings Tab"
+    _TAB_VALUE = "settings-tab"
+    _DUMMY_OUT_SUFFIX = "dummy-settings-updates"
+
+    def __init__(
+        self,
+        data_acquirer: BaseDataAcquirer,
+        component_id: str = "settings-tab",
+        is_active: bool = False,
+        **kwargs: Any,
+    ) -> None:
+        """Initializes the Settings Tab.
+        Args:
+            component_id: A unique string identifier for this component instance.
+            data_acquirer: The Data Acquirer instance that the measurement uses
+            **kwargs: Additional keyword arguments passed to BaseComponent.
+        """
+        super().__init__(component_id=component_id, is_active=is_active, **kwargs)
+        self._data_acquirer_instance = data_acquirer
+        logger.info(
+            f"Settings Tab '{self.component_id}' initialized with "
+            f"Data Acquirer '{self._data_acquirer_instance}'."
+        )
+
+    def get_layout(self):
+        inner_controls = self._data_acquirer_instance.qua_inner_loop_action.get_dash_components(include_subcomponents=True)
+        result_type_selector = dbc.Row(
+            [
+                dbc.Label("Result Type", width="auto", className="col-form-label"),
+                dbc.Col(
+                    dbc.Select(
+                        id={"type": "select", "index": f"{self._data_acquirer_instance.component_id}::result-type"},
+                        options=[
+                            {"label": rt, "value": rt} for rt in self._data_acquirer_instance.result_types
+                        ],
+                        value=self._data_acquirer_instance.result_type,
+                    ),
+                    width=True,
+                ),
+            ],
+            className="mb-2 align-items-center",
+        )
+        return dbc.Card(
+            dbc.CardBody([html.H5("Settings", className="text-light"), *inner_controls, result_type_selector,
+                        html.Div(
+                        id=self._get_id(self._DUMMY_OUT_SUFFIX), style={"display": "none"}
+                    ),]),
+            color="dark",
+            inverse=True,
+            className="tab-card-dark",
+        )
+
+    def on_tab_activated(self):
+        logger.info(f"SettingsTabController '{self.component_id}' activated.")
+        return super().on_tab_activated()
+
+    def on_tab_deactivated(self):
+        logger.info(f"SettingsTabController '{self.component_id}' deactivated.")
+        return super().on_tab_deactivated()
+
+    def register_callbacks(self, app: Dash, **kwargs):
+        acq = self._data_acquirer_instance
+        dummy_out = self._get_id(self._DUMMY_OUT_SUFFIX)
+
+        @app.callback(
+            Output(dummy_out, "children"),
+            Input({"type": "comp-inner-loop", "index": ALL}, "value"),
+            State({"type": "comp-inner-loop", "index": ALL}, "id"),
+            Input({"type": "select", "index": ALL}, "value"),
+            State({"type": "select", "index": ALL}, "id"),
+            prevent_initial_call=True,
+        )
+        def _apply_settings(inner_vals, inner_ids, select_vals, select_ids):
+            """
+            Collect changes from the Settings tab and forward them to the acquirer.
+            - Inner loop controls use ids like {'type': 'comp-inner-loop', 'index': 'readout_duration'}
+            - Result type select uses id like {'type': 'select', 'index': 'opx-data-acquirer::result-type'}
+            """
+            params_to_update = {}
+            if inner_vals and inner_ids:
+                for v, idd in zip(inner_vals, inner_ids):
+                    if not isinstance(idd, dict):
+                        continue
+                    param = idd.get("index")
+                    if param is None:
+                        continue
+                    params_to_update.setdefault("inner-loop", {})[param] = v
+            if select_vals and select_ids:
+                for v, idd in zip(select_vals, select_ids):
+                    if not isinstance(idd, dict):
+                        continue
+                    idx = idd.get("index")
+                    if isinstance(idx, str) and "::" in idx:
+                        comp_id, param = idx.split("::", 1)
+                        params_to_update.setdefault(comp_id, {})[param] = v
+
+            if params_to_update:
+                acq.update_parameters(params_to_update)
+
+            return no_update

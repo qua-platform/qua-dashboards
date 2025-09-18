@@ -45,6 +45,7 @@ class LiveViewTabController(BaseTabController):
         data_acquirer: BaseDataAcquirer,
         component_id: str = "live-view-tab-controller",
         is_active: bool = False,
+        show_inner_loop_controls: bool = False,
         **kwargs: Any,
     ) -> None:
         """Initializes the LiveViewTabController.
@@ -57,6 +58,7 @@ class LiveViewTabController(BaseTabController):
         """
         super().__init__(component_id=component_id, is_active=is_active, **kwargs)
         self._data_acquirer_instance: BaseDataAcquirer = data_acquirer
+        self._show_inner_loop_controls = show_inner_loop_controls
         logger.info(
             f"LiveViewTabController '{self.component_id}' initialized with "
             f"Data Acquirer '{self._data_acquirer_instance.component_id}'."
@@ -149,7 +151,7 @@ class LiveViewTabController(BaseTabController):
         )
 
         acquirer_specific_controls = (
-            self._data_acquirer_instance.get_dash_components(include_subcomponents=True)
+            self._data_acquirer_instance.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
             if self._data_acquirer_instance
             else [html.P("Data acquirer components could not be loaded.")]
         )
@@ -310,7 +312,7 @@ class LiveViewTabController(BaseTabController):
                 }
             }
             self._data_acquirer_instance.update_parameters(params)
-            return "", self._data_acquirer_instance.get_dash_components(include_subcomponents=True)
+            return "", self._data_acquirer_instance.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
 
     def _register_acquisition_control_callback(
         self, app: Dash, orchestrator_stores: Dict[str, Any]
@@ -416,15 +418,14 @@ class LiveViewTabController(BaseTabController):
     def _register_parameter_update_callback(self, app: Dash) -> None:
         """Hybrid callback: pattern-matching for sweep axes, static inputs for inner loop/scan mode."""
         
-        # Get static components (inner loop, scan mode, main acquirer - excluding sweep axes)
         all_acquirer_components = self._data_acquirer_instance.get_components()
         static_components = [
             comp for comp in all_acquirer_components 
             if not hasattr(comp, 'span')  # Exclude SweepAxis components
-            and not comp.__class__.__name__ == 'BasicInnerLoopAction'  # Add this line
+            and getattr(comp, 'component_id', None) != 'inner-loop'
         ]
-        
-        # Build static inputs for non-axis components (old approach)
+
+
         static_inputs = []
         static_states = []
         if static_components:
@@ -438,44 +439,32 @@ class LiveViewTabController(BaseTabController):
             ]
 
         @app.callback(
-            Output(
-                self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX),
-                component_property="children",
-                allow_duplicate=True,
-            ),
-            # Pattern-matching inputs for dynamic sweep axes
+            Output(self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX), "children", allow_duplicate=True),
             Input({"type": "number-input", "index": ALL}, "value"),
-            Input({"type": "select", "index": ALL}, "value"),
-            # Static inputs for inner loop, scan mode, etc.
             *static_inputs,
-            # States
             State({"type": "number-input", "index": ALL}, "id"),
-            State({"type": "select", "index": ALL}, "id"),
             *static_states,
             prevent_initial_call=True,
         )
         def handle_hybrid_parameter_update(*args):
             """Handle both pattern-matched axis parameters and static component parameters."""
-            
-            num_pattern_inputs = 2  # number-input and select
+
+            num_pattern_inputs = 1
             num_static_inputs = len(static_inputs)
-            num_pattern_states = 2  # number-input and select states  
+            num_pattern_states = 1
             num_static_states = len(static_states)
-            
-            # Parse arguments
+
             pattern_values = args[:num_pattern_inputs]
             static_values = args[num_pattern_inputs:num_pattern_inputs + num_static_inputs]
-            pattern_states = args[num_pattern_inputs + num_static_inputs:num_pattern_inputs + num_static_inputs + num_pattern_states]
+            pattern_states = args[num_pattern_inputs + num_static_inputs:
+                                num_pattern_inputs + num_static_inputs + num_pattern_states]
             static_states_data = args[num_pattern_inputs + num_static_inputs + num_pattern_states:]
-            
+
             parameters_to_update = {}
-            
-            # Handle pattern-matched axis parameters (NEW APPROACH)
-            if len(pattern_values) >= 2 and len(pattern_states) >= 2:
-                number_values, select_values = pattern_values[0], pattern_values[1]
-                number_ids, select_ids = pattern_states[0], pattern_states[1]
-                
-                # Process number inputs (span, points)
+
+            if len(pattern_values) >= 1 and len(pattern_states) >= 1:
+                number_values = pattern_values[0]
+                number_ids = pattern_states[0]
                 if number_values and number_ids:
                     for value, id_dict in zip(number_values, number_ids):
                         if value is not None and isinstance(id_dict, dict):
@@ -483,23 +472,8 @@ class LiveViewTabController(BaseTabController):
                             if param_key:
                                 component_id, param_name = self._parse_param_id(param_key)
                                 if component_id and param_name:
-                                    if component_id not in parameters_to_update:
-                                        parameters_to_update[component_id] = {}
-                                    parameters_to_update[component_id][param_name] = value
-                
-                # Process select inputs (result-type, etc.)
-                if select_values and select_ids:
-                    for value, id_dict in zip(select_values, select_ids):
-                        if value is not None and isinstance(id_dict, dict):
-                            param_key = id_dict.get("index", "")
-                            if param_key:
-                                component_id, param_name = self._parse_param_id(param_key)
-                                if component_id and param_name:
-                                    if component_id not in parameters_to_update:
-                                        parameters_to_update[component_id] = {}
-                                    parameters_to_update[component_id][param_name] = value
+                                    parameters_to_update.setdefault(component_id, {})[param_name] = value
 
-            # Handle static component parameters (OLD APPROACH)
             for i, component in enumerate(static_components):
                 if i < len(static_values) and i < len(static_states_data):
                     component_params = self._parse_component_parameters(
@@ -510,10 +484,8 @@ class LiveViewTabController(BaseTabController):
                     if component_params:
                         parameters_to_update[component.component_id] = component_params
 
-            # Apply all updates
             if parameters_to_update:
                 self._data_acquirer_instance.update_parameters(parameters_to_update)
-
             return dash.no_update
 
     def _parse_param_id(self, param_id_str):

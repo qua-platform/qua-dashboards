@@ -23,6 +23,9 @@ from qua_dashboards.video_mode.tab_controllers.live_view_tab_controller import (
 from qua_dashboards.video_mode.tab_controllers.annotation_tab_controller import (
     AnnotationTabController,
 )
+from qua_dashboards.video_mode.tab_controllers.settings_tab_controller import (
+    SettingsTabController,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -119,13 +122,19 @@ class VideoModeComponent(BaseComponent):
             live_view_tab = LiveViewTabController(
                 component_id=f"{self.component_id}-live-view-tab",
                 data_acquirer=self.data_acquirer, 
+                show_inner_loop_controls=False,
             )
             annotation_tab = AnnotationTabController(
                 component_id=f"{self.component_id}-annotation-tab",
             )
+            settings_tab = SettingsTabController(
+                component_id = f"{self.component_id}-settings-tab",
+                data_acquirer=self.data_acquirer
+            )
             self.tab_controllers: List[BaseTabController] = [
                 live_view_tab,
                 annotation_tab,
+                settings_tab
             ]
         else:
             self.tab_controllers = tab_controllers

@@ -89,14 +89,14 @@ class BasicInnerLoopAction(InnerLoopAction):
 
         additional_components = [
             create_input_field(
-                id={"type": "number-input", "index": f"{self.component_id}::readout_frequency"},
+                id=self._get_id("readout_frequency"), 
                 label="Readout frequency",
                 value=self.readout_pulse.channel.intermediate_frequency,
                 input_style={"width": "200px"},
                 units="Hz",
             ),
             create_input_field(
-                id={"type": "number-input", "index": f"{self.component_id}::readout_duration"},
+                id=self._get_id("readout_duration"), 
                 label="Readout duration",
                 value=self.readout_pulse.length,
                 units="ns",

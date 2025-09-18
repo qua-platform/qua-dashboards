@@ -93,6 +93,7 @@ class SweepAxis(BaseUpdatableComponent):
         ids = {
             "span": self._get_id("span"),
             "points": self._get_id("points"),
+            "attenuation": self._get_id("attenuation")
         }
         return dbc.Col(
             dbc.Card(
@@ -115,6 +116,15 @@ class SweepAxis(BaseUpdatableComponent):
                                 min=1,
                                 max=501,
                                 step=1,
+                            ),
+                            create_input_field(
+                                id=ids["attenuation"],
+                                label="Attenuation (dB)",
+                                value=self.attenuation,
+                                step=0.1,
+                                min=0,    # or whatever bounds you want
+                                max=120,
+                                input_style={"width": "100px"},
                             ),
                         ],
                         className="text-light",
@@ -145,4 +155,12 @@ class SweepAxis(BaseUpdatableComponent):
         if "points" in params and self.points != params["points"]:
             self.points = params["points"]
             flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
+        if "attenuation" in params:
+            try:
+                val = float(params["attenuation"])
+            except (TypeError, ValueError):
+                val = self.attenuation if isinstance(self.attenuation, (int, float)) else 0.0
+            if self.attenuation != val:
+                self.attenuation = val
+                flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
         return flags

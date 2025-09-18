@@ -145,7 +145,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         else: 
             return self.scan_2d
         
-    def ensure_axis(self) -> bool: 
+    def ensure_axis(self) -> None:
         gs = self.gate_set
         have = {ax.name for ax in self.sweep_axes}
         for nm in gs.valid_channel_names:

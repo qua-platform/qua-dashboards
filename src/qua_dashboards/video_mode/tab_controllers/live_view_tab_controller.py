@@ -414,49 +414,117 @@ class LiveViewTabController(BaseTabController):
             return button_text, button_color, status_text, status_color
 
     def _register_parameter_update_callback(self, app: Dash) -> None:
-
-        """Registers callback for data acquirer parameter updates."""
+        """Hybrid callback: pattern-matching for sweep axes, static inputs for inner loop/scan mode."""
+        
+        # Get static components (inner loop, scan mode, main acquirer - excluding sweep axes)
         all_acquirer_components = self._data_acquirer_instance.get_components()
-
-        dynamic_inputs = [
-            Input(component._get_id(ALL), "value")
-            for component in all_acquirer_components
+        static_components = [
+            comp for comp in all_acquirer_components 
+            if not hasattr(comp, 'span')  # Exclude SweepAxis components
+            and not comp.__class__.__name__ == 'BasicInnerLoopAction'  # Add this line
         ]
-        dynamic_states_ids = [
-            State(component._get_id(ALL), "id") for component in all_acquirer_components
-        ]
+        
+        # Build static inputs for non-axis components (old approach)
+        static_inputs = []
+        static_states = []
+        if static_components:
+            static_inputs = [
+                Input(component._get_id(ALL), "value")
+                for component in static_components
+            ]
+            static_states = [
+                State(component._get_id(ALL), "id") 
+                for component in static_components
+            ]
 
         @app.callback(
             Output(
                 self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX),
                 component_property="children",
+                allow_duplicate=True,
             ),
-            dynamic_inputs,
-            dynamic_states_ids,
+            # Pattern-matching inputs for dynamic sweep axes
+            Input({"type": "number-input", "index": ALL}, "value"),
+            Input({"type": "select", "index": ALL}, "value"),
+            # Static inputs for inner loop, scan mode, etc.
+            *static_inputs,
+            # States
+            State({"type": "number-input", "index": ALL}, "id"),
+            State({"type": "select", "index": ALL}, "id"),
+            *static_states,
             prevent_initial_call=True,
         )
-        def handle_acquirer_parameter_update(*args: Any):
-            num_comp_types = len(all_acquirer_components)
-            values_by_type_list = args[:num_comp_types]
-            ids_by_type_list = args[num_comp_types : 2 * num_comp_types]
+        def handle_hybrid_parameter_update(*args):
+            """Handle both pattern-matched axis parameters and static component parameters."""
+            
+            num_pattern_inputs = 2  # number-input and select
+            num_static_inputs = len(static_inputs)
+            num_pattern_states = 2  # number-input and select states  
+            num_static_states = len(static_states)
+            
+            # Parse arguments
+            pattern_values = args[:num_pattern_inputs]
+            static_values = args[num_pattern_inputs:num_pattern_inputs + num_static_inputs]
+            pattern_states = args[num_pattern_inputs + num_static_inputs:num_pattern_inputs + num_static_inputs + num_pattern_states]
+            static_states_data = args[num_pattern_inputs + num_static_inputs + num_pattern_states:]
+            
+            parameters_to_update = {}
+            
+            # Handle pattern-matched axis parameters (NEW APPROACH)
+            if len(pattern_values) >= 2 and len(pattern_states) >= 2:
+                number_values, select_values = pattern_values[0], pattern_values[1]
+                number_ids, select_ids = pattern_states[0], pattern_states[1]
+                
+                # Process number inputs (span, points)
+                if number_values and number_ids:
+                    for value, id_dict in zip(number_values, number_ids):
+                        if value is not None and isinstance(id_dict, dict):
+                            param_key = id_dict.get("index", "")
+                            if param_key:
+                                component_id, param_name = self._parse_param_id(param_key)
+                                if component_id and param_name:
+                                    if component_id not in parameters_to_update:
+                                        parameters_to_update[component_id] = {}
+                                    parameters_to_update[component_id][param_name] = value
+                
+                # Process select inputs (result-type, etc.)
+                if select_values and select_ids:
+                    for value, id_dict in zip(select_values, select_ids):
+                        if value is not None and isinstance(id_dict, dict):
+                            param_key = id_dict.get("index", "")
+                            if param_key:
+                                component_id, param_name = self._parse_param_id(param_key)
+                                if component_id and param_name:
+                                    if component_id not in parameters_to_update:
+                                        parameters_to_update[component_id] = {}
+                                    parameters_to_update[component_id][param_name] = value
 
-            parameters_to_update: Dict[str, Dict[str, Any]] = {}
+            # Handle static component parameters (OLD APPROACH)
+            for i, component in enumerate(static_components):
+                if i < len(static_values) and i < len(static_states_data):
+                    component_params = self._parse_component_parameters(
+                        component.component_id,
+                        static_values[i],
+                        static_states_data[i],
+                    )
+                    if component_params:
+                        parameters_to_update[component.component_id] = component_params
 
-            for i, component in enumerate(all_acquirer_components):
-                component_params = self._parse_component_parameters(
-                    component.component_id,
-                    values_by_type_list[i],
-                    ids_by_type_list[i],
-                )
-
-                if not component_params:
-                    continue
-                parameters_to_update[component.component_id] = component_params
-
-            self._data_acquirer_instance.update_parameters(parameters_to_update)
+            # Apply all updates
+            if parameters_to_update:
+                self._data_acquirer_instance.update_parameters(parameters_to_update)
 
             return dash.no_update
 
+    def _parse_param_id(self, param_id_str):
+        """Parse parameter ID string to extract component_id and parameter name."""
+        try:
+            if "::" in param_id_str:
+                component_id, param_name = param_id_str.split("::", 1)
+                return component_id, param_name
+            return None, None
+        except:
+            return None, None
     @staticmethod
     def _parse_component_parameters(
         component_id: Union[str, dict],

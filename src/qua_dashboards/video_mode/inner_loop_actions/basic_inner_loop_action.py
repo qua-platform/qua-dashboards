@@ -89,14 +89,14 @@ class BasicInnerLoopAction(InnerLoopAction):
 
         additional_components = [
             create_input_field(
-                id=self._get_id("readout_frequency"),
+                id={"type": "number-input", "index": f"{self.component_id}::readout_frequency"},
                 label="Readout frequency",
                 value=self.readout_pulse.channel.intermediate_frequency,
                 input_style={"width": "200px"},
                 units="Hz",
             ),
             create_input_field(
-                id=self._get_id("readout_duration"),
+                id={"type": "number-input", "index": f"{self.component_id}::readout_duration"},
                 label="Readout duration",
                 value=self.readout_pulse.length,
                 units="ns",
@@ -135,10 +135,9 @@ class BasicInnerLoopAction(InnerLoopAction):
         params = parameters[self.component_id]
 
         flags = ModifiedFlags.NONE
-        if (
-            self.readout_pulse.channel.intermediate_frequency
-            != params["readout_frequency"]
-        ):
+        if "readout_frequency" in params and (
+                self.readout_pulse.channel.intermediate_frequency != params["readout_frequency"]
+            ):
             self.readout_pulse.channel.intermediate_frequency = params[
                 "readout_frequency"
             ]
@@ -146,20 +145,20 @@ class BasicInnerLoopAction(InnerLoopAction):
             flags |= ModifiedFlags.PROGRAM_MODIFIED
             flags |= ModifiedFlags.CONFIG_MODIFIED
 
-        if self.readout_pulse.length != params["readout_duration"]:
+        if "readout_duration" in params and self.readout_pulse.length != params["readout_duration"]:
             self.readout_pulse.length = params["readout_duration"]
             flags |= ModifiedFlags.PARAMETERS_MODIFIED
             flags |= ModifiedFlags.PROGRAM_MODIFIED
             flags |= ModifiedFlags.CONFIG_MODIFIED
 
         if self.use_dBm:
-            if unit.volts2dBm(self.readout_pulse.amplitude) != params["readout_power"]:
+            if "readout_power" in params and unit.volts2dBm(self.readout_pulse.amplitude) != params["readout_power"]:
                 self.readout_pulse.amplitude = unit.dBm2volts(params["readout_power"])
                 flags |= ModifiedFlags.PARAMETERS_MODIFIED
                 flags |= ModifiedFlags.PROGRAM_MODIFIED
                 flags |= ModifiedFlags.CONFIG_MODIFIED
         else:
-            if self.readout_pulse.amplitude != params["readout_amplitude"]:
+            if "readout_amplitude" in params and self.readout_pulse.amplitude != params["readout_amplitude"]:
                 self.readout_pulse.amplitude = params["readout_amplitude"]
                 flags |= ModifiedFlags.PARAMETERS_MODIFIED
                 flags |= ModifiedFlags.PROGRAM_MODIFIED

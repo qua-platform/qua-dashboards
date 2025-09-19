@@ -829,23 +829,40 @@ def generate_2D_gradient_vector(img, cfg):
 
 
 def scale_data(points, scale):
+    """
+    Scale the 2D data points. Either with the overall standard deviation (scale=="overall") or separately for each dimension (scale=="per-dimension").
+
+    Input:
+    points      2D data points
+
+    Returns:
+    data        Scaled data points
+    data_std    Scaling factor for each dimension
+    """
     print(f"Scaling data using method: {scale}")
     if scale == "overall":
-        data = points/anp.std(points)
-        data_std = {'x': 1, 'y': 1}
+        std_x = std_y = anp.std(points)
     elif scale == "per-dimension":
-        data = points.copy()
-        std_x = anp.std(data[:,0])
-        std_y = anp.std(data[:,1])
-        data[:,0] = data[:,0]/std_x
-        data[:,1] = data[:,1]/std_y
-        data_std = {'x': std_x, 'y': std_y}
+        std_x = anp.std(points[:,0])
+        std_y = anp.std(points[:,1])
+    data = points.copy()    
+    data[:,0] = data[:,0]/std_x
+    data[:,1] = data[:,1]/std_y
+    data_std = {'x': std_x, 'y': std_y}
 
     return data, data_std
 
 
 def make_covariance_matrices(params):
-    # Given parameters: p1x, p1y, p2x, p2y, tau, return covariance matrices for the Gaussian components
+    """
+    Compute covariance matrices
+
+    Input:
+    params                      Given parameters: p1x, p1y, p2x, p2y, tau
+
+    Returns:
+    Sigma0, Sigma1, Sigma2      Covariance matrices for the Gaussian components
+    """
     p1 = params[:2]  
     p2 = params[2:4] 
     sigma = anp.exp(params[4]) + 1.e-6*anp.linalg.norm(p1) + 1.e-6*anp.linalg.norm(p2)  # positive!
@@ -859,9 +876,16 @@ def make_covariance_matrices(params):
     
 
 def normal_distribution_2D_vectorized(X, cov):
-    # Multivariate normal distribution PDF for 2D data with zero mean.
-    # X: array of shape (N,2) where each row is a 2D data point
-    # cov: 2x2 covariance matrix
+    """
+    Multivariate normal distribution PDF for 2D data with zero mean.
+
+    Input:
+    X        array of shape (N,2) where each row is a 2D data point
+    cov      2x2 covariance matrix
+
+    Returns:
+    pdf     array of shape (N,1)
+    """
     det = anp.linalg.det(cov)
     inv_cov = anp.linalg.inv(cov)
     quad_form = anp.sum((X @ inv_cov) * X, axis=1)
@@ -872,7 +896,10 @@ def normal_distribution_2D_vectorized(X, cov):
 
 # f: function to minimize, i.e. negative log-likelihood of the Gaussian Mixture Model
 def gmm_log_likelihood(params,data,w):
-    # Compute the negative log-likelihood of the Gaussian Mixture Model
+    """
+    Compute the negative log-likelihood of the Gaussian Mixture Model.
+    This function is used to compute the normals of two lines by fitting a Gaussian Mixture Model on image gradients in the function compute_transformation_matrix_from_image_gradients().
+    """
     Sigma0, Sigma1, Sigma2 = make_covariance_matrices(params)
     likelihood = (w[0] * normal_distribution_2D_vectorized(data, Sigma0) +
                   w[1] * normal_distribution_2D_vectorized(data, Sigma1) +
@@ -883,7 +910,10 @@ def gmm_log_likelihood(params,data,w):
 
 
 def gmm_log_likelihood_reg(params,data,w,reg_param):
-    # Compute the negative log-likelihood of the Gaussian Mixture Model
+    """
+    Compute the negative log-likelihood of the Gaussian Mixture Model and adds a regularization term to ensure that the normals are aligned with the correct axes.
+    This function is used to compute the normals of two lines by fitting a Gaussian Mixture Model on image gradients in the function compute_transformation_matrix_from_image_gradients().
+    """
     p1 = params[0:2]  
     p2 = params[2:4]
     Sigma0, Sigma1, Sigma2 = make_covariance_matrices(params)
@@ -891,17 +921,28 @@ def gmm_log_likelihood_reg(params,data,w,reg_param):
                   w[1] * normal_distribution_2D_vectorized(data, Sigma1) +
                   w[2] * normal_distribution_2D_vectorized(data, Sigma2))
     log_likelihood = anp.sum(anp.log(likelihood + 1e-10))  # Add small constant to avoid log(0)
-    reg = reg_param * (p2[0]**2/(anp.linalg.norm(p2))**2 + p1[1]**2/(anp.linalg.norm(p1))**2)  # ensure that the normal p1 is aligned with y-axis, and the normal p2 with x-axis
+    reg = reg_param * (p2[0]**2/(anp.linalg.norm(p2))**2 + p1[1]**2/(anp.linalg.norm(p1))**2)  # ensure that the normal p1 is aligned with x-axis, and the normal p2 with y-axis
 
     return -log_likelihood + reg
 
 
 def compute_transformation_matrix(n1,n2):
-    # Build transformation
-    B = np.column_stack([n1, n2])  # columns are normals
-    B /=np.diag(B)[None,:] # divide each column by its diagonal element; np.diag(B)[None,:] is the row vector [n11,n22] of shape (1,2)
-    A = B.T                      # transformation: original coordinates -> new coordinates
-    A_inv = np.linalg.inv(A)     # transformation: new -> original
+    """
+    Compute the transformation matrix between two coordinate systems. 
+    In the original coordinate system, there are two non-orthogonal lines with the normals n1 and n2.
+    In the new coordinate system, these lines are orthogonal.
+
+    Input:
+    n1, n2      The normals of the (non-orthogonal) lines.
+
+    Returns:
+    A_inv       Transformation matrix: new --> original coordinate system, diagonal elements are 1
+    A           Transformation matrix: original --> new coordinate system, diagonal elements are 1
+    """
+    B = np.column_stack([n1, n2])   # columns are normals
+    B /=np.diag(B)[None,:]          # divide each column by its diagonal element; np.diag(B)[None,:] is the row vector [n11,n22] of shape (1,2)
+    A = B.T                         # transformation: original coordinates -> new coordinates (orthogonal lines)
+    A_inv = np.linalg.inv(A)        # transformation: new -> original
     A_inv = A_inv @ np.diag(np.diag(A_inv)**(-1))
     A = np.linalg.inv(A_inv)
     return A_inv, A
@@ -961,7 +1002,20 @@ def warp_image_with_normals(img, n1, n2, fill_value=1e-6):
 
 
 def compute_transformation_matrix_from_image_gradients(img, cfg):
+    """
+    This function computes the normals p1, p2 and slopes m1, m2 of lines with 2 distinct directions in the input image.
+    This is done by fitting a Gaussian Mixture Model on the image gradients in x- and y-direction.
+    The unknown parameters are given by θ = [p1_x, p1_y, p2_x, p2_y, τ] with σ_ε = exp(τ) > 0.
+    The log-likelihood function is given by L(θ) = Σ_(i=1)^N log(Σ_(k=0)^2 w_k N(v_i | 0,Σ_k(θ))) with Σ_0=σ_ε^2*I, Σ_k=p_k*p_k^T + σ_ε^2*I for k=1,2, w is fixed.
 
+    Input:
+    img     Input image (xarray)
+    cfg     Config parameters (for computing the image gradients, for the model, and for the optimization)
+
+    Returns:
+    p1, p2  Normalized normals (p1 aligned with x-axis, p2 aligned with y-axis)
+    m1, m2  Slopes of the lines with 2 distinct directions (abs(m1) > abs(m2))
+    """
     # Turn tuples into arrays (they do not change values during optimization)
     w = np.array(cfg.model.w).reshape(-1, 1)  # values have shape (3,1) for broadcasting
     init_params = np.array(cfg.model.init_params, dtype=float)
@@ -992,9 +1046,9 @@ def compute_transformation_matrix_from_image_gradients(img, cfg):
         p2 = -p2
     if np.abs(p2[1]) > np.abs(p2[0]) and p2[1] > 0: # check that p2 is aligned with y-axis, and ensure that it points in the negative y-direction (flipped vertically afterwards!)
         p2 = -p2
-    p1_rescaled = np.array([p1[0]*data_std['x'],p1[1]*data_std['y']])
+    p1_rescaled = np.array([p1[0]*data_std['x'],p1[1]*data_std['y']])   # Scale back
     p2_rescaled = np.array([p2[0]*data_std['x'],p2[1]*data_std['y']])
-    p1_rescaled = p1_rescaled / np.linalg.norm(p1_rescaled)
+    p1_rescaled = p1_rescaled / np.linalg.norm(p1_rescaled)             # Normalize
     p2_rescaled = p2_rescaled / np.linalg.norm(p2_rescaled)
     m1 = -p1[0]*data_std['x']/(p1[1]*data_std['y'])
     m2 = -p2[0]*data_std['x']/(p2[1]*data_std['y'])

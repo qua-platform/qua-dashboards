@@ -528,27 +528,27 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                     )
                 )
 
-        ro_options = [{"label": n, "value": n} for n in self.available_readout_channels.keys()]
-        if ro_options:
-            components.append(
-                dbc.Row(
-                    [
-                        dbc.Label("Readouts to acquire", width="auto", className="col-form-label"),
-                        dbc.Col(
-                            dcc.Dropdown(
-                                id=self._get_id("readouts"),
-                                options=ro_options,
-                                value=[ch.name for ch in self.selected_readout_channel],
-                                multi=True,
-                                clearable=False,
-                                style = {"color": "black"}
-                            ),
-                            width=True,
-                        ),
-                    ],
-                    className="mb-2 align-items-center",
-                )
-            )
+        # ro_options = [{"label": n, "value": n} for n in self.available_readout_channels.keys()]
+        # if ro_options:
+        #     components.append(
+        #         dbc.Row(
+        #             [
+        #                 dbc.Label("Readouts to acquire", width="auto", className="col-form-label"),
+        #                 dbc.Col(
+        #                     dcc.Dropdown(
+        #                         id=self._get_id("readouts"),
+        #                         options=ro_options,
+        #                         value=[ch.name for ch in self.selected_readout_channel],
+        #                         multi=True,
+        #                         clearable=False,
+        #                         style = {"color": "black"}
+        #                     ),
+        #                     width=True,
+        #                 ),
+        #             ],
+        #             className="mb-2 align-items-center",
+        #         )
+        #     )
         return components
     def get_latest_data(self) -> Dict[str, Any]:
         """

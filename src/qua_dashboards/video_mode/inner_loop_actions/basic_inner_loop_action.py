@@ -70,7 +70,8 @@ class BasicInnerLoopAction(InnerLoopAction):
 
         if self.pre_measurement_delay > 0:
             self.readout_pulse.channel.wait(self.pre_measurement_delay)
-
+        qua.align()
+        
         result = []
         for channel in self.selected_readout_channels:
             I, Q = channel.measure("readout")

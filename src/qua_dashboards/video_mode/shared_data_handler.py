@@ -5,10 +5,13 @@ from qua_dashboards.video_mode.utils.dash_utils import xarray_to_plotly
 from plotly.subplots import make_subplots
 import logging
 __all__ = ["SharedDataHandler"]
-logger = logging.getLogger(__name__)
+
 class SharedDataHandler:
-    def __init__(self, 
-                 ):
+    """
+    A helper class to be used by ShareViewerComponent, to help handle multiple subplots yielded by frequency-multiplexed readout.
+    No arguments necessary at this point. 
+    """
+    def __init__(self):
         pass
     def _make_readout_subplots_with_profile(self, da: xr.DataArray, profile: dict) -> go.Figure:
         assert isinstance(da, xr.DataArray) and da.ndim == 3 and "readout" in da.dims
@@ -272,7 +275,6 @@ class SharedDataHandler:
         if lines and points:
             by_id = {str(p.get("id")): p for p in points}
             target_col = self._resolve_profile_col(da, profile)
-            logger.debug("Apply annotations: target_col=%s", target_col)
 
             for ln in lines:
                 sid, eid = str(ln.get("start_point_id")), str(ln.get("end_point_id"))
@@ -283,7 +285,6 @@ class SharedDataHandler:
                     col = int(ln.get("subplot_col", p1.get("subplot_col", 1)) or 1)
                 except Exception:
                     col = 1
-                logger.debug("Line id=%s col=%s (skip=%s)", ln.get("id"), col, (target_col is not None and col == target_col))
                 if target_col is not None and col == target_col:
                     continue 
 
@@ -310,7 +311,6 @@ class SharedDataHandler:
 
             for col, pts in by_col.items():
                 skip = (target_col is not None and col == target_col)
-                logger.debug("Points col=%s count=%s (skip=%s)", col, len(pts), skip)
                 if skip:
                     continue
 
@@ -343,7 +343,6 @@ class SharedDataHandler:
         try:
             if profile.get("subplot_col") is not None:
                 col = int(profile["subplot_col"])
-                logger.debug("Profile resolver: using explicit subplot_col=%s", col)
                 return col
         except Exception:
             pass
@@ -353,11 +352,7 @@ class SharedDataHandler:
             target = str(profile["readout"])
             try:
                 idx = labels.index(target) + 1
-                logger.debug("Profile resolver: derived subplot_col=%s from readout=%s", idx, target)
                 return idx
             except ValueError:
-                logger.debug("Profile resolver: readout '%s' not in %s", target, labels)
-
-        logger.debug("Profile resolver: no subplot could be resolved")
-        return None
+                return None
 

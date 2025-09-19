@@ -4,6 +4,7 @@ from .inner_loop_actions import *
 from .scan_modes import *
 from .data_acquirers import *
 from .shared_viewer_component import *
+from .shared_data_handler import SharedDataHandler
 from .tab_controllers import *
 from .utils import *
 from .data_registry import (
@@ -20,6 +21,7 @@ __all__ = [
     *scan_modes.__all__,
     *data_acquirers.__all__,
     *shared_viewer_component.__all__,
+    "SharedDataHandler",
     *tab_controllers.__all__,
     *utils.__all__,
     "set_data",

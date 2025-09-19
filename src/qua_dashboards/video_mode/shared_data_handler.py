@@ -316,8 +316,11 @@ class SharedDataHandler:
                 n_cols = 2
 
         def add(tr, col: int | None = None):
-            r, c = rc_for(col)
-            fig.add_trace(tr, row=r, col=c)
+            if not is_multipane:
+                fig.add_trace(tr)
+            else:
+                r, c = rc_for(col)
+                fig.add_trace(tr, row=r, col=c)
 
         target_col: int | None = None
         try:
@@ -449,7 +452,7 @@ class SharedDataHandler:
         fig.update_layout(
             template="plotly_dark",
             margin=dict(l=40, r=40, t=60, b=40),
-            height=max(320, 320 * rows),
+            height=max(420, 420*rows),
         )
         return fig
 

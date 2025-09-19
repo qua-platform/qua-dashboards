@@ -38,7 +38,6 @@ class SharedDataHandler:
             horizontal_spacing=0.08, vertical_spacing=0.16,
             shared_xaxes=False, shared_yaxes=False,
         )
-
         def rc(i: int) -> tuple[int, int]:
             return (i // 2) + 1, (i % 2) + 1
         

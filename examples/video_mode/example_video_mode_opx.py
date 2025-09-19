@@ -73,23 +73,9 @@ readout_pulse = pulses.SquareReadoutPulse(id="readout", length=1500, amplitude=0
 machine.channels["ch1_readout"] = InOutSingleChannel(
     opx_output=("con1", 3),  # Output for the readout pulse
     opx_input=("con1", 1),  # Input for acquiring the measurement signal
-    intermediate_frequency=13333333,  # Set IF for the readout channel
+    intermediate_frequency=0,  # Set IF for the readout channel
     operations={"readout": readout_pulse},  # Assign the readout pulse to this channel
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
-)
-readout_pulse2 = pulses.SquareReadoutPulse(id="readout", length=1500, amplitude=0.1)
-machine.channels["ch2_readout"] = InOutSingleChannel(
-    opx_output=("con1", 3),  # Output for the readout pulse
-    opx_input=("con1", 1),  # Input for acquiring the measurement signal
-    intermediate_frequency=23333333,  # Set IF for the readout channel
-    operations={"readout": readout_pulse2},  # Assign the readout pulse to this channel
-)
-readout_pulse3 = pulses.SquareReadoutPulse(id="readout", length=1500, amplitude=0.1)
-machine.channels["ch3_readout"] = InOutSingleChannel(
-    opx_output=("con1", 3),  # Output for the readout pulse
-    opx_input=("con1", 1),  # Input for acquiring the measurement signal
-    intermediate_frequency=33333333,  # Set IF for the readout channel
-    operations={"readout": readout_pulse3},  # Assign the readout pulse to this channel
 )
 
 # Configure a GateSet that defines the sweepable voltage gates.
@@ -128,7 +114,7 @@ gate_set = None  # Placeholder. Replace with a real GateSet instance.
 # --- QMM Connection ---
 # Replace with your actual OPX host and cluster name
 # Example: qmm = QuantumMachinesManager(host="your_opx_ip", cluster_name="your_cluster")
-qmm = QuantumMachinesManager(host="172.16.33.101", cluster_name="CS_1")
+qmm = QuantumMachinesManager(host="`127.0.0.1", cluster_name="CS_1")
 
 # Generate the QUA configuration from the QUAM machine object
 config = machine.generate_config()

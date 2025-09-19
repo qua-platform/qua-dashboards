@@ -387,6 +387,8 @@ class LiveViewTabController(BaseTabController):
             acquirer_state = self._data_acquirer_instance.get_latest_data()
             current_status = acquirer_state.get("status", "unknown").upper()
             error_details = acquirer_state.get("error")
+            if not is_button_click and _status_alert_trigger and "STOPPED" in str(_status_alert_trigger).upper():
+                return ("Start Acquisition", "success", "STOPPED", "secondary")
 
             button_text: str
             button_color: str

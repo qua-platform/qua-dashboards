@@ -106,7 +106,7 @@ class SettingsTabController(BaseTabController):
         self._data_acquirer_instance.stop_acquisition()
         from qua_dashboards.video_mode.video_mode_component import VideoModeComponent
         super().on_tab_activated()
-        return {VideoModeComponent._MAIN_STATUS_ALERT_ID_SUFFIX: "STOPPED"}
+        return {VideoModeComponent._MAIN_STATUS_ALERT_ID_SUFFIX: html.Span("STOPPED", style={"display": "none"})}
 
     def on_tab_deactivated(self):
         logger.info(f"SettingsTabController '{self.component_id}' deactivated.")

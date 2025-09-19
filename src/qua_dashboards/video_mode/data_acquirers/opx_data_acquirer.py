@@ -509,7 +509,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
             if "display-readout" in params and params["display-readout"] != self.display_readout_name:
                 self.display_readout_name = params["display-readout"]
-                flags |= ModifiedFlags.PARAMETERS_MODIFIED
+                flags |= ModifiedFlags.PARAMETERS_MODIFIED 
         self._compilation_flags |= (flags & (ModifiedFlags.PROGRAM_MODIFIED | ModifiedFlags.CONFIG_MODIFIED))
         return flags
 
@@ -527,28 +527,6 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                         include_subcomponents
                     )
                 )
-
-        # ro_options = [{"label": n, "value": n} for n in self.available_readout_channels.keys()]
-        # if ro_options:
-        #     components.append(
-        #         dbc.Row(
-        #             [
-        #                 dbc.Label("Readouts to acquire", width="auto", className="col-form-label"),
-        #                 dbc.Col(
-        #                     dcc.Dropdown(
-        #                         id=self._get_id("readouts"),
-        #                         options=ro_options,
-        #                         value=[ch.name for ch in self.selected_readout_channel],
-        #                         multi=True,
-        #                         clearable=False,
-        #                         style = {"color": "black"}
-        #                     ),
-        #                     width=True,
-        #                 ),
-        #             ],
-        #             className="mb-2 align-items-center",
-        #         )
-        #     )
         return components
     def get_latest_data(self) -> Dict[str, Any]:
         """

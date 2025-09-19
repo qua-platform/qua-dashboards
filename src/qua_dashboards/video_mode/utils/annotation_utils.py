@@ -345,7 +345,7 @@ def subtract_low_norm_mean(img, frac=0.7):
     """
     Subtract the mean of the pixels with smallest norm from the input image
 
-    Input:
+    Args:
     img     Input image
     frac    Fraction of pixels to use for mean computation (i.e. with smallest norm)
 
@@ -365,7 +365,7 @@ def image_gradients(img, cfg):
     Compute the gradients in x- and y-direction of an image using Sobel filters. 
     Apply Gaussian blurring before computing the gradients. Subtract the mean of pixels with small norm from the gradient images.
 
-    Input:
+    Args:
     img                 Input image I of shape (H,W)
     cfg                 Config parameters
         sigmaX_blur         Standard deviation of the Gaussian in x direction used for blurring the image
@@ -401,7 +401,7 @@ def generate_2D_gradient_vector(img, cfg):
     img             Input image I of shape (H,W)
     cfg             Config parameters for computing the image gradients
 
-    Returns:
+    Args:
     points          A 2D array where each row is a gradient vector [Gx, Gy] for each pixel of the input image, i.e. rows are observations (pixels), columns are variables (sobel_x, sobel_y).
     """
     print("Generating 2D gradient vectors using Sobel filters")
@@ -426,7 +426,7 @@ def scale_data(points, scale):
     Input:
     points      2D data points
 
-    Returns:
+    Args:
     data        Scaled data points
     data_std    Scaling factor for each dimension
     """
@@ -451,7 +451,7 @@ def make_covariance_matrices(params):
     Input:
     params                      Given parameters: p1x, p1y, p2x, p2y, tau
 
-    Returns:
+    Args:
     Sigma0, Sigma1, Sigma2      Covariance matrices for the Gaussian components
     """
     p1 = params[:2]  
@@ -474,7 +474,7 @@ def normal_distribution_2D_vectorized(X, cov):
     X        array of shape (N,2) where each row is a 2D data point
     cov      2x2 covariance matrix
 
-    Returns:
+    Args:
     pdf     array of shape (N,1)
     """
     det = anp.linalg.det(cov)
@@ -523,7 +523,7 @@ def compute_transformation_matrix(n1,n2):
     In the original coordinate system, there are two non-orthogonal lines with the normals n1 and n2.
     In the new coordinate system, these lines are orthogonal.
 
-    Input:
+    Args:
     n1, n2      The normals of the (non-orthogonal) lines.
 
     Returns:
@@ -544,7 +544,7 @@ def warp_image_with_normals(img, n1, n2, fill_value=1e-6):
     Warp an image defined on a rectangular grid (xs, ys) so that lines with normals n1, n2
     become orthogonal in the transformed coordinates. Plot the warped image.
 
-    Input:    
+    Args:    
     img             Input image (2D xarray) of shape (H,W)
     n1, n2          Normalized line normals: (2,) arrays
     fill_value      Value for points outside the input domain
@@ -599,7 +599,7 @@ def compute_transformation_matrix_from_image_gradients(img, cfg):
     The unknown parameters are given by θ = [p1_x, p1_y, p2_x, p2_y, τ] with σ_ε = exp(τ) > 0.
     The log-likelihood function is given by L(θ) = Σ_(i=1)^N log(Σ_(k=0)^2 w_k N(v_i | 0,Σ_k(θ))) with Σ_0=σ_ε^2*I, Σ_k=p_k*p_k^T + σ_ε^2*I for k=1,2, w is fixed.
 
-    Input:
+    Args:
     img     Input image (xarray)
     cfg     Config parameters (for computing the image gradients, for the model, and for the optimization)
 

@@ -1,7 +1,8 @@
 import logging
 from typing import Any
 import dash_bootstrap_components as dbc
-from dash import html, ctx, ALL, no_update, Dash, Input, Output, State, no_update
+from dash import html, ctx, ALL, no_update, Dash, Input, Output, State, no_update, dcc
+import uuid
 
 from qua_dashboards.video_mode.tab_controllers.base_tab_controller import (
     BaseTabController,
@@ -47,6 +48,25 @@ class SettingsTabController(BaseTabController):
 
     def get_layout(self):
         inner_controls = self._data_acquirer_instance.qua_inner_loop_action.get_dash_components(include_subcomponents=True)
+        readout_selector = dbc.Row(
+            [
+                dbc.Label("Readouts to acquire", width="auto", className="col-form-label"),
+                dbc.Col(
+                    dcc.Dropdown(
+                        id=self._data_acquirer_instance._get_id("readouts"),
+                        options=[{"label": n, "value": n}
+                                for n in self._data_acquirer_instance.available_readout_channels.keys()],
+                        value=[ch.name for ch in self._data_acquirer_instance.selected_readout_channel],
+                        multi=True,
+                        clearable=False,
+                        style={"color": "black"},
+                    ),
+                    width=True,
+                ),
+            ],
+            className="mb-2 align-items-center",
+        )
+
         result_type_selector = dbc.Row(
             [
                 dbc.Label("Result Type", width="auto", className="col-form-label"),
@@ -64,7 +84,7 @@ class SettingsTabController(BaseTabController):
             className="mb-2 align-items-center",
         )
         return dbc.Card(
-            dbc.CardBody([html.H5("Settings", className="text-light"), *inner_controls, result_type_selector,
+            dbc.CardBody([html.H5("Settings", className="text-light"), readout_selector, *inner_controls, result_type_selector,
                         html.Div(
                         id=self._get_id(self._DUMMY_OUT_SUFFIX), style={"display": "none"}
                     ),]),
@@ -75,7 +95,10 @@ class SettingsTabController(BaseTabController):
 
     def on_tab_activated(self):
         logger.info(f"SettingsTabController '{self.component_id}' activated.")
-        return super().on_tab_activated()
+        self._data_acquirer_instance.stop_acquisition()
+        from qua_dashboards.video_mode.video_mode_component import VideoModeComponent
+        super().on_tab_activated()
+        return {VideoModeComponent._MAIN_STATUS_ALERT_ID_SUFFIX: "STOPPED"}
 
     def on_tab_deactivated(self):
         logger.info(f"SettingsTabController '{self.component_id}' deactivated.")

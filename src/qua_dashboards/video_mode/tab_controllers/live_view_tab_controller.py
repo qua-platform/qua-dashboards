@@ -291,14 +291,15 @@ class LiveViewTabController(BaseTabController):
 
                 for i in range(1, n_subplots + 1):
                     sfx = ax_suffix(i)
-
+                    xref = f"x{sfx}"
+                    yref = f"y{sfx}"
                     for xv in xs:
                         #0 grid line has 5x higher alpha
                         grid_color = f"rgba(0,0,0,{alpha*2})" if xv == 0 else f"rgba(0,0,0,{alpha})"
                         shapes.append({
                             "type": "line",
-                            "xref": "x", "yref": "paper",
-                            "x0": xv, "x1": xv, "y0": 0, "y1": 1,
+                            "xref": xref, "yref": yref,
+                            "x0": xv, "x1": xv, "y0": min(ys), "y1": max(ys),
                             "line": {"width": 4, "color": grid_color},
                             "layer": "above",
                             "name": "grid-x",
@@ -307,8 +308,8 @@ class LiveViewTabController(BaseTabController):
                         grid_color = f"rgba(0,0,0,{alpha*2})" if yv == 0 else f"rgba(0,0,0,{alpha})"
                         shapes.append({
                             "type": "line",
-                            "xref": "paper", "yref": "y",
-                            "x0": 0, "x1": 1, "y0": yv, "y1": yv,
+                            "xref": xref, "yref": yref,
+                            "x0": min(xs), "x1": max(xs), "y0": yv, "y1": yv,
                             "line": {"width": 4, "color": grid_color},
                             "layer": "above",
                             "name": "grid-y",

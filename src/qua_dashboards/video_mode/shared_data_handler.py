@@ -3,9 +3,9 @@ import plotly.graph_objects as go
 import numpy as np
 from qua_dashboards.video_mode.utils.dash_utils import xarray_to_plotly
 from plotly.subplots import make_subplots
-
+import logging
 __all__ = ["SharedDataHandler"]
-
+logger = logging.getLogger(__name__)
 class SharedDataHandler:
     def __init__(self, 
                  ):
@@ -163,3 +163,201 @@ class SharedDataHandler:
         fig.update_yaxes(title_text=y_title, row=1, col=1)
         fig.update_layout(template="plotly_dark", showlegend=False, margin=dict(l=60, r=30, t=40, b=40))
         return fig
+    
+    def build_live_figure(self, data_object: dict) -> go.Figure:
+        """Return a figure for a registry 'live' object (dict that may contain base_image_data or data)."""
+        base = None
+        if isinstance(data_object, dict):
+            base = data_object.get("base_image_data")
+            if base is None:
+                base = data_object.get("data")
+        return self._figure_from_data(base)
+    
+    def build_static_figure(self, static_obj: dict, ui_state: dict | None) -> go.Figure:
+        """
+        Return a figure for a compound static object: may include
+        base_image_data (xr.DataArray), annotations (dict), profile_plot (dict).
+        """
+        base = None
+        profile = None
+        ann = None
+        if isinstance(static_obj, dict):
+            base = static_obj.get("base_image_data")
+            profile = static_obj.get("profile_plot")
+            ann = static_obj.get("annotations")
+
+        if isinstance(profile, dict):
+            fig = self._figure_with_profile(base, profile)
+            return self._apply_annotations(fig, base, ann, ui_state, profile)
+        else:
+            fig = self._figure_from_data(base)  
+            return self._apply_annotations(fig, base, ann, ui_state, profile)
+    
+    def empty_dark(self) -> go.Figure:
+        return go.Figure().update_layout(template="plotly_dark")
+    
+    def _figure_from_data(self, da: xr.DataArray | None) -> go.Figure:
+        if not isinstance(da, xr.DataArray):
+            return self.empty_dark()
+
+        if self._is_line(da):
+            d = da.squeeze(drop=True)
+            if d.ndim == 2 and 1 in d.shape:
+                d = xr.DataArray(d.values.ravel(), dims=("idx",), coords={"idx": np.arange(d.size)})
+            x_dim = d.dims[0]
+            c = d.coords.get(x_dim)
+            x = np.asarray(c.values) if c is not None else np.arange(d.size)
+            xlabel = (c.attrs.get("label") if c is not None else str(x_dim))
+            u = (c.attrs.get("units") if c is not None else None)
+            if u:
+                xlabel = f"{xlabel} [{u}]"
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=x, y=np.asarray(d.values).ravel(), mode="lines"))
+            return fig.update_layout(template="plotly_dark", xaxis_title=xlabel, yaxis_title="Value")
+
+        if da.ndim == 2 and "readout" in da.dims:
+            return self._make_readout_line_subplots(da)
+
+        if da.ndim == 3 and "readout" in da.dims:
+            return self._make_readout_subplots(da)
+
+        return xarray_to_plotly(da).update_layout(template="plotly_dark")
+    
+    def _figure_with_profile(self, da: xr.DataArray | None, profile: dict) -> go.Figure:
+        if isinstance(da, xr.DataArray) and da.ndim == 3 and "readout" in da.dims:
+            try:
+                return self._make_readout_subplots_with_profile(da, profile)
+            except Exception:
+                pass
+        s = profile.get("s", [])
+        vals = profile.get("vals", [])
+        y_label = profile.get("y_label", "Value")
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=s, y=vals, mode="lines"))
+        
+        return fig.update_layout(
+            template="plotly_dark",
+            margin=dict(l=40, r=10, t=10, b=40),
+            xaxis_title="Arbitrary Units",
+            yaxis_title=y_label,
+            showlegend=False,
+        )
+    
+    def _apply_annotations(self, fig: go.Figure, da: xr.DataArray | None, annotations: dict | None, ui_state: dict | None, profile: dict | None = None) -> go.Figure:
+        if not isinstance(annotations, dict):
+            return fig
+
+        points = annotations.get("points") or []
+        lines  = annotations.get("lines") or []
+        
+        n_cols = 1
+        if isinstance(da, xr.DataArray) and da.ndim == 3 and "readout" in da.dims:
+            try:
+                n_cols = int(len(da.coords["readout"]))
+            except Exception:
+                n_cols = 2
+
+        def add(tr, col: int | None = None):
+            if n_cols == 1 or col is None:
+                fig.add_trace(tr)
+            else:
+                fig.add_trace(tr, row=1, col=col)
+
+        target_col: int | None = None
+        try:
+            target_col = self._resolve_profile_col(da, profile)
+        except Exception:
+            target_col = None
+
+        if lines and points:
+            by_id = {str(p.get("id")): p for p in points}
+            target_col = self._resolve_profile_col(da, profile)
+            logger.debug("Apply annotations: target_col=%s", target_col)
+
+            for ln in lines:
+                sid, eid = str(ln.get("start_point_id")), str(ln.get("end_point_id"))
+                p1, p2 = by_id.get(sid), by_id.get(eid)
+                if not p1 or not p2:
+                    continue
+                try:
+                    col = int(ln.get("subplot_col", p1.get("subplot_col", 1)) or 1)
+                except Exception:
+                    col = 1
+                logger.debug("Line id=%s col=%s (skip=%s)", ln.get("id"), col, (target_col is not None and col == target_col))
+                if target_col is not None and col == target_col:
+                    continue 
+
+                add(go.Scatter(
+                    x=[float(p1["x"]), float(p2["x"])],
+                    y=[float(p1["y"]), float(p2["y"])],
+                    mode="lines",
+                    name="annotations_lines",
+                    showlegend=False,
+                    hoverinfo="skip",
+                    line=dict(width=2, color="white"),
+                ), col)
+
+        if points:
+            by_col: dict[int, list[dict]] = {}
+            for p in points:
+                try:
+                    c = int(p.get("subplot_col", 1) or 1)
+                except Exception:
+                    c = 1
+                by_col.setdefault(c, []).append(p)
+
+            show_labels = bool(ui_state and "show_labels" in ui_state and "points" in (ui_state.get("show_labels") or []))
+
+            for col, pts in by_col.items():
+                skip = (target_col is not None and col == target_col)
+                logger.debug("Points col=%s count=%s (skip=%s)", col, len(pts), skip)
+                if skip:
+                    continue
+
+                xs = [float(p["x"]) for p in pts]
+                ys = [float(p["y"]) for p in pts]
+                ids = [str(p["id"]) for p in pts]
+
+                add(go.Scatter(
+                    x=xs, y=ys, mode="markers",
+                    name="annotations_points", showlegend=False, hoverinfo="skip",
+                    marker=dict(size=10, symbol="circle", color="white", line=dict(width=2)),
+                    customdata=[[pid] for pid in ids],
+                ), col)
+
+                if show_labels:
+                    add(go.Scatter(
+                        x=xs, y=ys, mode="text", text=ids, textposition="top center",
+                        name="annotations_point_labels", showlegend=False, hoverinfo="skip",
+                        customdata=[[pid] for pid in ids],
+                    ), col)
+
+        return fig
+    
+
+    def _resolve_profile_col(self, da: xr.DataArray | None, profile: dict | None) -> int | None:
+        """Return 1-based subplot column for the profile, or None if unknown."""
+        if not isinstance(profile, dict):
+            return None
+
+        try:
+            if profile.get("subplot_col") is not None:
+                col = int(profile["subplot_col"])
+                logger.debug("Profile resolver: using explicit subplot_col=%s", col)
+                return col
+        except Exception:
+            pass
+
+        if isinstance(da, xr.DataArray) and "readout" in da.dims and "readout" in profile:
+            labels = [str(v) for v in da.coords["readout"].values]
+            target = str(profile["readout"])
+            try:
+                idx = labels.index(target) + 1
+                logger.debug("Profile resolver: derived subplot_col=%s from readout=%s", idx, target)
+                return idx
+            except ValueError:
+                logger.debug("Profile resolver: readout '%s' not in %s", target, labels)
+
+        logger.debug("Profile resolver: no subplot could be resolved")
+        return None
+

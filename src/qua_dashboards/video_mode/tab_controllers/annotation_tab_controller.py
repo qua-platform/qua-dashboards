@@ -492,7 +492,10 @@ class AnnotationTabController(BaseTabController):
             logger.info(f"{self._get_id(self._GRADIENT_COMPUTATION_BUTTON_SUFFIX)}: Compute transformation matrix clicked.")
 
             # Parameters from config.py in utils
-            cfg = TransformationMatrixConfig()
+            try:
+                cfg = TransformationMatrixConfig()
+            except ValueError as e:
+                return f"Value error: {e}"
             logger.info(f"Config: {cfg}")
 
             # Get current base image

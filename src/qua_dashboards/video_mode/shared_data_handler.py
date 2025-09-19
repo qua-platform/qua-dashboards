@@ -3,7 +3,7 @@ import plotly.graph_objects as go
 import numpy as np
 from qua_dashboards.video_mode.utils.dash_utils import xarray_to_plotly
 from plotly.subplots import make_subplots
-import logging
+from math import ceil
 __all__ = ["SharedDataHandler"]
 
 class SharedDataHandler:
@@ -30,6 +30,18 @@ class SharedDataHandler:
 
         fig = make_subplots(rows=1, cols=n, subplot_titles=labels,
                             horizontal_spacing=min(0.06, 1.0/(max(n-1,1)) - 1e-6))
+        
+        cols = 2 if n > 2 else n
+        rows = 1 if n <= 2 else ceil(n / 2)
+        fig = make_subplots(
+            rows=rows, cols=cols, subplot_titles=labels,
+            horizontal_spacing=0.08, vertical_spacing=0.16,
+            shared_xaxes=False, shared_yaxes=False,
+        )
+
+        def rc(i: int) -> tuple[int, int]:
+            return (i // 2) + 1, (i % 2) + 1
+        
         yc, xc = da.coords[y_name], da.coords[x_name]
         y_lab = yc.attrs.get("long_name", y_name)
         y_unit = yc.attrs.get("units", "")
@@ -38,15 +50,17 @@ class SharedDataHandler:
         y_title = f"{y_lab} ({y_unit})" if y_unit else y_lab
         x_title = f"{x_lab} ({x_unit})" if x_unit else x_lab
         for i in range(n):
+            r, c = rc(i)
             if i == target_idx:
                 s = np.asarray(profile.get("s", []))
                 vals = np.asarray(profile.get("vals", []))
                 fig.add_trace(
-                    go.Scatter(x=s, y=vals, mode="lines", name=f"profile_{labels[i]}", showlegend=False),
-                    row=1, col=i+1
+                    go.Scatter(x=s, y=vals, mode="lines",
+                               name=f"profile_{labels[i]}", showlegend=False),
+                    row=r, col=c
                 )
-                fig.update_xaxes(title_text=profile.get("x_label", "Distance"), row=1, col=i+1)
-                fig.update_yaxes(title_text=profile.get("y_label", "Value"),    row=1, col=i+1)
+                fig.update_xaxes(title_text=profile.get("x_label", "Distance"), row=r, col=c)
+                fig.update_yaxes(title_text=profile.get("y_label", "Value"),    row=r, col=c)
             else:
                 sub = da.isel(readout=i).reset_coords("readout", drop=True)
                 small = xarray_to_plotly(sub)
@@ -59,10 +73,10 @@ class SharedDataHandler:
                         tr["customdata"] = [[i + 1] * cols for _ in range(rows)]
                     except Exception:
                         pass
-                    fig.add_trace(tr, row=1, col=i+1)
-                    fig.update_xaxes(title_text=x_title, row=1, col=i+1)
-                if i == 0:
-                    fig.update_yaxes(title_text=y_title, row=1, col=1)
+                    fig.add_trace(tr, row=r, col=c)
+                    fig.update_xaxes(title_text=x_title, row=r, col=c)
+            if c == 1:
+                fig.update_yaxes(title_text=y_title, row=r, col=c)
 
         fig.update_layout(template="plotly_dark", showlegend=False, margin=dict(l=60, r=30, t=40, b=40))
         return fig
@@ -125,13 +139,32 @@ class SharedDataHandler:
             fig.update_layout(template="plotly_dark", xaxis_title=x_label, yaxis_title="Value", showlegend=False)
             return fig
 
-        fig = make_subplots(rows=1, cols=n, subplot_titles=labels, horizontal_spacing=self._safe_hspace(n))
+        cols = 2 if n > 2 else n
+        rows = 1 if n <= 2 else ceil(n / 2)
+        fig = make_subplots(
+            rows=rows, cols=cols, subplot_titles=labels,
+            horizontal_spacing=0.08, vertical_spacing=0.16,
+            shared_xaxes=False, shared_yaxes=False,
+        )
+
+        def rc(i: int) -> tuple[int, int]:
+            return (i // 2) + 1, (i % 2) + 1
+
         for i, lab in enumerate(labels):
+            r, c = rc(i)
             y = np.asarray(da.isel({rd_dim: i}).values).ravel()
-            fig.add_trace(go.Scatter(x=x_vals, y=y, mode="lines", name=lab, showlegend=False), row=1, col=i + 1)
-            fig.update_xaxes(title_text=x_label, row=1, col=i + 1)
-        fig.update_yaxes(title_text="Value", row=1, col=1)
-        fig.update_layout(template="plotly_dark", showlegend=False, margin=dict(l=60, r=30, t=40, b=40))
+            fig.add_trace(
+                go.Scatter(x=x_vals, y=y, mode="lines", name=lab, showlegend=False),
+                row=r, col=c
+            )
+            fig.update_xaxes(title_text=x_label, row=r, col=c)
+            if c == 1: 
+                fig.update_yaxes(title_text="Value", row=r, col=c)
+
+        fig.update_layout(template="plotly_dark",
+                        showlegend=False,
+                        margin=dict(l=60, r=30, t=40, b=40),
+                        height=max(320, 320 * rows))
         return fig
     
     def _make_readout_subplots(self, da: xr.DataArray) -> go.Figure:
@@ -222,6 +255,12 @@ class SharedDataHandler:
             return self._make_readout_line_subplots(da)
 
         if da.ndim == 3 and "readout" in da.dims:
+            try:
+                n_readouts = int(da.sizes["readout"])
+            except Exception:
+                n_readouts = len(list(da.coords["readout"].values))
+            if n_readouts > 2:
+                return self._build_two_col_readout_grid(da)
             return self._make_readout_subplots(da)
 
         return xarray_to_plotly(da).update_layout(template="plotly_dark")
@@ -250,6 +289,23 @@ class SharedDataHandler:
         if not isinstance(annotations, dict):
             return fig
 
+        is_multipane = isinstance(da, xr.DataArray) and da.ndim == 3 and "readout" in da.dims
+        n_readouts = int(da.sizes["readout"]) if is_multipane else 1
+        two_col = is_multipane and n_readouts > 2
+
+        def rc_for(col: int | None) -> tuple[int, int]:
+            """Return (row, col) for a given 1-based subplot column marker."""
+            if not is_multipane or col is None:
+                return 1, 1
+            c = max(1, int(col))
+            if not two_col:
+                # 1×N layout
+                return 1, c
+            # 2-column packing: 1->(1,1), 2->(1,2), 3->(2,1), 4->(2,2), ...
+            r = (c - 1) // 2 + 1
+            cc = 2 if c % 2 == 0 else 1
+            return r, cc
+    
         points = annotations.get("points") or []
         lines  = annotations.get("lines") or []
         
@@ -261,10 +317,8 @@ class SharedDataHandler:
                 n_cols = 2
 
         def add(tr, col: int | None = None):
-            if n_cols == 1 or col is None:
-                fig.add_trace(tr)
-            else:
-                fig.add_trace(tr, row=1, col=col)
+            r, c = rc_for(col)
+            fig.add_trace(tr, row=r, col=c)
 
         target_col: int | None = None
         try:
@@ -274,7 +328,6 @@ class SharedDataHandler:
 
         if lines and points:
             by_id = {str(p.get("id")): p for p in points}
-            target_col = self._resolve_profile_col(da, profile)
 
             for ln in lines:
                 sid, eid = str(ln.get("start_point_id")), str(ln.get("end_point_id"))
@@ -355,4 +408,49 @@ class SharedDataHandler:
                 return idx
             except ValueError:
                 return None
+
+    def _build_two_col_readout_grid(self, data_xr: xr.DataArray) -> go.Figure:
+        assert "readout" in data_xr.dims
+        readouts = list(map(str, data_xr.coords["readout"].values))
+        n = len(readouts)
+
+        cols = 2 if n > 2 else n
+        rows = 1 if n <= 2 else ceil(n / 2)
+
+        ydim, xdim = [d for d in data_xr.dims if d != "readout"]
+        x_vals = data_xr.coords.get(xdim, np.arange(data_xr.sizes[xdim])).values
+        y_vals = data_xr.coords.get(ydim, np.arange(data_xr.sizes[ydim])).values
+
+        fig = make_subplots(
+            rows=rows, cols=cols,
+            subplot_titles=readouts,
+            horizontal_spacing=0.08, vertical_spacing=0.16,
+            shared_xaxes=False, shared_yaxes=False,
+        )
+        for i, rname in enumerate(readouts):
+            r = i // 2 + 1
+            c = i % 2 + 1
+            z = data_xr.sel(readout=rname).values
+
+            fig.add_trace(
+                go.Heatmap(
+                    x=x_vals, y=y_vals, z=z,
+                    showscale=(i == n - 1),
+                    name=f"readout_{rname}",
+                    customdata=np.full((len(y_vals), len(x_vals)), i + 1),
+                    hovertemplate="x=%{x}<br>y=%{y}<br>z=%{z}<extra>"+rname+"</extra>",
+                ),
+                row=r, col=c,
+            )
+
+        for cc in range(1, cols + 1):
+            fig.update_xaxes(title_text=data_xr.coords.get(xdim, {}).attrs.get("label", xdim), row=rows, col=cc)
+        fig.update_yaxes(title_text=data_xr.coords.get(ydim, {}).attrs.get("label", ydim), row=1, col=1)
+
+        fig.update_layout(
+            template="plotly_dark",
+            margin=dict(l=40, r=40, t=60, b=40),
+            height=max(320, 320 * rows),
+        )
+        return fig
 

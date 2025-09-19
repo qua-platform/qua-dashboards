@@ -26,6 +26,7 @@ from qua_dashboards.video_mode.utils.annotation_utils import (
 )
 from qua_dashboards.video_mode.utils.data_utils import load_data
 from qua_dashboards.video_mode.data_acquirers.simulated_data_acquirer import SimulatedDataAcquirer
+from qua_dashboards.video_mode.utils.config import SensorTuningConfig
 
 logger = logging.getLogger(__name__)
 
@@ -250,7 +251,7 @@ class AnnotationTabController(BaseTabController):
                 html.Hr(),
                 html.H6("Analysis"),
                 dbc.Button(
-                    "Calculate Slopes",
+                    "Calculate Slopes of Added Lines",
                     id=self._get_id(self._CALCULATE_BUTTON_SUFFIX),
                     color="info",
                     size="sm",
@@ -463,52 +464,44 @@ class AnnotationTabController(BaseTabController):
         )
         def _compute_sensor_compensation(n_clicks: int):
             logger.info(f"{self._get_id(self._SENSOR_COMPENSATION_BUTTON_SUFFIX)}: Compute compensation clicked.")
+
+            # So far, this button only works for simulated data (SimulatedDataAcquirer)
             if not isinstance(self.data_acquirer, SimulatedDataAcquirer):
                 return "This feature is only available for simulated data."
-            else:
-                ## Simulated data acquirer
+            else: # Simulated data acquirer
 
-                # Fixed parameters   MAYBE AS USER INPUT (WITH DEFAULT VALUES)?
-                method = "align-linear" # "align-linear", "autograd" implemented
-                N = 200
-                num_measurements = 6
-
-                # slow method
-                num_trials = 4
-                max_iterations=1000000
-                epsilon=1.e-6
-
-                # fast method
-                sigma_gaussian = 1.0
-
-                delta_central_point = 0.015 #
-                dim = self.data_acquirer.experiment.capacitance_config["C_DD"].shape[0]  # dimension of the system (number of gates/sensors)
+                # Parameters from config.py in utils
+                try:
+                    cfg = SensorTuningConfig()
+                except ValueError as e:
+                    return f"Value error: {e}"
+                logger.info(f"Config: {cfg}")
                 
-                # Other parameters
-                sensor_id = self.data_acquirer.experiment.sensor_config["sensor_dot_indices"][0]  # index of the sensor dot to compensate
-                state_hint = self.data_acquirer.args_rendering["state_hint_lower_left"]  # state hint for the sensor dot, used to find the state of the voltage
-                central_point = copy.deepcopy(self.data_acquirer.experiment.tunneling_sim.boundaries(state_hint).point_inside)   ### DISCUSS  coordinate transformation here ??? or is it already tronsformed ???
-                ranges = {i: (central_point[i]-delta_central_point, central_point[i]+delta_central_point) for i in range(dim)}
-                
+                dim = self.data_acquirer.experiment.capacitance_config["C_DD"].shape[0]                                             # dimension of the system (number of gates/sensors)
+                sensor_id = self.data_acquirer.experiment.sensor_config["sensor_dot_indices"][0]                                    # index of the sensor dot to compensate
+                state_hint = self.data_acquirer.args_rendering["state_hint_lower_left"]                                             # state hint for the sensor dot, used to find the state of the voltage
+                central_point = copy.deepcopy(self.data_acquirer.experiment.tunneling_sim.boundaries(state_hint).point_inside)      # central point
+                ranges = {i: (central_point[i]-cfg.general.delta_central_point, central_point[i]+cfg.general.delta_central_point)   # ranges
+                          for i in range(dim)}
+
                 # Computation of the gate compensation
                 flag_running = 1 if self.data_acquirer._acquisition_status == "running" else 0  
                 if flag_running:
-                    self.data_acquirer.stop_acquisition() # stop data 
-                if method == "align-linear":
-                    P_fit = compute_gate_compensation_al(self.data_acquirer.ramp, central_point, sensor_id, ranges, num_measurements = num_measurements, N=N, sigma_gaussian=sigma_gaussian, normalize_rows=True, plot=False)  
-                elif method == "autograd":
-                    P_fit = compute_gate_compensation_ml(self.data_acquirer.ramp, central_point, sensor_id, ranges, num_measurements = num_measurements, N=N, num_trials=num_trials, max_iterations=max_iterations, epsilon=epsilon)
+                    self.data_acquirer.stop_acquisition() # stop data acquisition
+                if cfg.general.method == "align-linear":
+                    P_fit = compute_gate_compensation_al(self.data_acquirer.ramp, central_point, sensor_id, ranges, 
+                                                         cfg.general.num_measurements, cfg.general.N, cfg.align_linear)  
+                elif cfg.general.method == "autograd":
+                    P_fit = compute_gate_compensation_ml(self.data_acquirer.ramp, central_point, sensor_id, ranges, 
+                                                         cfg.general.num_measurements, cfg.general.N, cfg.autograd)
                 else:
                     return "Unknown method."
                 if flag_running:
                     self.data_acquirer.start_acquisition() # start data acquisition
                 P_fit_formatted = np.array2string(P_fit, precision=4, suppress_small=True)
-                #m_fit_formatted = np.array2string(m_fit, precision=3, suppress_small=True)
-                #logger.info(f"Computed P_fit: {P_fit_formatted}, m_fit: {m_fit_formatted}")
                 logger.info(f"Computed P_fit: {P_fit_formatted}")
-                # In general, I could define a function ramp = lambda v_start, v_end, N: self.data_acquirer.ramp(v_start, v_end, N)
-                #return f"Fitted P:\n{json.dumps(P_fit.tolist(), indent=2)}"
                 return f"Fitted compensation matrix P:\n {P_fit_formatted}"
+
 
     def _register_mode_change(
             self,

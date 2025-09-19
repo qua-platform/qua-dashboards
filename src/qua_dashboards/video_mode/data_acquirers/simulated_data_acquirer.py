@@ -284,9 +284,7 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
                                                             resolution = N,
                                                             v_start_state_hint = state_hint,
                                                             )
-        logger.info(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!! Ramp from {v_start} to {v_end} with {N} points generated.")
-        #logger.info(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!! Sensor signal: {sensor_signal[:, 0]}")
-        return sensor_signal[:, 0]  # Return the sensor signal as a 1D numpy array    ### DISCUSS: Transform coordinates ???
+        return sensor_signal[:, 0]  # Return the sensor signal as a 1D numpy array
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
         """Updates SimulatedDataAcquirer parameters based on UI input.

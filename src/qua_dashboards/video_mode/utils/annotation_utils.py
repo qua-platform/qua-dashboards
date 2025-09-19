@@ -511,7 +511,7 @@ def fit_compensation_parameters(lines, N, mid_val_gate, min_w0  = 0.0, max_w0  =
     return Model(solution, model_par, mid_val_gate, res_best)   # return the best model
 
 
-def compute_gate_compensation_ml(ramp, central_point, sensor_id, ranges, num_measurements = 6, N=200, max_w0=0.7, num_trials=2, max_iterations=1000000, epsilon=1.e-5):   ### DISCUSS: coordinate transformation here ???
+def compute_gate_compensation_ml(ramp, central_point, sensor_id, ranges, num_measurements, N, cfg): # max_w0=0.7, num_trials=2, max_iterations=1000000, epsilon=1.e-5):
     '''
     Compensation routine for a sensor based on the influence of other gates.
     This function computes a linear model that compensates for the effect of other gates on a particular sensor.
@@ -530,6 +530,11 @@ def compute_gate_compensation_ml(ramp, central_point, sensor_id, ranges, num_mea
         m: offset vector (dim,) that ensures alignment at the central point
     that neutralize the effects of other gates. Linear model adjusted_input = P*original_input + m to correct the sensor's input before performing readout.
     '''
+    min_w0 = cfg.min_w0
+    max_w0 = cfg.max_w0
+    num_trials = cfg.num_trials
+    max_iterations = cfg.max_iterations
+    epsilon = cfg.epsilon
 
     dim = len(central_point)  # dimension (number of gates/sensors)
 
@@ -543,7 +548,6 @@ def compute_gate_compensation_ml(ramp, central_point, sensor_id, ranges, num_mea
     
     #final learned coordinate transform
     P = np.eye(dim)    # initialize matrix for linear compensation
-    m = np.zeros(dim)  # initialize offset vector for compensation
     # loop over all gates
     for gate_id in ranges.keys():
         #skip the current sensor for compensation!!!
@@ -584,18 +588,17 @@ def compute_gate_compensation_ml(ramp, central_point, sensor_id, ranges, num_mea
     
         #fit
         midv = (minv+maxv)/2  # midpoint of a gate's range
-        model = fit_compensation_parameters(lines, N, midv, min_w0=0.0, max_w0=max_w0, num_trials=num_trials, max_iterations=max_iterations, epsilon=epsilon)  # fitting function to learn how the current gate influences the sensor
+        model = fit_compensation_parameters(lines, N, midv, min_w0=min_w0, max_w0=max_w0, num_trials=num_trials, max_iterations=max_iterations, epsilon=epsilon)  # fitting function to learn how the current gate influences the sensor
         #save compensation parameters
         logger.debug(f"model solution: {model.solution[0]}")
         P[sensor_id,gate_id] = -model.solution[0]  # learn slope: how does gate gate_id affect sensor sensor_id
         #compute offset such that the compensated model produces the gate values of central point
         #as we only change the coordinates of the sensor dot, only a change of the offset for the
         #sensor is needed
-        #m[sensor_id] -= P[sensor_id,gate_id] * central_point[gate_id]  # offset needed so that the central point remains invariant after compensation -> compensation does NOT distort the sensor reading at the central point
     
     # Note that only one row of P is modified: P[sensor_id,:]. All other rows stay as identity.
     # Note that only one entry of m is modified: m[sensor_id]. All other entries stay zero.
-    return P #, m
+    return P
 
 
 def align_linear(values, sensor_gate_vs, ys, N_init=20,w_min=-1.2,w_max=1.2,use_mse=False):
@@ -685,7 +688,7 @@ def amplitude_scan_2D(ramp, ids, central_point, ranges, gate_values, N):
     return np.array(observations)  # shape (num_measurements, resolution)
 
 
-def compute_gate_compensation_al(ramp, central_point, sensor_id, ranges, num_measurements = 6, N=200, w_min=-2.0, w_max=0.2, sigma_gaussian=1.0, normalize_rows=True, plot=False):
+def compute_gate_compensation_al(ramp, central_point, sensor_id, ranges, num_measurements, N, cfg): #w_min=-2.0, w_max=0.2, sigma_gaussian=1.0, normalize_rows=True):
     '''
     This function computes a linear model that compensates for the effect of other gates on a particular sensor.
 
@@ -703,10 +706,15 @@ def compute_gate_compensation_al(ramp, central_point, sensor_id, ranges, num_mea
         m: offset vector (dim,) that ensures alignment at the central point
     that neutralize the effects of other gates. Linear model adjusted_input = P*original_input + m to correct the sensor's input before performing readout.
     '''
+    w_min = cfg.w_min
+    w_max = cfg.w_max
+    sigma_gaussian = cfg.sigma_gaussian
+    normalize_rows = cfg.normalize_rows
+    use_mse = cfg.use_mse
+
     dim = len(central_point)  # dimension (number of gates/sensors)
 
     P = np.eye(dim)    # initialize matrix for linear compensation
-    m = np.zeros(dim)  # initialize offset vector for compensation
 
     # Create sensor values for fitting
     sensor_values = np.linspace(ranges[sensor_id][0], ranges[sensor_id][1], N)
@@ -737,9 +745,8 @@ def compute_gate_compensation_al(ramp, central_point, sensor_id, ranges, num_mea
             observations = (observations - np.mean(observations)) / np.std(observations)
 
         # Fit compensation model
-        comp_factor, comp_obs = align_linear(observations, sensor_values, gate_values, w_min=w_min, w_max=w_max)
+        comp_factor, comp_obs = align_linear(observations, sensor_values, gate_values, w_min=w_min, w_max=w_max, use_mse=use_mse)
         print(f"Fitted compensation factor for sensor {sensor_id} wrt gate {gate_id}: {comp_factor:.4f}")
         P[sensor_id,gate_id] = -comp_factor
-        #m[sensor_id] -= P[sensor_id,gate_id] * central_point[gate_id]
     
-    return P #, m
+    return P

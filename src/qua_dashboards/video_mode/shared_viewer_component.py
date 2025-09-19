@@ -12,6 +12,7 @@ from plotly.subplots import make_subplots
 from qua_dashboards.video_mode.utils.annotation_utils import (
     generate_annotation_traces,
 )
+from qua_dashboards.video_mode.shared_data_handler import SharedDataHandler
 
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,7 @@ class SharedViewerComponent(BaseComponent):
             self._get_default_figure()
         )  # Start with an empty dark figure
         logger.info(f"SharedViewerComponent '{self.component_id}' initialized.")
+        self.shared_data_handler = SharedDataHandler()
 
     def _get_default_figure(self) -> go.Figure:
         """
@@ -66,160 +68,6 @@ class SharedViewerComponent(BaseComponent):
                 )
             ],
         )
-    
-    def _make_readout_subplots_with_profile(self, da: xr.DataArray, profile: dict) -> go.Figure:
-        assert isinstance(da, xr.DataArray) and da.ndim == 3 and "readout" in da.dims
-        y_name, x_name = [d for d in da.dims if d != "readout"]
-        rd_vals = list(da.coords["readout"].values)
-        labels = [str(v) for v in rd_vals]
-        n = len(labels)
-        if "subplot_col" in profile:
-            target_idx = max(0, int(profile["subplot_col"]) - 1)
-        else:
-            target_label = str(profile.get("readout", labels[0]))
-            try:
-                target_idx = labels.index(target_label)
-            except ValueError:
-                target_idx = 0
-
-        fig = make_subplots(rows=1, cols=n, subplot_titles=labels,
-                            horizontal_spacing=min(0.06, 1.0/(max(n-1,1)) - 1e-6))
-        yc, xc = da.coords[y_name], da.coords[x_name]
-        y_lab = yc.attrs.get("long_name", y_name)
-        y_unit = yc.attrs.get("units", "")
-        x_lab = xc.attrs.get("long_name", x_name)
-        x_unit = xc.attrs.get("units", "")
-        y_title = f"{y_lab} ({y_unit})" if y_unit else y_lab
-        x_title = f"{x_lab} ({x_unit})" if x_unit else x_lab
-        for i in range(n):
-            if i == target_idx:
-                s = np.asarray(profile.get("s", []))
-                vals = np.asarray(profile.get("vals", []))
-                fig.add_trace(
-                    go.Scatter(x=s, y=vals, mode="lines", name=f"profile_{labels[i]}", showlegend=False),
-                    row=1, col=i+1
-                )
-                fig.update_xaxes(title_text=profile.get("x_label", "Distance"), row=1, col=i+1)
-                fig.update_yaxes(title_text=profile.get("y_label", "Value"),    row=1, col=i+1)
-            else:
-                sub = da.isel(readout=i).reset_coords("readout", drop=True)
-                small = xarray_to_plotly(sub)
-                if small.data:
-                    tr = small.data[0]
-                    tr.update(showscale=(i == n - 1))
-                    try:
-                        z = np.asarray(tr["z"])
-                        rows, cols = z.shape
-                        tr["customdata"] = [[i + 1] * cols for _ in range(rows)]
-                    except Exception:
-                        pass
-                    fig.add_trace(tr, row=1, col=i+1)
-                    fig.update_xaxes(title_text=x_title, row=1, col=i+1)
-                if i == 0:
-                    fig.update_yaxes(title_text=y_title, row=1, col=1)
-
-        fig.update_layout(template="plotly_dark", showlegend=False, margin=dict(l=60, r=30, t=40, b=40))
-        return fig
-
-    def _pick_readout_dim(self, da: xr.DataArray) -> tuple[str, str]:
-        dims = list(da.dims)
-        if "readout" in dims:
-            rd = "readout"
-            return rd, [d for d in dims if d != rd][0]
-
-        def _non_numeric(d: str) -> bool:
-            c = da.coords.get(d)
-            if c is None:
-                return False
-            return np.asarray(c.values).dtype.kind not in ("i", "u", "f")
-
-        rd = min(dims, key=lambda d: (da.sizes[d], 0 if _non_numeric(d) else 1))
-        return rd, [d for d in dims if d != rd][0]
-
-    def _axis_vals_and_label(self, da: xr.DataArray, dim: str) -> tuple[np.ndarray, str]:
-        c = da.coords.get(dim)
-        x = np.asarray(c.values) if c is not None else np.arange(da.sizes[dim])
-        label = (c.attrs.get("label", dim) if c is not None else dim)
-        u = (c.attrs.get("units") if c is not None else None)
-        if u:
-            label = f"{label} [{u}]"
-        return x, label
-
-    def _safe_hspace(self, n: int, default: float = 0.06) -> float:
-        return min(default, 1.0 / (n - 1) - 1e-6) if n > 1 else default
-
-    def _is_line(self, da: xr.DataArray) -> bool:
-        return (
-            isinstance(da, xr.DataArray)
-            and "readout" not in da.dims
-            and (da.ndim == 1 or (da.ndim == 2 and 1 in da.shape))
-        )
-
-    def _make_readout_line_subplots(self, da: xr.DataArray) -> go.Figure:
-        assert isinstance(da, xr.DataArray) and da.ndim == 2
-        rd_dim, x_dim = self._pick_readout_dim(da)
-        labels = [str(v) for v in (np.asarray(da.coords[rd_dim].values)
-                                if rd_dim in da.coords else range(da.sizes[rd_dim]))]
-        n = len(labels)
-        x_vals, x_label = self._axis_vals_and_label(da, x_dim)
-
-        if n > 8:
-            fig = go.Figure()
-            for i, lab in enumerate(labels):
-                y = np.asarray(da.isel({rd_dim: i}).values).ravel()
-                fig.add_trace(go.Scatter(x=x_vals, y=y, mode="lines", name=lab))
-            fig.update_layout(template="plotly_dark", xaxis_title=x_label, yaxis_title="Value", showlegend=True)
-            return fig
-
-        if n <= 1:
-            y = np.asarray(da.isel({rd_dim: 0}).values).ravel()
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=x_vals, y=y, mode="lines", name=labels[0]))
-            fig.update_layout(template="plotly_dark", xaxis_title=x_label, yaxis_title="Value", showlegend=False)
-            return fig
-
-        fig = make_subplots(rows=1, cols=n, subplot_titles=labels, horizontal_spacing=self._safe_hspace(n))
-        for i, lab in enumerate(labels):
-            y = np.asarray(da.isel({rd_dim: i}).values).ravel()
-            fig.add_trace(go.Scatter(x=x_vals, y=y, mode="lines", name=lab, showlegend=False), row=1, col=i + 1)
-            fig.update_xaxes(title_text=x_label, row=1, col=i + 1)
-        fig.update_yaxes(title_text="Value", row=1, col=1)
-        fig.update_layout(template="plotly_dark", showlegend=False, margin=dict(l=60, r=30, t=40, b=40))
-        return fig
-
-    def _make_readout_subplots(self, da: xr.DataArray) -> go.Figure:
-        if not (isinstance(da, xr.DataArray) and da.ndim == 3 and "readout" in da.dims):
-            return xarray_to_plotly(da)
-
-        y_name, x_name = [d for d in da.dims if d != "readout"]
-        labels = [str(v) for v in da.coords["readout"].values]
-        n = len(labels)
-
-        fig = make_subplots(rows=1, cols=n, subplot_titles=labels, horizontal_spacing=self._safe_hspace(n))
-        yc, xc = da.coords[y_name], da.coords[x_name]
-        y_title = f"{yc.attrs.get('long_name', y_name)} ({yc.attrs.get('units','')})".strip(" ()")
-        x_title = f"{xc.attrs.get('long_name', x_name)} ({xc.attrs.get('units','')})".strip(" ()")
-
-        for i in range(n):
-            sub = da.isel(readout=i).reset_coords("readout", drop=True)
-            small = xarray_to_plotly(sub)
-            if not small.data:
-                continue
-            tr = small.data[0]
-            tr.update(showscale=(i == n - 1))
-            try:
-                z = np.asarray(tr["z"])
-                rows, cols = z.shape
-                tr["customdata"] = [[i + 1] * cols for _ in range(rows)]
-            except Exception:
-                pass
-            fig.add_trace(tr, row=1, col=i + 1)
-        for col in range(1, n + 1):
-            fig.update_xaxes(title_text=x_title, row=1, col=col)
-        fig.update_yaxes(title_text=y_title, row=1, col=1)
-        fig.update_layout(template="plotly_dark", showlegend=False, margin=dict(l=60, r=30, t=40, b=40))
-        return fig
-
 
     def get_graph_id(self) -> Dict[str, str]:
         """
@@ -234,6 +82,15 @@ class SharedViewerComponent(BaseComponent):
         return self._get_id(self._MAIN_GRAPH_ID_SUFFIX)
 
     def _create_figure_from_live_data(self, data_object: dict) -> go.Figure:
+        """
+        Creates a Plotly figure from live data (expected to be xr.DataArray).
+
+        Args:
+            data_object: The data object fetched from the registry.
+
+        Returns:
+            A Plotly Figure object.
+        """
         if not isinstance(data_object, dict):
             logger.warning(
                 f"SharedViewer ({self.component_id}): Live data object "
@@ -242,27 +99,27 @@ class SharedViewerComponent(BaseComponent):
             )
             self._current_figure = self._get_default_figure()
             return self._current_figure
-
-        if "base_image_data" not in data_object and "data" not in data_object:
+        if "base_image_data" not in data_object:
             logger.warning(
-                f"SharedViewer ({self.component_id}): Live data object missing 'base_image_data'."
+                f"SharedViewer ({self.component_id}): Live data object "
+                f"missing 'base_image_data' (type: {type(data_object)}). "
+                "Cannot auto-plot."
             )
             self._current_figure = self._get_default_figure()
             return self._current_figure
-
-        bid = data_object.get("base_image_data")
-        base_image_data = bid if bid is not None else data_object.get("data")
-
+        base_image_data = data_object.get("base_image_data")
+        base_image_data = base_image_data if base_image_data is not None else data_object.get("data")
         if not isinstance(base_image_data, xr.DataArray):
             logger.warning(
-                f"SharedViewer ({self.component_id}): base_image_data is not xr.DataArray "
-                f"(type: {type(base_image_data)})."
+                f"SharedViewer ({self.component_id}): Live data object "
+                f"base_image_data is not an xr.DataArray (type: {type(base_image_data)}). "
+                "Cannot auto-plot."
             )
             self._current_figure = self._get_default_figure()
             return self._current_figure
 
         try:
-            if self._is_line(base_image_data):
+            if self.shared_data_handler._is_line(base_image_data):
                 da = base_image_data.squeeze(drop=True)
                 if da.ndim == 2:
                     non_single_dims = [d for d in da.dims if da.sizes[d] != 1]
@@ -288,12 +145,12 @@ class SharedViewerComponent(BaseComponent):
                 return fig
 
             if base_image_data.ndim == 2 and ("readout" in base_image_data.dims):
-                fig = self._make_readout_line_subplots(base_image_data)
+                fig = self.shared_data_handler._make_readout_line_subplots(base_image_data)
                 self._current_figure = fig
                 return fig
 
             if base_image_data.ndim == 3 and "readout" in base_image_data.dims:
-                fig = self._make_readout_subplots(base_image_data)
+                fig = self.shared_data_handler._make_readout_subplots(base_image_data)
                 self._current_figure = fig
                 return fig
 
@@ -302,7 +159,8 @@ class SharedViewerComponent(BaseComponent):
 
         except Exception as e:
             logger.error(
-                f"SharedViewer ({self.component_id}): Error converting live xr.DataArray to Plotly: {e}",
+                f"SharedViewer ({self.component_id}): Error converting "
+                f"live xr.DataArray to Plotly: {e}",
                 exc_info=True,
             )
             self._current_figure = self._get_default_figure()
@@ -310,19 +168,25 @@ class SharedViewerComponent(BaseComponent):
 
 
     def _create_figure_from_static_data(self, static_data_object: dict, viewer_ui_state_input: dict) -> go.Figure:
-        logger.info("Rendering static figure, annotations present? %s",
-            isinstance(static_data_object.get("annotations"), dict))
-        ann = static_data_object.get("annotations") or {}
-        logger.info("Ann counts: points=%d lines=%d", len(ann.get("points", [])), len(ann.get("lines", [])))
+        """
+        Creates a Plotly figure from a static data compound object.
 
+        The compound object is expected to contain 'base_image_data'
+        and 'annotations'.
+
+        Args:
+            static_data_object: The compound static data object from the registry.
+
+        Returns:
+            A Plotly Figure object with base image and annotations.
+        """
         fig = self._get_default_figure()
-
         profile = static_data_object.get("profile_plot") if isinstance(static_data_object, dict) else None
         base_image_data = static_data_object.get("base_image_data") if isinstance(static_data_object, dict) else None
 
         if isinstance(profile, dict) and isinstance(base_image_data, xr.DataArray) and base_image_data.ndim == 3 and "readout" in base_image_data.dims:
             try:
-                fig = self._make_readout_subplots_with_profile(base_image_data, profile)
+                fig = self.shared_data_handler._make_readout_subplots_with_profile(base_image_data, profile)
                 self._current_figure = fig
                 return fig
             except Exception as e:
@@ -338,7 +202,7 @@ class SharedViewerComponent(BaseComponent):
             fig.update_layout(
                 template="plotly_dark",
                 margin=dict(l=40, r=10, t=10, b=40),
-                xaxis_title=profile.get("x_label", "Distance"),
+                xaxis_title="Arbitrary Units",
                 yaxis_title=y_label,
                 showlegend=False,
             )
@@ -352,7 +216,6 @@ class SharedViewerComponent(BaseComponent):
             )
             return fig
 
-        base_image_data = static_data_object.get("base_image_data")
         annotations_data = static_data_object.get("annotations")
         n_cols = 1
         if isinstance(base_image_data, xr.DataArray) and base_image_data.ndim == 3 and "readout" in base_image_data.dims:
@@ -363,7 +226,7 @@ class SharedViewerComponent(BaseComponent):
 
         if isinstance(base_image_data, xr.DataArray):
             try:
-                if self._is_line(base_image_data):
+                if self.shared_data_handler._is_line(base_image_data):
                     da = base_image_data.squeeze()
                     x_dim = da.dims[0]
                     coord = da.coords[x_dim] if x_dim in da.coords else None
@@ -376,7 +239,7 @@ class SharedViewerComponent(BaseComponent):
                     fig.add_trace(go.Scatter(x=x, y=np.asarray(da.values).ravel(), mode="lines"))
                     fig.update_layout(template="plotly_dark", xaxis_title=x_label, yaxis_title="Value")
                 elif base_image_data.ndim == 3 and "readout" in base_image_data.dims:
-                    fig = self._make_readout_subplots(base_image_data)
+                    fig = self.shared_data_handler._make_readout_subplots(base_image_data)
                 else:
                     fig = xarray_to_plotly(base_image_data)
             except Exception as e:
@@ -388,8 +251,9 @@ class SharedViewerComponent(BaseComponent):
                 fig = self._get_default_figure()
         elif base_image_data is not None:
             logger.warning(
-                f"SharedViewer ({self.component_id}): Static base_image_data is not xr.DataArray "
-                f"(type: {type(base_image_data)}). Displaying empty base."
+                f"SharedViewer ({self.component_id}): Static base_image_data "
+                f"is not an xr.DataArray (type: {type(base_image_data)}). "
+                "Displaying empty base."
             )
 
         if isinstance(annotations_data, dict):
@@ -412,7 +276,6 @@ class SharedViewerComponent(BaseComponent):
                         return int(p.get("subplot_col", default) or default)
                 return default
 
-            # lines
             for ln in lines:
                 try:
                     lid = str(ln.get("id"))

@@ -96,22 +96,8 @@ def get_video_mode_component() -> VideoModeComponent:
     P[1,1]=1
     state_hint_lower_left = [1,1,5]
 
-    P_c = np.eye(N+1)      ### DISCUSS: symmetric ???
-    P_c[0,1] = 0.01
-    P_c[0,2] = 0.01
-    P_c[0,3] = 0.01
-    P_c[1,0] = 0.01
-    P_c[1,2] = 0.01
-    P_c[1,3] = 0.01
-    P_c[2,0] = 0.01
-    P_c[2,1] = 0.01
-    P_c[2,3] = 0.01
-    P_c[3,0] = 0.01
-    P_c[3,1] = 0.01
-    P_c[3,2] = 0.01
-
     args_sensor_scan_2D = {
-        "P": P, #P_c @ P,   ### DISCUSS: P_c @ P ??? 
+        "P": P,
         "minV": [-span_x/2.*factor_mV_to_V,-span_y/2.*factor_mV_to_V],
         "maxV": [ span_x/2.*factor_mV_to_V, span_y/2.*factor_mV_to_V],
         "resolution": [points_x,points_y],

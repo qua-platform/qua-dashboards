@@ -2,7 +2,6 @@ import logging
 from typing import Any
 import dash_bootstrap_components as dbc
 from dash import html, ctx, ALL, no_update, Dash, Input, Output, State, no_update, dcc
-import uuid
 
 from qua_dashboards.video_mode.tab_controllers.base_tab_controller import (
     BaseTabController,

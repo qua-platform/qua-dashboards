@@ -13,5 +13,6 @@ def ui_update(app, video_mode_component):
         prevent_initial_call=True,
     )
     def _refresh_controls(_n):
+        acq.mark_virtual_layer_changed(affects_config=False)
         acq.ensure_axis()
         return acq.get_dash_components(include_subcomponents=True)

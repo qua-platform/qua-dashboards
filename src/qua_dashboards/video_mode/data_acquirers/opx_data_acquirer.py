@@ -636,3 +636,9 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             except Exception as e:
                 logger.warning(f"Error halting QM job for {self.component_id}: {e}")
         super().stop_acquisition()
+    def mark_virtual_layer_changed(self, *, affects_config: bool = False):
+        """Call this when a virtual-gate matrix was edited."""
+        if affects_config:
+            self._compilation_flags |= ModifiedFlags.CONFIG_MODIFIED
+        else:
+            self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED

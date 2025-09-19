@@ -775,12 +775,13 @@ def image_gradients(img, cfg):
     Apply Gaussian blurring before computing the gradients. Subtract the mean of pixels with small norm from the gradient images.
 
     Input:
-    img             Input image I of shape (H,W)
-    sigmaX_blur     Standard deviation of the Gaussian in x direction used for blurring the image
-    sigmaY_blur     Standard deviation of the Gaussian in y direction used for blurring the image
-    ksize_sobelX    Kernel size for computing the gradients in x-direction. Note: Has to be ODD number.
-    ksize_sobelY    Kernel size for computing the gradients in x-direction. Note: Has to be ODD number.
-    frac            Fraction of pixels to use for mean computation
+    img                 Input image I of shape (H,W)
+    cfg                 Config parameters
+        sigmaX_blur         Standard deviation of the Gaussian in x direction used for blurring the image
+        sigmaY_blur         Standard deviation of the Gaussian in y direction used for blurring the image
+        ksize_sobelX        Kernel size for computing the gradients in x-direction. Note: Has to be ODD number.
+        ksize_sobelY        Kernel size for computing the gradients in x-direction. Note: Has to be ODD number.
+        frac                Fraction of pixels to use for mean computation
 
     Returns:
     sobel_x         Image Ix of gradients in x-direction of shape (H,W)
@@ -807,11 +808,7 @@ def generate_2D_gradient_vector(img, cfg):
 
     Input:
     img             Input image I of shape (H,W)
-    sigmaX_blur     Standard deviation of the Gaussian in x direction used for blurring the image
-    sigmaY_blur     Standard deviation of the Gaussian in y direction used for blurring the image
-    ksize_sobelX    Kernel size for computing the gradients in x-direction. Note: Has to be ODD number.
-    ksize_sobelY    Kernel size for computing the gradients in x-direction. Note: Has to be ODD number.
-    frac            Fraction of pixels to use for mean computation
+    cfg             Config parameters for computing the image gradients
 
     Returns:
     points          A 2D array where each row is a gradient vector [Gx, Gy] for each pixel of the input image, i.e. rows are observations (pixels), columns are variables (sobel_x, sobel_y).
@@ -885,7 +882,7 @@ def gmm_log_likelihood(params,data,w):
     return -log_likelihood
 
 
-def gmm_log_likelihood_reg(params,data,w):
+def gmm_log_likelihood_reg(params,data,w,reg_param):
     # Compute the negative log-likelihood of the Gaussian Mixture Model
     p1 = params[0:2]  
     p2 = params[2:4]
@@ -894,7 +891,7 @@ def gmm_log_likelihood_reg(params,data,w):
                   w[1] * normal_distribution_2D_vectorized(data, Sigma1) +
                   w[2] * normal_distribution_2D_vectorized(data, Sigma2))
     log_likelihood = anp.sum(anp.log(likelihood + 1e-10))  # Add small constant to avoid log(0)
-    reg = 1000 * (p2[0]**2/(anp.linalg.norm(p2))**2 + p1[1]**2/(anp.linalg.norm(p1))**2)  # ensure that the normal p1 is aligned with y-axis, and the normal p2 with x-axis
+    reg = reg_param * (p2[0]**2/(anp.linalg.norm(p2))**2 + p1[1]**2/(anp.linalg.norm(p1))**2)  # ensure that the normal p1 is aligned with y-axis, and the normal p2 with x-axis
 
     return -log_likelihood + reg
 
@@ -913,19 +910,12 @@ def compute_transformation_matrix(n1,n2):
 def warp_image_with_normals(img, n1, n2, fill_value=1e-6):
     """
     Warp an image defined on a rectangular grid (xs, ys) so that lines with normals n1, n2
-    become orthogonal in the transformed coordinates.
+    become orthogonal in the transformed coordinates. Plot the warped image.
 
-    Parameters
-    ----------
-    img : 2D xarray (shape (len(ys), len(xs)))
-    n1, n2 : (2,) arrays, the two normalized line normals
-    nx, ny : resolution of the output grid (default: same as input)
-    fill_value : value for points outside the input domain
-
-    Returns
-    -------
-    warped : 2D array (ny, nx)
-    new_xs, new_ys : 1D arrays of the new rectilinear grid in transformed coords
+    Input:    
+    img             Input image (2D xarray) of shape (H,W)
+    n1, n2          Normalized line normals: (2,) arrays
+    fill_value      Value for points outside the input domain
     """
     H, W = img.shape    # height, width of image
     xs = np.arange(W)   # original x-grid (cols)
@@ -991,8 +981,8 @@ def compute_transformation_matrix_from_image_gradients(img, cfg):
         logger.info(f"Initial log-likelihood: {gmm_log_likelihood(init_params,data,w)}")
         problem = value_and_grad(lambda params: gmm_log_likelihood(params,data,w))
     if cfg.model.likelihood == "with-reg":
-        logger.info(f"Initial log-likelihood: {gmm_log_likelihood_reg(init_params,data,w)}")
-        problem = value_and_grad(lambda params: gmm_log_likelihood_reg(params,data,w))
+        logger.info(f"Initial log-likelihood: {gmm_log_likelihood_reg(init_params,data,w,cfg.model.reg_param)}")
+        problem = value_and_grad(lambda params: gmm_log_likelihood_reg(params,data,w,cfg.model.reg_param))
     result = minimize(problem, init_params, method="L-BFGS-B", jac=True, tol=0.0, options={'maxiter':cfg.optimization.max_iterations, 'gtol': cfg.optimization.epsilon})
 
     p1 = result.x[:2]  # normal aligned with x-axis

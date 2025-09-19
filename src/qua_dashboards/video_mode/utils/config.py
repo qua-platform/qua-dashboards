@@ -22,6 +22,7 @@ class ModelConfig:
     likelihood: str = "with-reg"                        # "with-reg" or "without-reg", i.e. with or without regularization term that ensures alignment of the normals with the correct axes
     w: tuple = (0.8, 0.1, 0.1)                          # Weights for the Gaussian components (mixing coefficients)
     init_params: tuple = (0.1, 0.0, 0.0, 0.1, 0.0)      # Initial guess for GMM: p1, p2 horizontal and vertical, tau = log_sigma = log(1.0) = 0.0
+    reg_param: float = 1000.0                            # Regularization parameter
 
 @dataclass
 class TransformationMatrixConfig:

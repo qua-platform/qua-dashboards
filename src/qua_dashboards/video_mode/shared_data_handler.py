@@ -3,9 +3,13 @@ import plotly.graph_objects as go
 import numpy as np
 from qua_dashboards.video_mode.utils.dash_utils import xarray_to_plotly
 from plotly.subplots import make_subplots
+<<<<<<< HEAD
 from math import ceil
+=======
+import logging
+>>>>>>> d99b582 (Move logic to SharedDataHandler)
 __all__ = ["SharedDataHandler"]
-
+logger = logging.getLogger(__name__)
 class SharedDataHandler:
     """
     A helper class to be used by ShareViewerComponent, to help handle multiple subplots yielded by frequency-multiplexed readout.

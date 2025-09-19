@@ -566,6 +566,7 @@ class VideoModeComponent(BaseComponent):
                 "data",
                 allow_duplicate=True,
             ),
+            Output(self._get_id(self._MAIN_STATUS_ALERT_ID_SUFFIX), "children", allow_duplicate=True),
         ]
         inputs = [Input(self._get_id(self._TABS_ID_SUFFIX), "value")]
 
@@ -616,6 +617,7 @@ class VideoModeComponent(BaseComponent):
             layout_config_update = store_updates_from_tab.get(
                 self.VIEWER_LAYOUT_CONFIG_STORE_SUFFIX, no_update
             )
+            main_status_update = store_updates_from_tab.get(self._MAIN_STATUS_ALERT_ID_SUFFIX, no_update)
 
             # If the new mode is 'live' (from tab activation), ensure primary_update
             # points to the latest known live data version.
@@ -629,7 +631,7 @@ class VideoModeComponent(BaseComponent):
                         "version": self._current_live_data_version,
                     }
 
-            return viewer_data_update, viewer_ui_state_update, layout_config_update
+            return viewer_data_update, viewer_ui_state_update, layout_config_update, main_status_update
 
     def save(self, results_key: str) -> Dict[str, Any]:
         image_data = data_registry.get_data(results_key)

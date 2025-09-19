@@ -8,10 +8,11 @@ from dash import Dash, Input, Output, State, dcc, html
 from qua_dashboards.core import BaseComponent
 from qua_dashboards.video_mode.utils.dash_utils import xarray_to_plotly
 from qua_dashboards.video_mode import data_registry
-
+from plotly.subplots import make_subplots
 from qua_dashboards.video_mode.utils.annotation_utils import (
     generate_annotation_traces,
 )
+from qua_dashboards.video_mode.shared_data_handler import SharedDataHandler
 
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,7 @@ class SharedViewerComponent(BaseComponent):
             self._get_default_figure()
         )  # Start with an empty dark figure
         logger.info(f"SharedViewerComponent '{self.component_id}' initialized.")
+        self.shared_data_handler = SharedDataHandler()
 
     def _get_default_figure(self) -> go.Figure:
         """
@@ -61,7 +63,7 @@ class SharedViewerComponent(BaseComponent):
                 dcc.Graph(
                     id=self._get_id(self._MAIN_GRAPH_ID_SUFFIX),
                     figure=self._current_figure,
-                    style={"height": "100%", "width": "100%"},
+                    style={"height": "800px", "width": "100%"},
                     config={"scrollZoom": True, "displaylogo": False},
                 )
             ],
@@ -89,58 +91,14 @@ class SharedViewerComponent(BaseComponent):
         Returns:
             A Plotly Figure object.
         """
-        if not isinstance(data_object, dict):
-            logger.warning(
-                f"SharedViewer ({self.component_id}): Live data object "
-                f"is not a dict (type: {type(data_object)}). "
-                "Cannot auto-plot."
-            )
-            self._current_figure = self._get_default_figure()
-            return self._current_figure
-        if "base_image_data" not in data_object:
-            logger.warning(
-                f"SharedViewer ({self.component_id}): Live data object "
-                f"missing 'base_image_data' (type: {type(data_object)}). "
-                "Cannot auto-plot."
-            )
-            self._current_figure = self._get_default_figure()
-            return self._current_figure
-        base_image_data = data_object.get("base_image_data")
-        if not isinstance(base_image_data, xr.DataArray):
-            logger.warning(
-                f"SharedViewer ({self.component_id}): Live data object "
-                f"base_image_data is not an xr.DataArray (type: {type(base_image_data)}). "
-                "Cannot auto-plot."
-            )
-            self._current_figure = self._get_default_figure()
-            return self._current_figure
-
         try:
-            if base_image_data.ndim == 2 and (1 in base_image_data.shape):
-                vals = np.asarray(base_image_data.values).ravel()
-                dims = base_image_data.dims
-                x_dim = dims[1] if base_image_data.shape[0] == 1 else dims[0]
-                coord = base_image_data.coords[x_dim]
-                x = np.asarray(coord.values)
-                x_label = coord.attrs.get("label") or str(x_dim)
-                if coord.attrs.get("units"):
-                    x_label = f"{x_label} [{coord.attrs['units']}]"
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=x, y=vals, mode="lines"))
-                fig.update_layout(template="plotly_dark",
-                                  xaxis_title=x_label,
-                                  yaxis_title="Value")
-                self._current_figure = fig
-                return fig
-            self._current_figure = xarray_to_plotly(base_image_data)
+            fig = self.shared_data_handler.build_live_figure(data_object)
         except Exception as e:
-            logger.error(
-                f"SharedViewer ({self.component_id}): Error converting "
-                f"live xr.DataArray to Plotly: {e}",
-                exc_info=True,
-            )
-            self._current_figure = self._get_default_figure()
-        return self._current_figure
+            logger.error(f"SharedViewer ({self.component_id}): live->fig error: {e}", exc_info=True)
+            fig = self.shared_data_handler.empty_dark()
+        self._current_figure = fig
+        return fig
+
 
     def _create_figure_from_static_data(self, static_data_object: dict, viewer_ui_state_input: dict) -> go.Figure:
         """
@@ -155,86 +113,14 @@ class SharedViewerComponent(BaseComponent):
         Returns:
             A Plotly Figure object with base image and annotations.
         """
-        fig = self._get_default_figure()
-        profile = static_data_object.get("profile_plot")
-        if isinstance(profile, dict):
-            s = profile.get("s", [])
-            vals = profile.get("vals", [])
-            name = profile.get("name", "Line Profile")
-            y_label = profile.get("y_label", "Value")
-
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=s, y=vals, mode="lines", name=name))
-            fig.update_layout(
-                template="plotly_dark",
-                margin=dict(l=40, r=10, t=10, b=40),
-                xaxis_title="Arbitrary Units",
-                yaxis_title=y_label,
-                showlegend=False,
-            )
-            self._current_figure = fig
-            return fig
-        
-        if not isinstance(static_data_object, dict):
-            logger.warning(
-                f"SharedViewer ({self.component_id}): Static data object is not a dict "
-                f"(type: {type(static_data_object)})."
-            )
-            return fig
-
-        base_image_data = static_data_object.get("base_image_data")
-        annotations_data = static_data_object.get("annotations")
-
-        if isinstance(base_image_data, xr.DataArray):
-            try:
-                if base_image_data.ndim == 2 and (1 in base_image_data.shape):
-                    vals = np.asarray(base_image_data.values).ravel()
-                    dims = base_image_data.dims
-                    x_dim = dims[1] if base_image_data.shape[0] == 1 else dims[0]
-                    coord = base_image_data.coords[x_dim]
-                    x = np.asarray(coord.values)
-                    x_label = coord.attrs.get("label") or str(x_dim)
-                    if coord.attrs.get("units"):
-                        x_label = f"{x_label} [{coord.attrs['units']}]"
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(x=x, y=vals, mode="lines"))
-                    fig.update_layout(template="plotly_dark",
-                                    xaxis_title=x_label,
-                                    yaxis_title="Value")
-                    self._current_figure = fig
-                    return fig
-                fig = xarray_to_plotly(base_image_data)
-            except Exception as e:
-                logger.error(
-                    f"SharedViewer ({self.component_id}): Error converting static "
-                    f"base_image_data (xr.DataArray) to Plotly: {e}",
-                    exc_info=True,
-                )
-        elif base_image_data is not None:  # Data present but not xr.DataArray
-            logger.warning(
-                f"SharedViewer ({self.component_id}): Static base_image_data "
-                f"is not an xr.DataArray (type: {type(base_image_data)}). "
-                "Displaying empty base."
-            )
-
-        if isinstance(annotations_data, dict):
-            overlay_traces = generate_annotation_traces(annotations_data, viewer_ui_state_input)
-            for trace_dict in overlay_traces:
-                if isinstance(trace_dict, dict):
-                    fig.add_trace(go.Scatter(**trace_dict))
-                else:
-                    logger.warning(
-                        f"SharedViewer ({self.component_id}): Invalid overlay trace "
-                        f"format: {type(trace_dict)}. Expected dict."
-                    )
-        elif annotations_data is not None:
-            logger.warning(
-                f"SharedViewer ({self.component_id}): 'annotations' in static data "
-                f"is not a dict (type: {type(annotations_data)})."
-            )
-
+        try:
+            fig = self.shared_data_handler.build_static_figure(static_data_object, viewer_ui_state_input)
+        except Exception as e:
+            logger.error(f"SharedViewer ({self.component_id}): static->fig error: {e}", exc_info=True)
+            fig = self.shared_data_handler.empty_dark()
         self._current_figure = fig
         return fig
+
 
     def register_callbacks(
         self,

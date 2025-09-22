@@ -451,10 +451,6 @@ class SharedDataHandler:
         fig.update_layout(
             template="plotly_dark",
             margin=dict(l=40, r=40, t=60, b=40),
-<<<<<<< HEAD
-=======
-            height=max(420, 420*rows),
->>>>>>> 99ab629 (Bug Fixes)
         )
         return fig
 

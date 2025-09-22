@@ -497,6 +497,11 @@ class AnnotationTabController(BaseTabController):
             A_inv, A = compute_transformation_matrix(p1,p2) 
             A_inv_formatted = np.array2string(A_inv, precision=4, suppress_small=True)
             output = f"Transformation matrix (compensated --> original coords):\n {A_inv_formatted}"
+
+            if isinstance(self.data_acquirer, SimulatedDataAcquirer):
+                logger.info(f"Set virtualisation matrix in simulated data acquirer to {A_inv}")
+                self.data_acquirer.set_virtualisation_matrix(A_inv)
+                
             
             return output
            

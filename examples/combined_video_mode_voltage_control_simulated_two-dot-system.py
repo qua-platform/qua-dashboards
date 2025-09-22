@@ -97,7 +97,7 @@ def get_video_mode_component() -> VideoModeComponent:
     P[1,1]=1
     state_hint_lower_left = [1,1,5]
 
-    W = np.eye(N+1)
+    W = np.eye(2)
 
     args_sensor_scan_2D = {
         "P": P,

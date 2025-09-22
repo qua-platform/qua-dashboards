@@ -32,8 +32,9 @@ def get_video_mode_component() -> VideoModeComponent:
 
     #All capacitances are given in aF
     N = 3 #number of dots   
-    C_DD=20* np.eye((N))/2 #The self-capacitance of each dot, NOTE: factor of 2 due to symmetrization
-    C_DD[0,1] = 10 #capacitance between dot 0 and dot 1 (Left double dot) 
+    C_DD=20* np.eye((N))/ 2 #The self-capacitance of each dot, NOTE: factor of 2 due to symmetrization
+    C_DD[1,1] = 10 / 2 #NOTE: factor of 2 due to symmetrization
+    C_DD[0,1] = 5 #capacitance between dot 0 and dot 1 (Left double dot) 
 
     C_DD[0,2] = 1.6/2 #capacitance between sensor dot 2 and dot 0
     C_DD[1,2] = 1.4/2 #capacitance between sensor dot 2 and dot 1
@@ -96,8 +97,11 @@ def get_video_mode_component() -> VideoModeComponent:
     P[1,1]=1
     state_hint_lower_left = [1,1,5]
 
+    W = np.eye(N+1)
+    
     args_sensor_scan_2D = {
         "P": P,
+        "virtualisation_matrix": W,
         "minV": [-span_x/2.*factor_mV_to_V,-span_y/2.*factor_mV_to_V],
         "maxV": [ span_x/2.*factor_mV_to_V, span_y/2.*factor_mV_to_V],
         "resolution": [points_x,points_y],

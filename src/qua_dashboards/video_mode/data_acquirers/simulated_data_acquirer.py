@@ -148,7 +148,13 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
 
         return voltage_controller
 
+    def set_virtualisation_matrix(self, new_W):
+        self._plot_parameters_changed = True
+        self.args_rendering["virtualisation_matrix"] = new_W
 
+    def get_virtualisation_matrix(self):
+        return self.args_rendering["virtualisation_matrix"]
+    
     def perform_actual_acquisition(self) -> np.ndarray:
         """Simulates data acquisition by sleeping and returning simulated data.
 
@@ -177,7 +183,7 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
             logger.info("Generating simulated data")
             state = self.experiment.tunneling_sim.poly_sim.find_state_of_voltage(v = self.m, 
                                                                                  state_hint = self.args_rendering["state_hint_lower_left"])
-            sliced_sim = self.experiment.tunneling_sim.slice(P = self.args_rendering["P"], m = self.m)
+            sliced_sim = self.experiment.tunneling_sim.slice(P = self.args_rendering["virtualisation_matrix"]@self.args_rendering["P"], m = self.m)
             sensor_signalexp = sliced_sim.sensor_scan_2D(P = np.eye(2),
                                                          m = np.zeros(2),
                                                          minV = self.args_rendering["minV"],

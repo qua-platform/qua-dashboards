@@ -12,7 +12,6 @@ from qm.qua import (
     save,
     stream_processing,
     wait,
-    if_
 )
 from dash import html
 import dash_bootstrap_components as dbc

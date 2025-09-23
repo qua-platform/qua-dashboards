@@ -8,7 +8,7 @@ import dash
 import dash_bootstrap_components as dbc
 import numpy as np
 import xarray as xr
-from dash import Dash, Input, Output, State, html, ctx
+from dash import Dash, Input, Output, State, html, ctx #, dcc
 from dash.exceptions import PreventUpdate
 from plotly import graph_objects as go
 
@@ -20,6 +20,7 @@ from qua_dashboards.video_mode import data_registry
 from qua_dashboards.video_mode.utils.dash_utils import xarray_to_plotly
 from qua_dashboards.video_mode.utils.annotation_utils import (
     calculate_slopes,
+    calculate_normals,
     find_closest_line_id,
     compute_transformation_matrix_from_image_gradients,
     compute_transformation_matrix,
@@ -84,6 +85,7 @@ class AnnotationTabController(BaseTabController):
     _SHOW_LABELS_CHECKLIST_SUFFIX = "show-labels-checklist"
     _GRADIENT_COMPUTATION_BUTTON_SUFFIX = "gradient-computation-button"
     _GRADIENT_COMPUTATION_RESULTS_SUFFIX = "gradient-computation-results"
+    _STORE_LIVE_FRAME_SUFFIX = "trigger-input-live-frame"
 
     def __init__(
         self,
@@ -282,7 +284,8 @@ class AnnotationTabController(BaseTabController):
                         "overflowY": "auto",
                         "fontSize": "0.8em",
                     },
-                ),                
+                ),
+                # dcc.Store(id=self._get_id(self._STORE_LIVE_FRAME_SUFFIX), data=False),              
             ]
         )
 
@@ -461,11 +464,13 @@ class AnnotationTabController(BaseTabController):
 
         @app.callback(
             Output(self._get_id(self._GRADIENT_COMPUTATION_RESULTS_SUFFIX), "children"),
+#            Output(self._get_id(self._STORE_LIVE_FRAME_SUFFIX),"data"),
             Input(self._get_id(self._GRADIENT_COMPUTATION_BUTTON_SUFFIX), "n_clicks"),
             State(viewer_data_store_id, "data"),
+#            State(self._get_id(self._STORE_LIVE_FRAME_SUFFIX), "data"),
             prevent_initial_call=True,
         )
-        def _compute_transformation_matrix_from_gradients(n_clicks: int, current_viewer_data_ref: Optional[Dict[str, str]]):
+        def _compute_transformation_matrix_from_gradients(n_clicks: int, current_viewer_data_ref: Optional[Dict[str, str]]):  #, trigger: bool):
             logger.info(f"{self._get_id(self._GRADIENT_COMPUTATION_BUTTON_SUFFIX)}: Compute transformation matrix clicked.")
 
             # Parameters from config.py in utils
@@ -504,9 +509,8 @@ class AnnotationTabController(BaseTabController):
                 logger.info(f"Set virtualisation matrix in simulated data acquirer to {W_new}")
                 self.data_acquirer.set_virtualisation_matrix(W_new)
                             
-            return output
-           
-            
+            return output #, not trigger
+                 
     def _register_mode_change(
             self,
             app:Dash,
@@ -545,12 +549,17 @@ class AnnotationTabController(BaseTabController):
             Output(viewer_data_store_id, "data"),
             Output(viewer_ui_state_store_id, "data"),
             Input(self._get_id(self._IMPORT_LIVE_FRAME_BUTTON_SUFFIX), "n_clicks"),
+            # Input(self._get_id(self._STORE_LIVE_FRAME_SUFFIX),"data"),
             State(latest_processed_data_store_id, "data"),
             prevent_initial_call=True,
         )
+        # def _import_live_frame(
+        #     n_clicks: int, trigger: bool, live_data_ref: Optional[Dict[str, Any]]
+        # ) -> Tuple[Dict[str, Any],Dict[str, Any]]:
         def _import_live_frame(
             n_clicks: int, live_data_ref: Optional[Dict[str, Any]]
         ) -> Tuple[Dict[str, Any],Dict[str, Any]]:
+
             if live_data_ref is None:
                 logger.warning("Import Live Frame: No live data reference found.")
                 raise PreventUpdate
@@ -997,8 +1006,21 @@ class AnnotationTabController(BaseTabController):
 
             annotations_data = static_data_object["annotations"]
             slopes = calculate_slopes(annotations_data)
+            normals = calculate_normals(annotations_data)
             if slopes:
-                return json.dumps(slopes, indent=2)
+                # Compute transformation matrix only if there are exactly two annotated lines
+                if normals and len(normals)==2:
+                    # order slopes and normals in the same way
+                    keys = list(slopes.keys())
+                    s_vals = [slopes[k] for k in keys]    
+                    n_vals = [normals[k] for k in keys]
+                    # ensure that first normal is aligned with x-axis, and second normal with y-axis  -->  in order to be consistent with the button Compute Transformation Matrix
+                    if abs(s_vals[0]) < abs(s_vals[1]): 
+                        n_vals = [n_vals[1], n_vals[0]]
+                    A_inv,A = compute_transformation_matrix(*n_vals)
+                    return f"Transformation matrix (compensated --> original coords):\n {np.array2string(A_inv, precision=4, suppress_small=True)} \n\nSlopes:\n" + json.dumps(slopes, indent=2)
+                else:
+                    return json.dumps(slopes, indent=2)
             return "No lines to analyze or error in calculation."
 
     def _register_load_from_disk_callback(

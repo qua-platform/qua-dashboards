@@ -38,6 +38,7 @@ __all__ = [
     "find_closest_point_id",
     "find_closest_line_id",
     "calculate_slopes",
+    "calculate_normals",
     "compute_transformation_matrix_from_image_gradients",
     "compute_transformation_matrix",
     "warp_image_with_normals"
@@ -340,6 +341,29 @@ def calculate_slopes(
     logger.info(f"Calculated slopes for {len(slopes)} lines.")
     return slopes
 
+def calculate_normals(annotations_data: Dict[str, List[Dict[str, Any]]],
+) -> Dict[str, np.ndarray]:
+    """
+    Calculate lines of annotated lines.
+    """
+    normals: Dict[str, np.ndarray] = {}
+    lines = annotations_data.get("lines", [])
+
+    for line in lines:
+        line_id = line["id"]
+        coords1 = get_point_coords_by_id(annotations_data, line["start_point_id"])
+        coords2 = get_point_coords_by_id(annotations_data, line["end_point_id"])
+
+        x1, y1 = coords1
+        x2, y2 = coords2
+        delta_x = x2 - x1
+        delta_y = y2 - y1
+        n = np.array([-delta_y,delta_x], dtype=float)
+        n = n/np.linalg.norm(n)
+        normals[line_id] = n
+
+    logger.info(f"Calculated normals for {len(normals)} lines.")
+    return normals
 
 def subtract_low_norm_mean(img, frac=0.7):
     """

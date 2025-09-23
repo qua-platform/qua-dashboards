@@ -5,10 +5,10 @@ __all__ = ["SensorTuningConfig"]
 
 @dataclass(frozen=True)
 class GeneralConfig:
-    method: str = "align-linear"            # "align-linear" or "autograd"
-    num_measurements: int = 6               # > 0
-    N: int = 200                            # > 0
-    delta_central_point: float = 0.015      # > 0
+    method: str = "align-linear"            # "align-linear" (faster, based on finding a linear compensation factor) or "autograd" (slower, based on fitting a sum of Gaussian basis functions)
+    num_measurements: int = 6               # > 0, number of gate values
+    N: int = 200                            # > 0, number of points in the sensor ramp (resolution)
+    delta_central_point: float = 0.015      # > 0, min-max range of amplitude values are computed by central point -/+ delta_central_point
 
     def __post_init__(self):
         if self.method not in ("align-linear","autograd"):
@@ -22,7 +22,7 @@ class GeneralConfig:
 
 
 @dataclass(frozen=True)
-class AutogradConfig:
+class AutogradConfig:  # "autograd" method
     min_w0: float = 0.0                 # min_w0 < max_w0
     max_w0: float = 0.7
     num_trials: int = 4                 # >0
@@ -41,7 +41,7 @@ class AutogradConfig:
 
 
 @dataclass(frozen=True)
-class AlignLinearConfig:
+class AlignLinearConfig:  # "align-linear" method
     w_min: float = -2.0                 # w_min < w_max
     w_max: float = 0.2
     sigma_gaussian: float = 1.0         # >0

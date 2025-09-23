@@ -511,23 +511,24 @@ def fit_compensation_parameters(lines, N, mid_val_gate, min_w0  = 0.0, max_w0  =
     return Model(solution, model_par, mid_val_gate, res_best)   # return the best model
 
 
-def compute_gate_compensation_ml(ramp, central_point, sensor_id, ranges, num_measurements, N, cfg): # max_w0=0.7, num_trials=2, max_iterations=1000000, epsilon=1.e-5):
+def compute_gate_compensation_ml(ramp, central_point, sensor_id, ranges, num_measurements, N, cfg):
     '''
     Compensation routine for a sensor based on the influence of other gates.
     This function computes a linear model that compensates for the effect of other gates on a particular sensor.
 
     Input parameters
-        ramp: function that takes two endpoints and returns sensor data? -- 
+        ramp: function that takes two endpoints and returns sensor data
               A ramp refers to a simulation/measurement fct that captures how the sensor respond when the system moves along a straight line ("ramp") in input space (specifically between two points)
               Used to measure/simulate how a sensor's reading changes as one or more gate parameters are varied from a starting point to and ending point.
-        central_point: vector representing a central configuration point - chosen reference config that should remain invariant under compensation. Dimension: dim
-        sensor_id: index for which sensor to compensate
-        ranges: dictionary mapping gate/sensor IDs to their min-max range of values
-        num_measurements, N, max_w0, num_trials: optional parameters for tuning
+        central_point:      vector representing a central configuration point - chosen reference config that should remain invariant under compensation. Dimension: dim
+        sensor_id:          index for which sensor to compensate
+        ranges:             dictionary mapping gate/sensor IDs to their min-max range of values
+        num_measurements:   number of gate values
+        N:                  number of points in the sensor ramp (resolution)
+        cfg:                parameters for tuning the fitting algorithm
 
     Returns
         P: transformation matrix (dim,dim) that models how other gate values influence the sensor input
-        m: offset vector (dim,) that ensures alignment at the central point
     that neutralize the effects of other gates. Linear model adjusted_input = P*original_input + m to correct the sensor's input before performing readout.
     '''
     min_w0 = cfg.min_w0
@@ -597,7 +598,6 @@ def compute_gate_compensation_ml(ramp, central_point, sensor_id, ranges, num_mea
         #sensor is needed
     
     # Note that only one row of P is modified: P[sensor_id,:]. All other rows stay as identity.
-    # Note that only one entry of m is modified: m[sensor_id]. All other entries stay zero.
     return P
 
 
@@ -696,14 +696,15 @@ def compute_gate_compensation_al(ramp, central_point, sensor_id, ranges, num_mea
         ramp: function that takes two endpoints and returns sensor data? -- 
               A ramp refers to a simulation/measurement fct that captures how the sensor respond when the system moves along a straight line ("ramp") in input space (specifically between two points)
               Used to measure/simulate how a sensor's reading changes as one or more gate parameters are varied from a starting point to and ending point.
-        central_point: vector representing a central configuration point - chosen reference config that should remain invariant under compensation. Dimension: dim
-        sensor_id: index for which sensor to compensate
-        ranges: dictionary mapping gate/sensor IDs to their min/max amplitude value
-        num_measurements, N, max_w0, num_trials: optional parameters for tuning
+        central_point:      vector representing a central configuration point - chosen reference config that should remain invariant under compensation. Dimension: dim
+        sensor_id:          index for which sensor to compensate
+        ranges:             dictionary mapping gate/sensor IDs to their min/max amplitude value
+        num_measurements:   number of gate values
+        N:                  number of points in the sensor ramp (resolution)
+        cfg:                parameters for tuning the align-linear algorithm
 
     Returns
         P: transformation matrix (dim,dim) that models how other gate values influence the sensor input
-        m: offset vector (dim,) that ensures alignment at the central point
     that neutralize the effects of other gates. Linear model adjusted_input = P*original_input + m to correct the sensor's input before performing readout.
     '''
     w_min = cfg.w_min

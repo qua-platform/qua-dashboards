@@ -83,7 +83,7 @@ class SimulatedDataAcquirer(Base2DDataAcquirer):
 
 
     def _initialize_m(self) -> None:
-        """Initializes the m parameter and adds it to the rendering arguments."""   ### DISCUSS: transform m ??? Or is it already transformed ???
+        """Initializes the m parameter and adds it to the rendering arguments."""
         self.m = copy.deepcopy(self.experiment.tunneling_sim.boundaries(self.args_rendering["state_hint_lower_left"]).point_inside)  # Deepcopy needed that self.m does not have the same reference as polytope.point_inside
         logger.debug(f"initial m: {self.m}")
 

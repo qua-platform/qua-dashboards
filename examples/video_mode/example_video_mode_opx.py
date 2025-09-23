@@ -87,7 +87,7 @@ machine.channels["ch1_readout"] = InOutSingleChannel(
 gate_set = None  # Placeholder. Replace with a real GateSet instance.
 
 # ## Example implementation of GateSet
-# from quam_builder.architecture.quantum_dots import GateSet  # Requires quam-builder
+# from quam_builder.architecture.quantum_dots.components import GateSet  # Requires quam-builder
 # channels = {
 #     "ch1": machine.channels["ch1"].get_reference(), # .get_reference() necessary to avoid reparenting the Quam component
 #     "ch2": machine.channels["ch2"].get_reference(),
@@ -97,7 +97,7 @@ gate_set = None  # Placeholder. Replace with a real GateSet instance.
 
 
 # ## Example implementation of VirtualGateSet
-# from quam_builder.architecture.quantum_dots import VirtualGateSet  # Requires quam-builder
+# from quam_builder.architecture.quantum_dots.components import VirtualGateSet  # Requires quam-builder
 # channels = {
 #     "ch1": machine.channels["ch1"].get_reference(), # .get_reference() necessary to avoid reparenting the Quam component
 #     "ch2": machine.channels["ch2"].get_reference(),

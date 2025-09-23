@@ -341,10 +341,18 @@ def calculate_slopes(
     logger.info(f"Calculated slopes for {len(slopes)} lines.")
     return slopes
 
+
 def calculate_normals(annotations_data: Dict[str, List[Dict[str, Any]]],
 ) -> Dict[str, np.ndarray]:
     """
     Calculate lines of annotated lines.
+
+    Args:
+    annotations_data    The main annotations data structure.
+            Expected: {"points": [...], "lines": [...]}
+
+    Returns:
+    normals             A dictionary mapping line ID (string) to its normal (np.array).
     """
     normals: Dict[str, np.ndarray] = {}
     lines = annotations_data.get("lines", [])
@@ -364,6 +372,7 @@ def calculate_normals(annotations_data: Dict[str, List[Dict[str, Any]]],
 
     logger.info(f"Calculated normals for {len(normals)} lines.")
     return normals
+
 
 def subtract_low_norm_mean(img, frac=0.7):
     """

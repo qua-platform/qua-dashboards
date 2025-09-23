@@ -85,7 +85,7 @@ class AnnotationTabController(BaseTabController):
     _SHOW_LABELS_CHECKLIST_SUFFIX = "show-labels-checklist"
     _GRADIENT_COMPUTATION_BUTTON_SUFFIX = "gradient-computation-button"
     _GRADIENT_COMPUTATION_RESULTS_SUFFIX = "gradient-computation-results"
-    _STORE_LIVE_FRAME_SUFFIX = "trigger-input-live-frame"
+    #_STORE_LIVE_FRAME_SUFFIX = "trigger-input-live-frame"
 
     def __init__(
         self,
@@ -460,7 +460,10 @@ class AnnotationTabController(BaseTabController):
             app:Dash,
             viewer_data_store_id: Dict[str, str]
     ) -> None:
-        """Callback to compute the slopes using GMM on the gradients"""
+        """
+        Callback to compute the transformation matrix (compensated --> original coordinates) using Gaussian Mixture Models (GMM) on the gradients.
+        In case data is acquired by the SimulatedDataAcquirer, the simulators virtualisation matrix is updated, such that new data is acquired in the transformed coordinates. 
+        """
 
         @app.callback(
             Output(self._get_id(self._GRADIENT_COMPUTATION_RESULTS_SUFFIX), "children"),
@@ -505,6 +508,8 @@ class AnnotationTabController(BaseTabController):
             output = f"Transformation matrix (compensated --> original coords):\n {W_new_formatted}"
 
             # Apply transformation to the simulated data (does not work for other data acquirers yet)
+            # Note: The live data is NOT automatically imported in the annotation tab!
+            # Note: The axes are NOT transformed.
             if isinstance(self.data_acquirer, SimulatedDataAcquirer):  
                 logger.info(f"Set virtualisation matrix in simulated data acquirer to {W_new}")
                 self.data_acquirer.set_virtualisation_matrix(W_new)
@@ -983,7 +988,10 @@ class AnnotationTabController(BaseTabController):
     def _register_analysis_callback(
         self, app: Dash, viewer_data_store_id: Dict[str, str]
     ) -> None:
-        """Callback for performing analysis (e.g., calculating slopes)."""
+        """
+        Callback for performing analysis (e.g., calculating slopes).
+        In the slope analysis (from annotated lines), the transformation matrix (compensated --> original coords) is computed in case of exactly 2 annotated lines.
+        """
 
         @app.callback(
             Output(self._get_id(self._ANALYSIS_RESULTS_SUFFIX), "children"),
@@ -1008,7 +1016,7 @@ class AnnotationTabController(BaseTabController):
             slopes = calculate_slopes(annotations_data)
             normals = calculate_normals(annotations_data)
             if slopes:
-                # Compute transformation matrix only if there are exactly two annotated lines
+                # Exactly 2 annotated lines: Compute also the transformation matrix
                 if normals and len(normals)==2:
                     # order slopes and normals in the same way
                     keys = list(slopes.keys())
@@ -1019,6 +1027,7 @@ class AnnotationTabController(BaseTabController):
                         n_vals = [n_vals[1], n_vals[0]]
                     A_inv,A = compute_transformation_matrix(*n_vals)
                     return f"Transformation matrix (compensated --> original coords):\n {np.array2string(A_inv, precision=4, suppress_small=True)} \n\nSlopes:\n" + json.dumps(slopes, indent=2)
+                # Fewer or more than 2 annotated lines
                 else:
                     return json.dumps(slopes, indent=2)
             return "No lines to analyze or error in calculation."

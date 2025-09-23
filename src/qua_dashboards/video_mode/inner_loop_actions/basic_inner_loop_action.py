@@ -6,7 +6,7 @@ from qua_dashboards.video_mode.inner_loop_actions.inner_loop_action import (
     InnerLoopAction,
 )
 from qua_dashboards.utils.qua_types import QuaVariableFloat
-from quam_builder.architecture.quantum_dots.voltage_sequence import GateSet
+from quam_builder.architecture.quantum_dots import GateSet
 
 from qm import qua
 
@@ -46,6 +46,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         self.track_integrated_voltage = track_integrated_voltage
         self.use_dBm = use_dBm
         self.voltage_sequence = None
+        self.ramp_duration = 16
 
     def __call__(
         self, x: QuaVariableFloat, y: QuaVariableFloat
@@ -53,22 +54,40 @@ class BasicInnerLoopAction(InnerLoopAction):
         # Map sweep values to named channels via axis names
         if y is None: 
             levels = {self.x_axis_name: x}
+            last_resolved_voltages = self.gate_set.resolve_voltages({self.x_axis_name: self.last_v_x})
         else:
             levels = {self.x_axis_name: x, self.y_axis_name: y}
+            last_resolved_voltages = self.gate_set.resolve_voltages({self.x_axis_name: self.last_v_x, self.y_axis_name: self.last_v_y})
+        resolved_voltages = self.gate_set.resolve_voltages(levels)
 
         duration = self.readout_pulse.length
         if self.pre_measurement_delay > 0:
             duration += self.pre_measurement_delay
-
-        self.voltage_sequence.step_to_voltages(voltages=levels, duration=duration)
+        
+        ramp_time = qua.fixed(1/self.ramp_duration/4)
+        for ch_string in self.gate_set.channels.keys():
+            applied_voltage = (resolved_voltages[ch_string] - last_resolved_voltages[ch_string])
+            qua.assign(self.slope, applied_voltage)
+            qua.assign(self.slope, (self.slope >> 12) << 12)
+            qua.assign(self.slope, self.slope * ramp_time)
+            qua.play(qua.ramp(self.slope), ch_string, duration = self.ramp_duration)
 
         if self.pre_measurement_delay > 0:
             self.readout_pulse.channel.wait(self.pre_measurement_delay)
 
-        I, Q = self.readout_pulse.channel.measure(self.readout_pulse.id)
-
         qua.align()
-        self.voltage_sequence.ramp_to_zero()
+        I, Q = self.readout_pulse.channel.measure(self.readout_pulse.id)
+        qua.align()
+
+        qua.assign(self.last_v_x, x)
+        if y is not None: 
+            qua.assign(self.last_v_y, y)
+
+        qua.assign(self.last_v_x, (self.last_v_x >> 12) << 12)
+        if y is not None:
+            qua.assign(self.last_v_y, (self.last_v_y >> 12) << 12)
+        qua.ramp_to_zero(self.readout_pulse.channel.name, duration = self.ramp_duration)
+        qua.align()
 
         return I, Q
 
@@ -77,8 +96,14 @@ class BasicInnerLoopAction(InnerLoopAction):
         self.voltage_sequence = self.gate_set.new_sequence(
             track_integrated_voltage=self.track_integrated_voltage
         )
+        self.slope = qua.declare(qua.fixed)
+        self.last_v_x = qua.declare(qua.fixed)
+        self.last_v_y = qua.declare(qua.fixed)
+        qua.assign(self.last_v_x, 0)
+        qua.assign(self.last_v_y, 0)
+
         # Initialize all channels to zero
-        self.voltage_sequence.step_to_voltages({}, duration=16)
+        self.voltage_sequence.ramp_to_zero()
 
     def final_action(self):
         # Use GateSet's built-in ramp to zero

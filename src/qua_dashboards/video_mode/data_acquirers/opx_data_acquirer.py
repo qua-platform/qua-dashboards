@@ -137,6 +137,26 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self._raw_qua_results: Dict[str, np.ndarray] = {}
         self.stream_vars: List[str] = stream_vars or self.stream_vars_default
         self.result_types: List[str] = self.result_types_default
+        for ch in self.gate_set.channels.values():
+            if "half_max_square" not in ch.operations.keys():
+                from quam.components import pulses
+                if hasattr(ch.opx_output, "output_mode"):
+                    if ch.opx_output.output_mode == "amplified":
+                        ch.operations["half_max_square"] = pulses.SquarePulse(
+                            amplitude=0.5, length=16
+                        )
+                    else:
+                        ch.operations["half_max_square"] = pulses.SquarePulse(
+                            amplitude=0.25, length=16
+                        )
+                else:
+                    ch.operations["half_max_square"] = pulses.SquarePulse(
+                        amplitude=0.25, length=16
+                    )
+                logger.info(f"Default pulse not in channel '{ch.name}'. Adding operation 'half_max_square' and regenerating config")
+                self.qua_config = self.machine.generate_config()
+                self.qm = None
+                self.initialize_qm()
 
     @property
     def scan_mode(self): 
@@ -407,7 +427,9 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             if "result-type" in params and self.result_type != params["result-type"]:
                 self.result_type = params["result-type"]
                 flags |= ModifiedFlags.PARAMETERS_MODIFIED
-
+            if "ramp_duration" in params and self.qua_inner_loop_action.ramp_duration != params["ramp_duration"]:
+                self.qua_inner_loop_action.ramp_duration = params["ramp_duration"]
+                flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
             if "gate-select-x" in params and params["gate-select-x"] != self.x_axis_name: 
                 self.x_axis_name = params["gate-select-x"]
                 _ = self.x_axis

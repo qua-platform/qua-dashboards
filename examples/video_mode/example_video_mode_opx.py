@@ -75,6 +75,7 @@ machine.channels["ch1_readout"] = InOutSingleChannel(
     opx_input=("con1", 1),  # Input for acquiring the measurement signal
     intermediate_frequency=0,  # Set IF for the readout channel
     operations={"readout": readout_pulse},  # Assign the readout pulse to this channel
+    sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
 )
 
 # Configure a GateSet that defines the sweepable voltage gates.
@@ -100,6 +101,7 @@ gate_set = None  # Placeholder. Replace with a real GateSet instance.
 # channels = {
 #     "ch1": machine.channels["ch1"].get_reference(), # .get_reference() necessary to avoid reparenting the Quam component
 #     "ch2": machine.channels["ch2"].get_reference(),
+#     "ch1_readout": machine.channels["ch1_readout"].get_reference()
 # }
 # gate_set = VirtualGateSet(id = "Plungers", channels = channels)
 # gate_set.add_layer(

@@ -1,5 +1,6 @@
 import logging
 from typing import Any
+from qua_dashboards.utils.dash_utils import create_input_field
 import dash_bootstrap_components as dbc
 from dash import html, ctx, ALL, no_update, Dash, Input, Output, State, no_update
 
@@ -46,6 +47,13 @@ class SettingsTabController(BaseTabController):
         )
 
     def get_layout(self):
+        ramp_duration_input = create_input_field(
+            id={"type": "ramp_duration", "index": f"{self._data_acquirer_instance.component_id}::ramp_duration"}, 
+            label = "Ramp Duration", 
+            value = self._data_acquirer_instance.qua_inner_loop_action.ramp_duration, 
+            units = 'ns',
+            step = 4
+        )
         inner_controls = self._data_acquirer_instance.qua_inner_loop_action.get_dash_components(include_subcomponents=True)
         result_type_selector = dbc.Row(
             [
@@ -64,7 +72,7 @@ class SettingsTabController(BaseTabController):
             className="mb-2 align-items-center",
         )
         return dbc.Card(
-            dbc.CardBody([html.H5("Settings", className="text-light"), *inner_controls, result_type_selector,
+            dbc.CardBody([html.H5("Settings", className="text-light"), ramp_duration_input, *inner_controls, result_type_selector,
                         html.Div(
                         id=self._get_id(self._DUMMY_OUT_SUFFIX), style={"display": "none"}
                     ),]),
@@ -91,9 +99,11 @@ class SettingsTabController(BaseTabController):
             State({"type": "comp-inner-loop", "index": ALL}, "id"),
             Input({"type": "select", "index": ALL}, "value"),
             State({"type": "select", "index": ALL}, "id"),
+            Input({"type": "ramp_duration", "index": ALL}, "value"),
+            State({"type": "ramp_duration", "index": ALL}, "id"),
             prevent_initial_call=True,
         )
-        def _apply_settings(inner_vals, inner_ids, select_vals, select_ids):
+        def _apply_settings(inner_vals, inner_ids, select_vals, select_ids, ramp_vals, ramp_ids):
             """
             Collect changes from the Settings tab and forward them to the acquirer.
             - Inner loop controls use ids like {'type': 'comp-inner-loop', 'index': 'readout_duration'}
@@ -107,15 +117,16 @@ class SettingsTabController(BaseTabController):
                     param = idd.get("index")
                     if param is None:
                         continue
-                    params_to_update.setdefault("inner-loop", {})[param] = v
+                    params_to_update.setdefault(acq.qua_inner_loop_action.component_id, {})[param] = v
             if select_vals and select_ids:
-                for v, idd in zip(select_vals, select_ids):
-                    if not isinstance(idd, dict):
-                        continue
-                    idx = idd.get("index")
-                    if isinstance(idx, str) and "::" in idx:
-                        comp_id, param = idx.split("::", 1)
-                        params_to_update.setdefault(comp_id, {})[param] = v
+                idx = select_ids[0].get("index")
+                comp_id, param = idx.split("::", 1)
+                params_to_update.setdefault(comp_id, {})[param] = select_vals[0]
+            
+            if ramp_vals and ramp_ids:
+                idx = ramp_ids[0].get("index")
+                comp_id, param = idx.split("::", 1)
+                params_to_update.setdefault(comp_id, {})[param] = ramp_vals[0]
 
             if params_to_update:
                 acq.update_parameters(params_to_update)

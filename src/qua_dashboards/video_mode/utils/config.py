@@ -3,7 +3,7 @@ import numpy as np
 
 __all__ = ["TransformationMatrixConfig"]
 
-@dataclass(frozen=True)
+@dataclass
 class GradientConfig:
     sigmaX_blur: float = 1.0    # >=0
     sigmaY_blur: float = 1.0    # >=0
@@ -23,7 +23,7 @@ class GradientConfig:
         if self.frac > 1 or self.frac < 0:
             raise ValueError(f"Config: Invalid frac value: {self.frac}")        
 
-@dataclass(frozen=True)
+@dataclass
 class OptimizationConfig:
     max_iterations: int = 1000000      # >0
     epsilon: float = 1e-4              # tolerance: pick small value >0
@@ -35,7 +35,7 @@ class OptimizationConfig:
             raise ValueError(f"Config: Invalid epsilon (tolerance) value: {self.epsilon}")        
         
 
-@dataclass(frozen=True)
+@dataclass
 class ModelConfig:
     scale: str = "per-dimension"                        # "overall" or "per-dimension"
     likelihood: str = "with-reg"                        # "with-reg" or "without-reg", i.e. with or without regularization term that ensures alignment of the normals with the correct axes

@@ -1,5 +1,6 @@
 from qua_dashboards.core.base_updatable_component import ModifiedFlags
 from qua_dashboards.utils.dash_utils import create_input_field
+import dash_bootstrap_components as dbc
 from dash import html
 from qualang_tools.units.units import unit
 from qua_dashboards.video_mode.inner_loop_actions.inner_loop_action import (
@@ -137,14 +138,14 @@ class BasicInnerLoopAction(InnerLoopAction):
             additional_components = [
                 create_input_field(
                     id=self._get_id(f"{name}-readout_frequency"),
-                    label=f"{name} frequency",
+                    label=f"Frequency",
                     value=pulse.channel.intermediate_frequency,
-                    input_style={"width": "200px"},
+                    input_style={"width": "150px"},
                     units="Hz",
                 ),
                 create_input_field(
                     id=self._get_id(f"{name}-readout_duration"),
-                    label=f"{name} duration",
+                    label=f"Duration",
                     value=pulse.length,
                     units="ns",
                     step=10,
@@ -154,7 +155,7 @@ class BasicInnerLoopAction(InnerLoopAction):
                 additional_components.append(
                     create_input_field(
                         id=self._get_id(f"{name}-readout_power"),
-                        label=f"{name} power",
+                        label=f"Power",
                         value=unit.volts2dBm(pulse.amplitude),
                         units="dBm",
                     ),
@@ -163,12 +164,28 @@ class BasicInnerLoopAction(InnerLoopAction):
                 additional_components.append(
                     create_input_field(
                         id=self._get_id(f"{name}-readout_amplitude"),
-                        label=f"{name} amplitude",
+                        label=f"Amplitude",
                         value=pulse.amplitude,
                         units="V",
                     ),
                 )
-            rows.append(html.Div(additional_components, id = f"{self.component_id}-ro-params-{name}"))
+
+            rows.append(
+                dbc.Card([
+                    dbc.CardHeader(html.H6(f"{name} Parameters")),
+                    dbc.CardBody(
+                        html.Div(additional_components, id = f"{self.component_id}-ro-params-{name}"), 
+                        className="text-light",
+                    ),
+                ], 
+                color="dark",
+                inverse=True,
+                className="h-100 tab-card-dark",            
+                style={
+                    "outline": "2px solid #fff",  # This creates a white border around the entire card
+                }
+                ), 
+            )
         return rows
 
     def get_dash_components(self, include_subcomponents: bool = True) -> List[html.Div]:

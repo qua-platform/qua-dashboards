@@ -84,6 +84,7 @@ class SettingsTabController(BaseTabController):
                             {"label": rt, "value": rt} for rt in self._data_acquirer_instance.result_types
                         ],
                         value=self._data_acquirer_instance.result_type,
+                        style = {"width" : "150px"}
                     ),
                     width=True,
                 ),
@@ -91,7 +92,7 @@ class SettingsTabController(BaseTabController):
             className="mb-2 align-items-center",
         )
         return dbc.Card(
-            dbc.CardBody([html.H5("Settings", className="text-light"), readout_selector, ramp_duration_input, *inner_controls, result_type_selector,
+            dbc.CardBody([html.H5("Settings", className="text-light"), readout_selector, result_type_selector, ramp_duration_input, *inner_controls, 
                         html.Div(
                         id=self._get_id(self._DUMMY_OUT_SUFFIX), style={"display": "none"}
                     ),]),

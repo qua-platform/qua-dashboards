@@ -140,7 +140,7 @@ data_acquirer = OPXDataAcquirer(
     y_axis_name="ch2",  # Must appear in gate_set.valid_channel_names; Virtual gate names also valid
     scan_mode=scan_mode,
     result_type="I",  # "I", "Q", "amplitude", or "phase"
-    # ### Input a channel mapping dict, if you want custom readout channel selection in your ideo mode. 
+    # ### Input a channel mapping dict, if you want custom readout channel selection in your video mode. 
     # ### Otherwise, the channel mapping will happen automatically; the programme finds all the readout  
     # ###     pulses in your machine and uses those corresponding readout channels
 

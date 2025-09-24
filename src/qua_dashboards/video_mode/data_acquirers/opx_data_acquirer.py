@@ -144,7 +144,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 if hasattr(ch.opx_output, "output_mode"):
                     if ch.opx_output.output_mode == "amplified":
                         ch.operations["half_max_square"] = pulses.SquarePulse(
-                            amplitude=0.5, length=16
+                            amplitude=1.25, length=16
                         )
                     else:
                         ch.operations["half_max_square"] = pulses.SquarePulse(

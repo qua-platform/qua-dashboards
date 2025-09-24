@@ -3,7 +3,7 @@ import numpy as np
 
 __all__ = ["SensorTuningConfig"]
 
-@dataclass(frozen=True)
+@dataclass
 class GeneralConfig:
     method: str = "align-linear"            # "align-linear" (faster, based on finding a linear compensation factor) or "autograd" (slower, based on fitting a sum of Gaussian basis functions)
     num_measurements: int = 6               # > 0, number of gate values
@@ -21,7 +21,7 @@ class GeneralConfig:
             raise ValueError(f"Config: Invalid delta_central_point value: {self.delta_central_point}")
 
 
-@dataclass(frozen=True)
+@dataclass
 class AutogradConfig:  # "autograd" method
     min_w0: float = 0.0                 # min_w0 < max_w0
     max_w0: float = 0.7
@@ -40,7 +40,7 @@ class AutogradConfig:  # "autograd" method
             raise ValueError(f"Config: Invalid epsilon (tolerance) value: {self.epsilon}")   
 
 
-@dataclass(frozen=True)
+@dataclass
 class AlignLinearConfig:  # "align-linear" method
     w_min: float = -2.0                 # w_min < w_max
     w_max: float = 0.2

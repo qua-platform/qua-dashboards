@@ -31,12 +31,7 @@ __all__ = [
     "find_closest_point_id",
     "find_closest_line_id",
     "calculate_slopes",
-    #"fit_compensation_parameters",  # Only internal helper
     "compute_gate_compensation_ml",
-    # "Lines",
-    # "Model",
-    # "align_linear",
-    # "amplitude_scan_2D",
     "compute_gate_compensation_al",
 ]
 
@@ -682,13 +677,12 @@ def amplitude_scan_2D(ramp, ids, central_point, ranges, gate_values, N):
 
             # Call the ramp function to compute the response between start and end
             obs = ramp(ramp_start_, ramp_end_, N)
-            #print(f'raw observations: {obs}')
             observations.append(obs)
 
     return np.array(observations)  # shape (num_measurements, resolution)
 
 
-def compute_gate_compensation_al(ramp, central_point, sensor_id, ranges, num_measurements, N, cfg): #w_min=-2.0, w_max=0.2, sigma_gaussian=1.0, normalize_rows=True):
+def compute_gate_compensation_al(ramp, central_point, sensor_id, ranges, num_measurements, N, cfg):
     '''
     This function computes a linear model that compensates for the effect of other gates on a particular sensor.
 

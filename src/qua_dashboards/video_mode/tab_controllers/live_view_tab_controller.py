@@ -294,8 +294,8 @@ class LiveViewTabController(BaseTabController):
                     xref = f"x{sfx}"
                     yref = f"y{sfx}"
                     for xv in xs:
-                        #0 grid line has 5x higher alpha
-                        grid_color = f"rgba(0,0,0,{alpha*2})" if xv == 0 else f"rgba(0,0,0,{alpha})"
+                        #0 grid line has 3x higher alpha
+                        grid_color = f"rgba(0,0,0,{alpha*3})" if xv == 0 else f"rgba(0,0,0,{alpha})"
                         shapes.append({
                             "type": "line",
                             "xref": xref, "yref": yref,
@@ -305,7 +305,7 @@ class LiveViewTabController(BaseTabController):
                             "name": "grid-x",
                         })
                     for yv in ys:
-                        grid_color = f"rgba(0,0,0,{alpha*2})" if yv == 0 else f"rgba(0,0,0,{alpha})"
+                        grid_color = f"rgba(0,0,0,{alpha*3})" if yv == 0 else f"rgba(0,0,0,{alpha})"
                         shapes.append({
                             "type": "line",
                             "xref": xref, "yref": yref,

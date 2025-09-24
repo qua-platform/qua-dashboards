@@ -22,7 +22,7 @@ class SettingsTabController(BaseTabController):
     This tab allows the user to adjust the settings of the measurement, such as the readout power and frequency, or the readout parameter (I/Q/R/Phase)
     """
 
-    _TAB_LABEL = "Settings Tab"
+    _TAB_LABEL = "Settings"
     _TAB_VALUE = "settings-tab"
     _DUMMY_OUT_SUFFIX = "dummy-settings-updates"
 

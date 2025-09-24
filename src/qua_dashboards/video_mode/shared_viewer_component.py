@@ -1,17 +1,10 @@
 import logging
 from typing import Any, Dict, List, Optional
-import numpy as np
 import plotly.graph_objects as go
-import xarray as xr
 from dash import Dash, Input, Output, State, dcc, html
 
 from qua_dashboards.core import BaseComponent
-from qua_dashboards.video_mode.utils.dash_utils import xarray_to_plotly
 from qua_dashboards.video_mode import data_registry
-from plotly.subplots import make_subplots
-from qua_dashboards.video_mode.utils.annotation_utils import (
-    generate_annotation_traces,
-)
 from qua_dashboards.video_mode.shared_data_handler import SharedDataHandler
 
 

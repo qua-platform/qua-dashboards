@@ -182,7 +182,7 @@ class BasicInnerLoopAction(InnerLoopAction):
                 inverse=True,
                 className="h-100 tab-card-dark",            
                 style={
-                    "outline": "2px solid #fff",  # This creates a white border around the entire card
+                    "outline": "2px solid #fff",
                 }
                 ), 
             )

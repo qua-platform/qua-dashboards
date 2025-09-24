@@ -333,10 +333,11 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         then derives the final 2D array based on self.result_type.
         """
         if len(fetched_qua_results) != len(self.stream_vars):
-            raise ValueError(
+            logger.warning(
                 f"Fetched {len(fetched_qua_results)} streams, but expected {len(self.stream_vars)}. "
-                f"Stream vars: {self.stream_vars}"
+                f"Expected stream vars: {self.stream_vars}. Likely indicates configuration change in progress - resetting compilation flags."
             )
+            self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
 
         self._raw_qua_results = dict(zip(self.stream_vars, fetched_qua_results))
         expected_points = self.x_axis.points * self.y_axis.points
@@ -476,9 +477,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             logger.warning("Axis dispatch error: %s", e)
 
         try:
-            if hasattr(self, "qua_inner_loop_action") and self.qua_inner_loop_action is not None:
-                il_flags = self.qua_inner_loop_action.update_parameters(parameters)
-                flags |= il_flags
+            il_flags = self.qua_inner_loop_action.update_parameters(parameters)
+            flags |= il_flags
         except Exception as e:
             logger.warning("Inner-loop dispatch error: %s", e)
 
@@ -506,12 +506,26 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 new_names = [n for n in params["readouts"] if n in self.available_readout_channels]
                 new_objs  = [self.available_readout_channels[n] for n in new_names]
                 if [ch.name for ch in self.selected_readout_channel] != new_names:
+                    old_stream_vars = self.stream_vars.copy()
                     self.selected_readout_channel = new_objs
                     self.qua_inner_loop_action.selected_readout_channels = self.selected_readout_channel
                     if self.display_readout_name not in new_names:
                         self.display_readout_name = new_names[0] if new_names else None
                     self._rebuild_stream_vars()
-                    flags |= ModifiedFlags.PROGRAM_MODIFIED
+
+                    if old_stream_vars != self.stream_vars:
+                        logger.info(f"Stream vars changed from {old_stream_vars} to {self.stream_vars}, forcing program recompile")
+                        if self.qm_job is not None and self.qm_job.status == "running":
+                            try:
+                                self.qm_job.halt()
+                                logger.info(f"Halted QM job due to readout configuration change")
+                            except Exception as e:
+                                logger.warning(f"Failed to half QM job: {e}")
+                            self.qm_job = None
+                        self.qua_program = None
+                        flags |= ModifiedFlags.PROGRAM_MODIFIED
+                    else:
+                        flags |= ModifiedFlags.PARAMETERS_MODIFIED
 
             if "display-readout" in params and params["display-readout"] != self.display_readout_name:
                 self.display_readout_name = params["display-readout"]

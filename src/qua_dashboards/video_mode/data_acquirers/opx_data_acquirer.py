@@ -63,7 +63,6 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         x_axis_name: str,
         y_axis_name: str,
         scan_mode: ScanMode,
-        readout_pulse,
         qua_inner_loop_action: Optional[InnerLoopAction] = None,
         component_id: str = "opx-data-acquirer",
         num_software_averages: int = 1,
@@ -71,6 +70,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         result_type: Literal["I", "Q", "amplitude", "phase"] = "I",
         initial_delay_s: Optional[float] = None,
         stream_vars: Optional[List[str]] = None,
+        readout_mapping: Dict = {}, 
         inner_loop_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ):
@@ -119,7 +119,6 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             inner_loop_kwargs = inner_loop_kwargs or {}
             self.qua_inner_loop_action = BasicInnerLoopAction(
                 gate_set=gate_set,
-                readout_pulse=readout_pulse,
                 x_axis_name=self.x_axis.name,
                 y_axis_name=self.y_axis.name,
                 **inner_loop_kwargs,
@@ -161,12 +160,19 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 self.initialize_qm()
         self.readout_channel_names = []
         self.available_readout_channels = {}
-        for name, channel in machine.channels.items():
-            if type(channel).__name__ == "InOutSingleChannel" and "readout" in channel.operations:
-                self.available_readout_channels[name] = channel
+
+        if readout_mapping == {}:
+            for name, channel in machine.channels.items():
+                if any("readout" in type(op).__name__.lower() for op in channel.operations.values()):
+                    self.available_readout_channels[name] = channel
+                    self.readout_channel_names.append(name)
+        else: 
+            for name, channel in readout_mapping.items():
                 self.readout_channel_names.append(name)
+                self.available_readout_channels[name] = channel
         self.selected_readout_channel = [self.available_readout_channels[self.readout_channel_names[0]]] if self.available_readout_channels else []
         self.display_readout_name = (self.selected_readout_channel[0].name if self.selected_readout_channel else None)
+        self.qua_inner_loop_action.selected_readout_channels = self.selected_readout_channel
 
         self._rebuild_stream_vars()
     def _rebuild_stream_vars(self):

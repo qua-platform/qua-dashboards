@@ -139,8 +139,16 @@ data_acquirer = OPXDataAcquirer(
     x_axis_name="ch1",  # Must appear in gate_set.valid_channel_names; Virtual gate names also valid
     y_axis_name="ch2",  # Must appear in gate_set.valid_channel_names; Virtual gate names also valid
     scan_mode=scan_mode,
-    readout_pulse=readout_pulse,
     result_type="I",  # "I", "Q", "amplitude", or "phase"
+    # ### Input a channel mapping dict, if you want custom readout channel selection in your ideo mode. 
+    # ### Otherwise, the channel mapping will happen automatically; the programme finds all the readout  
+    # ###     pulses in your machine and uses those corresponding readout channels
+
+    # readout_mapping = {
+    #     "ch2_readout": machine.channels["ch2_readout"],
+    #     "ch3_readout": machine.channels["ch3_readout"]
+    #     },
+
 )
 
 # %% (Optional) Test: Run QUA program once and acquire data directly

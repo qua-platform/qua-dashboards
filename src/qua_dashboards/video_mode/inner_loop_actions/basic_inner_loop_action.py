@@ -30,7 +30,6 @@ class BasicInnerLoopAction(InnerLoopAction):
     def __init__(
         self,
         gate_set: GateSet,
-        readout_pulse,
         x_axis_name: str,
         y_axis_name: str,
         pre_measurement_delay: int = 0,
@@ -39,7 +38,6 @@ class BasicInnerLoopAction(InnerLoopAction):
     ):
         super().__init__()
         self.gate_set = gate_set
-        self.readout_pulse = readout_pulse
         self.x_axis_name = x_axis_name
         self.y_axis_name = y_axis_name
         self.pre_measurement_delay = pre_measurement_delay
@@ -48,11 +46,20 @@ class BasicInnerLoopAction(InnerLoopAction):
         self.voltage_sequence = None
         self.ramp_duration = 16
         self.selected_readout_channels = []
-    @property
-    def selected_readout_names(self) -> list[str]:
-        return [ch.name for ch in getattr(self, "selected_readout_channels", [])]
+
+    @property 
+    def selected_readout_pulse(self):
+        readout_pulses = {}
+        for channel in self.selected_readout_channels:
+            pulse_name = [f for (f,g) in channel.operations.items() if "readout" in type(g).__name__ .lower()][0]
+            readout_pulses[channel.name] = pulse_name
+        return readout_pulses
+        
     def _pulse_for(self, ch):
-        return ch.operations["readout"]
+        if ch.name not in self.selected_readout_pulse.keys(): 
+            raise ValueError("Channel not in registered readout pulses")
+        else: 
+            return ch.operations[self.selected_readout_pulse[ch.name]]
 
     def __call__(
         self, x: QuaVariableFloat, y: QuaVariableFloat
@@ -65,10 +72,6 @@ class BasicInnerLoopAction(InnerLoopAction):
             levels = {self.x_axis_name: x, self.y_axis_name: y}
             last_resolved_voltages = self.gate_set.resolve_voltages({self.x_axis_name: self.last_v_x, self.y_axis_name: self.last_v_y})
         resolved_voltages = self.gate_set.resolve_voltages(levels)
-
-        duration = self.readout_pulse.length
-        if self.pre_measurement_delay > 0:
-            duration += self.pre_measurement_delay
         
         ramp_time = qua.fixed(1/self.ramp_duration/4)
         for ch_string in self.gate_set.channels.keys():
@@ -78,13 +81,16 @@ class BasicInnerLoopAction(InnerLoopAction):
             qua.assign(self.slope, self.slope * ramp_time)
             qua.play(qua.ramp(self.slope), ch_string, duration = self.ramp_duration)
 
+        qua.align()
+        duration = max([self._pulse_for(op).length for op in self.selected_readout_channels])
         if self.pre_measurement_delay > 0:
-            self.readout_pulse.channel.wait(self.pre_measurement_delay)
+            duration += self.pre_measurement_delay
+            qua.wait(duration)
 
         qua.align()
         result = []
         for channel in self.selected_readout_channels:
-            I, Q = channel.measure("readout")
+            I, Q = channel.measure(self.selected_readout_pulse[channel.name])
             result.extend([I, Q])        
         qua.align()
 
@@ -122,7 +128,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         self.voltage_sequence.ramp_to_zero()
 
     def build_readout_controls(self, channels = None):
-        channels = getattr(self, "selected_readout_channels", []) or [self.readout_pulse.channel]
+        channels = self.selected_readout_channels
         rows = []
         for ch in channels: 
             pulse = self._pulse_for(ch)
@@ -183,7 +189,7 @@ class BasicInnerLoopAction(InnerLoopAction):
 
         flags = ModifiedFlags.NONE
 
-        channels = getattr(self, "selected_readout_channels", []) or [self.readout_pulse.channel]
+        channels = self.selected_readout_channels
         for ch in channels: 
             pulse = self._pulse_for(ch)
             name = ch.name

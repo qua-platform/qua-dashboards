@@ -138,7 +138,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self.result_types: List[str] = self.result_types_default
         self.readout_pulses = available_readout_pulses
         self._ensure_pulsenames()
-        self._find_readout(available_readout_pulses)
+        self._find_readout()
         self._rebuild_stream_vars()
         
 

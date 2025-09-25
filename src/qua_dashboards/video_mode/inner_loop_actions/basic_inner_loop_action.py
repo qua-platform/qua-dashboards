@@ -92,7 +92,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         qua.align()
         result = []
         for channel in self.selected_readout_channels:
-            I, Q = channel.measure(self.pulse_mapping[channel.name].id)
+            I, Q = channel.measure(self._pulse_for(channel).id)
             result.extend([I, Q])
         qua.align()
 

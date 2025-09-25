@@ -48,42 +48,54 @@ class BasicInnerLoopAction(InnerLoopAction):
         self.ramp_duration = 16
         self.selected_readout_channels = []
 
-    @property 
+    @property
     def selected_readout_pulse(self):
         readout_pulses = {}
         for channel in self.selected_readout_channels:
-            pulse_name = [f for (f,g) in channel.operations.items() if "readout" in type(g).__name__ .lower()][0]
+            pulse_name = [
+                f
+                for (f, g) in channel.operations.items()
+                if "readout" in type(g).__name__.lower()
+            ][0]
             readout_pulses[channel.name] = pulse_name
         return readout_pulses
-        
+
     def _pulse_for(self, ch):
-        if ch.name not in self.selected_readout_pulse.keys(): 
+        if ch.name not in self.selected_readout_pulse.keys():
             raise ValueError("Channel not in registered readout pulses")
-        else: 
+        else:
             return ch.operations[self.selected_readout_pulse[ch.name]]
 
     def __call__(
         self, x: QuaVariableFloat, y: QuaVariableFloat
     ) -> Tuple[QuaVariableFloat, QuaVariableFloat]:
         # Map sweep values to named channels via axis names
-        if y is None: 
+        if y is None:
             levels = {self.x_axis_name: x}
-            last_resolved_voltages = self.gate_set.resolve_voltages({self.x_axis_name: self.last_v_x})
+            last_resolved_voltages = self.gate_set.resolve_voltages(
+                {self.x_axis_name: self.last_v_x}
+            )
         else:
             levels = {self.x_axis_name: x, self.y_axis_name: y}
-            last_resolved_voltages = self.gate_set.resolve_voltages({self.x_axis_name: self.last_v_x, self.y_axis_name: self.last_v_y})
+            last_resolved_voltages = self.gate_set.resolve_voltages(
+                {self.x_axis_name: self.last_v_x, self.y_axis_name: self.last_v_y}
+            )
         resolved_voltages = self.gate_set.resolve_voltages(levels)
-        
-        ramp_time = qua.fixed(1/self.ramp_duration/4)
+
+        ramp_time = qua.fixed(1 / self.ramp_duration / 4)
         for ch_string in self.gate_set.channels.keys():
-            applied_voltage = (resolved_voltages[ch_string] - last_resolved_voltages[ch_string])
+            applied_voltage = (
+                resolved_voltages[ch_string] - last_resolved_voltages[ch_string]
+            )
             qua.assign(self.slope, applied_voltage)
             qua.assign(self.slope, (self.slope >> 12) << 12)
             qua.assign(self.slope, self.slope * ramp_time)
-            qua.play(qua.ramp(self.slope), ch_string, duration = self.ramp_duration)
+            qua.play(qua.ramp(self.slope), ch_string, duration=self.ramp_duration)
 
         qua.align()
-        duration = max(self._pulse_for(op).length for op in self.selected_readout_channels)
+        duration = max(
+            self._pulse_for(op).length for op in self.selected_readout_channels
+        )
         if self.pre_measurement_delay > 0:
             duration += self.pre_measurement_delay
             qua.wait(duration)
@@ -92,19 +104,19 @@ class BasicInnerLoopAction(InnerLoopAction):
         result = []
         for channel in self.selected_readout_channels:
             I, Q = channel.measure(self.selected_readout_pulse[channel.name])
-            result.extend([I, Q])        
+            result.extend([I, Q])
         qua.align()
 
         qua.assign(self.last_v_x, x)
-        if y is not None: 
+        if y is not None:
             qua.assign(self.last_v_y, y)
 
         qua.assign(self.last_v_x, (self.last_v_x >> 12) << 12)
         if y is not None:
             qua.assign(self.last_v_y, (self.last_v_y >> 12) << 12)
-        
-        for channel in self.selected_readout_channels: 
-            qua.ramp_to_zero(channel.name, duration = self.ramp_duration)
+
+        for channel in self.selected_readout_channels:
+            qua.ramp_to_zero(channel.name, duration=self.ramp_duration)
         qua.align()
         qua.wait(2000)
 
@@ -128,24 +140,27 @@ class BasicInnerLoopAction(InnerLoopAction):
         # Use GateSet's built-in ramp to zero
         self.voltage_sequence.ramp_to_zero()
 
-    def build_readout_controls(self, channels = None):
+    def build_readout_controls(self, channels=None):
+        """
+        Build the controls per selected readout channel
+        """
         channels = self.selected_readout_channels
         rows = []
-        for ch in channels: 
+        for ch in channels:
             pulse = self._pulse_for(ch)
             name = ch.name
 
             additional_components = [
                 create_input_field(
                     id=self._get_id(f"{name}-readout_frequency"),
-                    label=f"Frequency",
+                    label="Frequency",
                     value=pulse.channel.intermediate_frequency,
                     input_style={"width": "150px"},
                     units="Hz",
                 ),
                 create_input_field(
                     id=self._get_id(f"{name}-readout_duration"),
-                    label=f"Duration",
+                    label="Duration",
                     value=pulse.length,
                     units="ns",
                     step=10,
@@ -155,7 +170,7 @@ class BasicInnerLoopAction(InnerLoopAction):
                 additional_components.append(
                     create_input_field(
                         id=self._get_id(f"{name}-readout_power"),
-                        label=f"Power",
+                        label="Power",
                         value=unit.volts2dBm(pulse.amplitude),
                         units="dBm",
                     ),
@@ -164,37 +179,43 @@ class BasicInnerLoopAction(InnerLoopAction):
                 additional_components.append(
                     create_input_field(
                         id=self._get_id(f"{name}-readout_amplitude"),
-                        label=f"Amplitude",
+                        label="Amplitude",
                         value=pulse.amplitude,
                         units="V",
                     ),
                 )
 
             rows.append(
-                dbc.Card([
-                    dbc.CardHeader(html.H6(f"{name} Parameters")),
-                    dbc.CardBody(
-                        html.Div(additional_components, id = f"{self.component_id}-ro-params-{name}"), 
-                        className="text-light",
-                    ),
-                ], 
-                color="dark",
-                inverse=True,
-                className="h-100 tab-card-dark",            
-                style={
-                    "outline": "2px solid #fff",
-                }
-                ), 
+                dbc.Card(
+                    [
+                        dbc.CardHeader(html.H6(f"{name} Parameters")),
+                        dbc.CardBody(
+                            html.Div(
+                                additional_components,
+                                id=f"{self.component_id}-ro-params-{name}",
+                            ),
+                            className="text-light",
+                        ),
+                    ],
+                    color="dark",
+                    inverse=True,
+                    className="h-100 tab-card-dark",
+                    style={
+                        "outline": "2px solid #fff",
+                    },
+                ),
             )
         return rows
 
     def get_dash_components(self, include_subcomponents: bool = True) -> List[html.Div]:
         components = super().get_dash_components(include_subcomponents)
 
-        components.append(html.Div(
-            id=f"{self.component_id}-readout-params-container",
-            children=self.build_readout_controls(),
-        ))
+        components.append(
+            html.Div(
+                id=f"{self.component_id}-readout-params-container",
+                children=self.build_readout_controls(),
+            )
+        )
         return components
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
@@ -207,7 +228,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         flags = ModifiedFlags.NONE
 
         channels = self.selected_readout_channels
-        for ch in channels: 
+        for ch in channels:
             pulse = self._pulse_for(ch)
             name = ch.name
 
@@ -217,14 +238,11 @@ class BasicInnerLoopAction(InnerLoopAction):
             v_key = f"{name}-readout_amplitude"
 
             freq = params.get(f_key, params.get("readout_frequency"))
-            dur  = params.get(d_key,  params.get("readout_duration"))
+            dur = params.get(d_key, params.get("readout_duration"))
             amp_dbm = params.get(p_key, params.get("readout_power"))
             amp_v = params.get(v_key, params.get("readout_amplitude"))
 
-            if freq is not None and (
-                pulse.channel.intermediate_frequency
-                != freq
-            ):
+            if freq is not None and (pulse.channel.intermediate_frequency != freq):
                 pulse.channel.intermediate_frequency = freq
                 flags |= ModifiedFlags.PARAMETERS_MODIFIED
                 flags |= ModifiedFlags.PROGRAM_MODIFIED

@@ -2,14 +2,12 @@ import logging
 from typing import Any
 from qua_dashboards.utils.dash_utils import create_input_field
 import dash_bootstrap_components as dbc
-from dash import html, ctx, ALL, no_update, Dash, Input, Output, State, no_update, dcc
+from dash import html, ALL, no_update, Dash, Input, Output, State, dcc
 
 from qua_dashboards.video_mode.tab_controllers.base_tab_controller import (
     BaseTabController,
 )
-from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import (
-    BaseDataAcquirer
-)
+from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import BaseDataAcquirer
 
 logger = logging.getLogger(__name__)
 
@@ -48,22 +46,36 @@ class SettingsTabController(BaseTabController):
 
     def get_layout(self):
         ramp_duration_input = create_input_field(
-            id={"type": "ramp_duration", "index": f"{self._data_acquirer_instance.component_id}::ramp_duration"}, 
-            label = "Ramp Duration", 
-            value = self._data_acquirer_instance.qua_inner_loop_action.ramp_duration, 
-            units = 'ns',
-            step = 4
+            id={
+                "type": "ramp_duration",
+                "index": f"{self._data_acquirer_instance.component_id}::ramp_duration",
+            },
+            label="Ramp Duration",
+            value=self._data_acquirer_instance.qua_inner_loop_action.ramp_duration,
+            units="ns",
+            step=4,
         )
-        inner_controls = self._data_acquirer_instance.qua_inner_loop_action.get_dash_components(include_subcomponents=True)
+        inner_controls = (
+            self._data_acquirer_instance.qua_inner_loop_action.get_dash_components(
+                include_subcomponents=True
+            )
+        )
         readout_selector = dbc.Row(
             [
-                dbc.Label("Readouts to acquire", width="auto", className="col-form-label"),
+                dbc.Label(
+                    "Readouts to acquire", width="auto", className="col-form-label"
+                ),
                 dbc.Col(
                     dcc.Dropdown(
                         id=self._data_acquirer_instance._get_id("readouts"),
-                        options=[{"label": n, "value": n}
-                                for n in self._data_acquirer_instance.available_readout_channels.keys()],
-                        value=[ch.name for ch in self._data_acquirer_instance.selected_readout_channel],
+                        options=[
+                            {"label": n, "value": n}
+                            for n in self._data_acquirer_instance.available_readout_channels.keys()
+                        ],
+                        value=[
+                            ch.name
+                            for ch in self._data_acquirer_instance.selected_readout_channel
+                        ],
                         multi=True,
                         clearable=False,
                         style={"color": "black"},
@@ -79,12 +91,16 @@ class SettingsTabController(BaseTabController):
                 dbc.Label("Result Type", width="auto", className="col-form-label"),
                 dbc.Col(
                     dbc.Select(
-                        id={"type": "select", "index": f"{self._data_acquirer_instance.component_id}::result-type"},
+                        id={
+                            "type": "select",
+                            "index": f"{self._data_acquirer_instance.component_id}::result-type",
+                        },
                         options=[
-                            {"label": rt, "value": rt} for rt in self._data_acquirer_instance.result_types
+                            {"label": rt, "value": rt}
+                            for rt in self._data_acquirer_instance.result_types
                         ],
                         value=self._data_acquirer_instance.result_type,
-                        style = {"width" : "150px"}
+                        style={"width": "150px"},
                     ),
                     width=True,
                 ),
@@ -92,10 +108,19 @@ class SettingsTabController(BaseTabController):
             className="mb-2 align-items-center",
         )
         return dbc.Card(
-            dbc.CardBody([html.H5("Settings", className="text-light"), readout_selector, result_type_selector, ramp_duration_input, *inner_controls, 
-                        html.Div(
-                        id=self._get_id(self._DUMMY_OUT_SUFFIX), style={"display": "none"}
-                    ),]),
+            dbc.CardBody(
+                [
+                    html.H5("Settings", className="text-light"),
+                    readout_selector,
+                    result_type_selector,
+                    ramp_duration_input,
+                    *inner_controls,
+                    html.Div(
+                        id=self._get_id(self._DUMMY_OUT_SUFFIX),
+                        style={"display": "none"},
+                    ),
+                ]
+            ),
             color="dark",
             inverse=True,
             className="tab-card-dark",
@@ -105,8 +130,13 @@ class SettingsTabController(BaseTabController):
         logger.info(f"SettingsTabController '{self.component_id}' activated.")
         self._data_acquirer_instance.stop_acquisition()
         from qua_dashboards.video_mode.video_mode_component import VideoModeComponent
+
         super().on_tab_activated()
-        return {VideoModeComponent._MAIN_STATUS_ALERT_ID_SUFFIX: html.Span("STOPPED", style={"display": "none"})}
+        return {
+            VideoModeComponent._MAIN_STATUS_ALERT_ID_SUFFIX: html.Span(
+                "STOPPED", style={"display": "none"}
+            )
+        }
 
     def on_tab_deactivated(self):
         logger.info(f"SettingsTabController '{self.component_id}' deactivated.")
@@ -126,7 +156,9 @@ class SettingsTabController(BaseTabController):
             State({"type": "ramp_duration", "index": ALL}, "id"),
             prevent_initial_call=True,
         )
-        def _apply_settings(inner_vals, inner_ids, select_vals, select_ids, ramp_vals, ramp_ids):
+        def _apply_settings(
+            inner_vals, inner_ids, select_vals, select_ids, ramp_vals, ramp_ids
+        ):
             """
             Collect changes from the Settings tab and forward them to the acquirer.
             - Inner loop controls use ids like {'type': 'comp-inner-loop', 'index': 'readout_duration'}
@@ -140,12 +172,14 @@ class SettingsTabController(BaseTabController):
                     param = idd.get("index")
                     if param is None:
                         continue
-                    params_to_update.setdefault(acq.qua_inner_loop_action.component_id, {})[param] = v
+                    params_to_update.setdefault(
+                        acq.qua_inner_loop_action.component_id, {}
+                    )[param] = v
             if select_vals and select_ids:
                 idx = select_ids[0].get("index")
                 comp_id, param = idx.split("::", 1)
                 params_to_update.setdefault(comp_id, {})[param] = select_vals[0]
-            
+
             if ramp_vals and ramp_ids:
                 idx = ramp_ids[0].get("index")
                 comp_id, param = idx.split("::", 1)

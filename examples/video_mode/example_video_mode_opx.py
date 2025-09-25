@@ -140,15 +140,7 @@ data_acquirer = OPXDataAcquirer(
     y_axis_name="ch2",  # Must appear in gate_set.valid_channel_names; Virtual gate names also valid
     scan_mode=scan_mode,
     result_type="I",  # "I", "Q", "amplitude", or "phase"
-    # ### Input a channel mapping dict, if you want custom readout channel selection in your video mode. 
-    # ### Otherwise, the channel mapping will happen automatically; the programme finds all the readout  
-    # ###     pulses in your machine and uses those corresponding readout channels
-
-    # readout_mapping = {
-    #     "ch2_readout": machine.channels["ch2_readout"],
-    #     "ch3_readout": machine.channels["ch3_readout"]
-    #     },
-
+    available_readout_pulses=[readout_pulse] # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI. 
 )
 
 # %% (Optional) Test: Run QUA program once and acquire data directly

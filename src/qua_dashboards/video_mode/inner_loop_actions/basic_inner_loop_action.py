@@ -47,24 +47,13 @@ class BasicInnerLoopAction(InnerLoopAction):
         self.voltage_sequence = None
         self.ramp_duration = 16
         self.selected_readout_channels = []
-
-    @property
-    def selected_readout_pulse(self):
-        readout_pulses = {}
-        for channel in self.selected_readout_channels:
-            pulse_name = [
-                f
-                for (f, g) in channel.operations.items()
-                if "readout" in type(g).__name__.lower()
-            ][0]
-            readout_pulses[channel.name] = pulse_name
-        return readout_pulses
+        self.pulse_mapping = {}
 
     def _pulse_for(self, ch):
-        if ch.name not in self.selected_readout_pulse.keys():
+        if ch.name not in self.pulse_mapping.keys():
             raise ValueError("Channel not in registered readout pulses")
         else:
-            return ch.operations[self.selected_readout_pulse[ch.name]]
+            return self.pulse_mapping[ch.name]
 
     def __call__(
         self, x: QuaVariableFloat, y: QuaVariableFloat
@@ -103,7 +92,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         qua.align()
         result = []
         for channel in self.selected_readout_channels:
-            I, Q = channel.measure(self.selected_readout_pulse[channel.name])
+            I, Q = channel.measure(self.pulse_mapping[channel.name].id)
             result.extend([I, Q])
         qua.align()
 

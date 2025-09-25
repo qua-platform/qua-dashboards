@@ -5,7 +5,7 @@ from dash import Dash, Input, Output, State, dcc, html
 
 from qua_dashboards.core import BaseComponent
 from qua_dashboards.video_mode import data_registry
-from qua_dashboards.video_mode.shared_data_handler import SharedDataHandler
+from qua_dashboards.video_mode.utils.shared_plotter_utils import *
 
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,6 @@ class SharedViewerComponent(BaseComponent):
             self._get_default_figure()
         )  # Start with an empty dark figure
         logger.info(f"SharedViewerComponent '{self.component_id}' initialized.")
-        self.shared_data_handler = SharedDataHandler()
 
     def _get_default_figure(self) -> go.Figure:
         """
@@ -85,10 +84,10 @@ class SharedViewerComponent(BaseComponent):
             A Plotly Figure object.
         """
         try:
-            fig = self.shared_data_handler.build_live_figure(data_object)
+            fig = build_live_figure(data_object)
         except Exception as e:
             logger.error(f"SharedViewer ({self.component_id}): live->fig error: {e}", exc_info=True)
-            fig = self.shared_data_handler.empty_dark()
+            fig = empty_dark()
         self._current_figure = fig
         return fig
 
@@ -107,10 +106,10 @@ class SharedViewerComponent(BaseComponent):
             A Plotly Figure object with base image and annotations.
         """
         try:
-            fig = self.shared_data_handler.build_static_figure(static_data_object, viewer_ui_state_input)
+            fig = build_static_figure(static_data_object, viewer_ui_state_input)
         except Exception as e:
             logger.error(f"SharedViewer ({self.component_id}): static->fig error: {e}", exc_info=True)
-            fig = self.shared_data_handler.empty_dark()
+            fig = empty_dark()
         self._current_figure = fig
         return fig
 

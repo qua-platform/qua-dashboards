@@ -69,8 +69,8 @@ class SettingsTabController(BaseTabController):
                     dcc.Dropdown(
                         id=self._data_acquirer_instance._get_id("readouts"),
                         options=[
-                            {"label": n, "value": n}
-                            for n in self._data_acquirer_instance.available_readout_channels.keys()
+                            {"label": ch, "value": ch}
+                            for ch in self._data_acquirer_instance.available_readout_channels.keys()
                         ],
                         value=[
                             ch.name

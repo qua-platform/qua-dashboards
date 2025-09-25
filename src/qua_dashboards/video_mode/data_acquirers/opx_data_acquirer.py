@@ -13,6 +13,7 @@ from qm.qua import (
     stream_processing,
     wait,
 )
+from quam.components.pulses import ReadoutPulse
 import xarray as xr
 from qua_dashboards.video_mode.scan_modes import LineScan
 from qua_dashboards.core.base_updatable_component import BaseUpdatableComponent
@@ -61,7 +62,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         x_axis_name: str,
         y_axis_name: str,
         scan_mode: ScanMode,
-        available_readout_pulses: List,
+        available_readout_pulses: List[ReadoutPulse],
         qua_inner_loop_action: Optional[InnerLoopAction] = None,
         component_id: str = "opx-data-acquirer",
         num_software_averages: int = 1,
@@ -136,9 +137,9 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self._raw_qua_results: Dict[str, np.ndarray] = {}
         self.stream_vars: List[str] = stream_vars or self.stream_vars_default
         self.result_types: List[str] = self.result_types_default
-        self.readout_pulses = available_readout_pulses
+        self.available_readout_pulses = available_readout_pulses
         self._ensure_pulsenames()
-        self._find_readout()
+        self._configure_readout()
         self._rebuild_stream_vars()
         
 
@@ -171,22 +172,20 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 self.qm = None
                 self.initialize_qm()
 
-    def _find_readout(self):
+    def _configure_readout(self):
         """
         Searches the machine channels and finds the appropriate readout channels.
         """
-        self.readout_channel_names = []
         self.available_readout_channels = {}
-        self.pulse_mapping = {}
-        for p in self.readout_pulses: 
-            self.readout_channel_names.append(p.channel.name)
+        self.readout_name_pulse_mapping = {}
+        for p in self.available_readout_pulses: 
             self.available_readout_channels[p.channel.name] = p.channel
-            self.pulse_mapping[p.channel.name] = p
+            self.readout_name_pulse_mapping[p.channel.name] = p
 
-        self.qua_inner_loop_action.pulse_mapping = self.pulse_mapping
+        self.qua_inner_loop_action.readout_name_pulse_mapping = self.readout_name_pulse_mapping
 
         self.selected_readout_channel = (
-            [self.available_readout_channels[self.readout_channel_names[0]]]
+            [self.available_readout_channels[self.available_readout_pulses[0].channel.name]]
             if self.available_readout_channels
             else []
         )

@@ -138,12 +138,12 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self.stream_vars: List[str] = stream_vars or self.stream_vars_default
         self.result_types: List[str] = self.result_types_default
         self.available_readout_pulses = available_readout_pulses
-        self._ensure_pulsenames()
+        self._ensure_pulse_names()
         self._configure_readout()
         self._rebuild_stream_vars()
         
 
-    def _ensure_pulsenames(self):
+    def _ensure_pulse_names(self):
         """
         Check for pulse name "half_max_square" in each gate_set channel, necessary for operation.
         GateSet.new_sequence() does this check, but this function added to have a conditional regeneration of config and reinitialisation
@@ -177,39 +177,35 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         Searches the machine channels and finds the appropriate readout channels.
         """
         self.available_readout_channels = {}
-        self.readout_name_pulse_mapping = {}
+        self.readout_pulse_mapping = {}
         for p in self.available_readout_pulses: 
             self.available_readout_channels[p.channel.name] = p.channel
-            self.readout_name_pulse_mapping[p.channel.name] = p
+            self.readout_pulse_mapping[p.channel.name] = p
 
-        self.qua_inner_loop_action.readout_name_pulse_mapping = self.readout_name_pulse_mapping
+        self.qua_inner_loop_action.readout_pulse_mapping = self.readout_pulse_mapping
 
-        self.selected_readout_channel = (
+        self.selected_readout_channels = (
             [self.available_readout_channels[self.available_readout_pulses[0].channel.name]]
             if self.available_readout_channels
             else []
         )
-        self.display_readout_name = (
-            self.selected_readout_channel[0].name
-            if self.selected_readout_channel
-            else None
-        )
+
         self.qua_inner_loop_action.selected_readout_channels = (
-            self.selected_readout_channel
+            self.selected_readout_channels
         )
 
     def _rebuild_stream_vars(self):
         """
-        Build th number of relevant Stream Vars, based on how many readout channels to acquire.
+        Build the number of relevant Stream Vars, based on how many readout channels to acquire.
         - If only one readout channel is selected, then stream vars is the default (I, Q)
-        - If more than one readout channel is selected, then it builds the appropriate number of vars (I:..., Q:...) for each readout channel, effectively created 2xN
+        - If more than one readout channel is selected, then it builds the appropriate number of vars (I:..., Q:...) for each readout channel, effectively creating 2xN
             stream vars for N readout channels
         """
-        if len(self.selected_readout_channel) <= 1:
+        if len(self.selected_readout_channels) <= 1:
             self.stream_vars = self.stream_vars_default.copy()
         else:
             svars = []
-            for channel in self.selected_readout_channel:
+            for channel in self.selected_readout_channels:
                 svars = svars + [f"I:{channel.name}", f"Q:{channel.name}"]
             self.stream_vars = svars
 
@@ -260,7 +256,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         x_qua_values = list(self.x_axis.sweep_values_unattenuated)
         y_qua_values = list(self.y_axis.sweep_values_unattenuated)
         self.qua_inner_loop_action.selected_readout_channels = (
-            self.selected_readout_channel
+            self.selected_readout_channels
         )
         with program() as prog:
             qua_streams = {var: declare_stream() for var in self.stream_vars}
@@ -378,7 +374,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
         self._raw_qua_results = dict(zip(self.stream_vars, fetched_qua_results))
         expected_points = self.x_axis.points * self.y_axis.points
-        num_sel = len(self.selected_readout_channel)
+        num_sel = len(self.selected_readout_channels)
 
         def _normalize_flat(flat: np.ndarray) -> np.ndarray:
             """
@@ -433,7 +429,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             expected_points = self.x_axis.points * (1 if is_1d else self.y_axis.points)
 
             output_layers = []
-            names = [ch.name for ch in self.selected_readout_channel]
+            names = [ch.name for ch in self.selected_readout_channels]
             for name in names:
                 if self.result_type == "I":
                     key = f"I:{name}"
@@ -581,14 +577,13 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                     if n in self.available_readout_channels
                 ]
                 new_objs = [self.available_readout_channels[n] for n in new_names]
-                if [ch.name for ch in self.selected_readout_channel] != new_names:
+                if [ch.name for ch in self.selected_readout_channels] != new_names:
                     old_stream_vars = self.stream_vars.copy()
-                    self.selected_readout_channel = new_objs
+                    self.selected_readout_channels = new_objs
                     self.qua_inner_loop_action.selected_readout_channels = (
-                        self.selected_readout_channel
+                        self.selected_readout_channels
                     )
-                    if self.display_readout_name not in new_names:
-                        self.display_readout_name = new_names[0] if new_names else None
+
                     self._rebuild_stream_vars()
 
                     if old_stream_vars != self.stream_vars:
@@ -601,12 +596,6 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                     else:
                         flags |= ModifiedFlags.PARAMETERS_MODIFIED
 
-            if (
-                "display-readout" in params
-                and params["display-readout"] != self.display_readout_name
-            ):
-                self.display_readout_name = params["display-readout"]
-                flags |= ModifiedFlags.PARAMETERS_MODIFIED
         self._compilation_flags |= flags & (
             ModifiedFlags.PROGRAM_MODIFIED | ModifiedFlags.CONFIG_MODIFIED
         )
@@ -640,7 +629,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         Retrieves the latest processed data, converts it to an xarray.DataArray,
         and includes status/error information.
         """
-        if len(self.selected_readout_channel) <= 1:
+        if len(self.selected_readout_channels) <= 1:
             return super().get_latest_data()
 
         processed = BaseDataAcquirer.get_latest_data(self)
@@ -658,7 +647,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             )
             return processed
         try:
-            labels = [ch.name for ch in self.selected_readout_channel]
+            labels = [ch.name for ch in self.selected_readout_channels]
             if data_np.shape[0] != len(labels):
                 labels = ["" for i in range(data_np.shape[0])]
             if (

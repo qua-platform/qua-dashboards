@@ -74,7 +74,7 @@ class SettingsTabController(BaseTabController):
                         ],
                         value=[
                             ch.name
-                            for ch in self._data_acquirer_instance.selected_readout_channel
+                            for ch in self._data_acquirer_instance.selected_readout_channels
                         ],
                         multi=True,
                         clearable=False,

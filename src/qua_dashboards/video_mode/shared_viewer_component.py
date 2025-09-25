@@ -5,7 +5,7 @@ from dash import Dash, Input, Output, State, dcc, html
 
 from qua_dashboards.core import BaseComponent
 from qua_dashboards.video_mode import data_registry
-from qua_dashboards.video_mode.utils.shared_plotter_utils import *
+from qua_dashboards.video_mode.utils.plot_utils import *
 
 
 logger = logging.getLogger(__name__)

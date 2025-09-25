@@ -13,7 +13,19 @@ class SharedDataHandler:
     """
     def __init__(self):
         pass
+
+    @staticmethod
+    def rc(i: int) -> tuple[int, int]:
+        """
+        Returns the row and column (RC) for subplot with index i, based on 2 columns
+        """
+        return (i // 2) + 1, (i % 2) + 1
+    
     def _make_readout_subplots_with_profile(self, da: xr.DataArray, profile: dict) -> go.Figure:
+        """
+        Builds a multi-subplot figure from a 3D array, with 'readout' as one of the dimensions; except one target subplot if replaced by a profile line plot. 
+        """
+
         assert isinstance(da, xr.DataArray) and da.ndim == 3 and "readout" in da.dims
         y_name, x_name = [d for d in da.dims if d != "readout"]
         rd_vals = list(da.coords["readout"].values)
@@ -38,8 +50,6 @@ class SharedDataHandler:
             horizontal_spacing=0.08, vertical_spacing=0.16,
             shared_xaxes=False, shared_yaxes=False,
         )
-        def rc(i: int) -> tuple[int, int]:
-            return (i // 2) + 1, (i % 2) + 1
         
         yc, xc = da.coords[y_name], da.coords[x_name]
         y_lab = yc.attrs.get("long_name", y_name)
@@ -49,7 +59,7 @@ class SharedDataHandler:
         y_title = f"{y_lab} ({y_unit})" if y_unit else y_lab
         x_title = f"{x_lab} ({x_unit})" if x_unit else x_lab
         for i in range(n):
-            r, c = rc(i)
+            r, c = self.rc(i)
             if i == target_idx:
                 s = np.asarray(profile.get("s", []))
                 vals = np.asarray(profile.get("vals", []))
@@ -81,9 +91,14 @@ class SharedDataHandler:
         return fig
     
     def _safe_hspace(self, n: int, default: float = 0.06) -> float:
+        """Calculate a safe horizontal spacing to avoid overlap"""
         return min(default, 1.0 / (n - 1) - 1e-6) if n > 1 else default
     
     def _pick_readout_dim(self, da: xr.DataArray) -> tuple[str, str]:
+        """
+        Picks which Xarray DataArray dimension should be treated as 'readout' or 2D
+        """
+
         dims = list(da.dims)
         if "readout" in dims:
             rd = "readout"
@@ -99,6 +114,7 @@ class SharedDataHandler:
         return rd, [d for d in dims if d != rd][0]
 
     def _axis_vals_and_label(self, da: xr.DataArray, dim: str) -> tuple[np.ndarray, str]:
+        """Pulls the coordinate alues for dims, otherwise np.arange. Also builds an axis label"""
         c = da.coords.get(dim)
         x = np.asarray(c.values) if c is not None else np.arange(da.sizes[dim])
         label = (c.attrs.get("label", dim) if c is not None else dim)
@@ -108,6 +124,9 @@ class SharedDataHandler:
         return x, label
     
     def _is_line(self, da: xr.DataArray) -> bool:
+        """
+        Returns True if input DataArray is effectively a 1D line 
+        """
         return (
             isinstance(da, xr.DataArray)
             and "readout" not in da.dims
@@ -116,7 +135,13 @@ class SharedDataHandler:
 
 
     def _make_readout_line_subplots(self, da: xr.DataArray) -> go.Figure:
-        assert isinstance(da, xr.DataArray) and da.ndim == 2
+        """
+        Renders a 2D DataArray as multiple line plots; one per 'readout'
+
+        - If there are <= 8 lines, it builds a small multi-subplot grid with two columns
+        - If there are > 8 lines (unlikely, as >4 often crashes the programme) renders them in a single figure with a legend
+        """
+        assert da.ndim == 2
         rd_dim, x_dim = self._pick_readout_dim(da)
         labels = [str(v) for v in (np.asarray(da.coords[rd_dim].values)
                                 if rd_dim in da.coords else range(da.sizes[rd_dim]))]
@@ -146,11 +171,8 @@ class SharedDataHandler:
             shared_xaxes=False, shared_yaxes=False,
         )
 
-        def rc(i: int) -> tuple[int, int]:
-            return (i // 2) + 1, (i % 2) + 1
-
         for i, lab in enumerate(labels):
-            r, c = rc(i)
+            r, c = self.rc(i)
             y = np.asarray(da.isel({rd_dim: i}).values).ravel()
             fig.add_trace(
                 go.Scatter(x=x_vals, y=y, mode="lines", name=lab, showlegend=False),
@@ -166,6 +188,9 @@ class SharedDataHandler:
         return fig
     
     def _make_readout_subplots(self, da: xr.DataArray) -> go.Figure:
+        """
+        For true 3D data (one dimension is 'readout'), builds 1xN grid of 2Dplots
+        """
         if not (isinstance(da, xr.DataArray) and da.ndim == 3 and "readout" in da.dims):
             return xarray_to_plotly(da)
 
@@ -228,9 +253,13 @@ class SharedDataHandler:
             return self._apply_annotations(fig, base, ann, ui_state, profile)
     
     def empty_dark(self) -> go.Figure:
+        """Return a blank dark-theme figure as placeholder"""
         return go.Figure().update_layout(template="plotly_dark")
     
     def _figure_from_data(self, da: xr.DataArray | None) -> go.Figure:
+        """
+        Reference the appropriate plot builder based on shape and the presence of a 'readout' dimension
+        """
         if not isinstance(da, xr.DataArray):
             return self.empty_dark()
 
@@ -264,7 +293,10 @@ class SharedDataHandler:
         return xarray_to_plotly(da).update_layout(template="plotly_dark")
     
     def _figure_with_profile(self, da: xr.DataArray | None, profile: dict) -> go.Figure:
-        if isinstance(da, xr.DataArray) and da.ndim == 3 and "readout" in da.dims:
+        """
+        Builds a figure that overlays a profile plot onto one of the subplots
+        """
+        if da.ndim == 3 and "readout" in da.dims:
             try:
                 return self._make_readout_subplots_with_profile(da, profile)
             except Exception:
@@ -284,10 +316,13 @@ class SharedDataHandler:
         )
     
     def _apply_annotations(self, fig: go.Figure, da: xr.DataArray | None, annotations: dict | None, ui_state: dict | None, profile: dict | None = None) -> go.Figure:
+        """
+        Adds point/line annotations to a figure. Plots the relevant annotations on the appropriate figure, respecting the subplots layout
+        """
         if not isinstance(annotations, dict):
             return fig
 
-        is_multipane = isinstance(da, xr.DataArray) and da.ndim == 3 and "readout" in da.dims
+        is_multipane = da.ndim == 3 and "readout" in da.dims
         n_readouts = int(da.sizes["readout"]) if is_multipane else 1
         two_col = is_multipane and n_readouts > 2
 
@@ -306,13 +341,6 @@ class SharedDataHandler:
     
         points = annotations.get("points") or []
         lines  = annotations.get("lines") or []
-        
-        n_cols = 1
-        if isinstance(da, xr.DataArray) and da.ndim == 3 and "readout" in da.dims:
-            try:
-                n_cols = int(len(da.coords["readout"]))
-            except Exception:
-                n_cols = 2
 
         def add(tr, col: int | None = None):
             if not is_multipane:
@@ -401,7 +429,7 @@ class SharedDataHandler:
         except Exception:
             pass
 
-        if isinstance(da, xr.DataArray) and "readout" in da.dims and "readout" in profile:
+        if "readout" in da.dims and "readout" in profile:
             labels = [str(v) for v in da.coords["readout"].values]
             target = str(profile["readout"])
             try:
@@ -411,6 +439,13 @@ class SharedDataHandler:
                 return None
 
     def _build_two_col_readout_grid(self, data_xr: xr.DataArray) -> go.Figure:
+        """
+        Builds a 2 column wide grid for 3+ readouts acquired
+
+        Args: 
+        data_xr: xr.DaraArray
+            3D array with 'readout' in dims
+        """
         assert "readout" in data_xr.dims
         readouts = list(map(str, data_xr.coords["readout"].values))
         n = len(readouts)

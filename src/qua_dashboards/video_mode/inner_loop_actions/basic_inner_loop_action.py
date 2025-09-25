@@ -83,7 +83,7 @@ class BasicInnerLoopAction(InnerLoopAction):
             qua.play(qua.ramp(self.slope), ch_string, duration = self.ramp_duration)
 
         qua.align()
-        duration = max([self._pulse_for(op).length for op in self.selected_readout_channels])
+        duration = max(self._pulse_for(op).length for op in self.selected_readout_channels)
         if self.pre_measurement_delay > 0:
             duration += self.pre_measurement_delay
             qua.wait(duration)

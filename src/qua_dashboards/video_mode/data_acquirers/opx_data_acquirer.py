@@ -138,6 +138,15 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self._raw_qua_results: Dict[str, np.ndarray] = {}
         self.stream_vars: List[str] = stream_vars or self.stream_vars_default
         self.result_types: List[str] = self.result_types_default
+        self._ensure_pulsenames()
+        self._find_readout(readout_mapping)
+        self._rebuild_stream_vars()
+
+    def _ensure_pulsenames(self): 
+        """
+        Check for pulse name "half_max_square" in each gate_set channel, necessary for operation. 
+        GateSet.new_sequence() does this check, but this function added to have a conditional regeneration of config and reinitialisation
+        """
         for ch in self.gate_set.channels.values():
             if "half_max_square" not in ch.operations.keys():
                 from quam.components import pulses
@@ -158,11 +167,16 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 self.qua_config = self.machine.generate_config()
                 self.qm = None
                 self.initialize_qm()
+
+
+    def _find_readout(self, readout_mapping: Dict):
+        """
+        Searches the machine channels and finds the appropriate readout channels. 
+        """
         self.readout_channel_names = []
         self.available_readout_channels = {}
-
         if readout_mapping == {}:
-            for name, channel in machine.channels.items():
+            for name, channel in self.machine.channels.items():
                 if any("readout" in type(op).__name__.lower() for op in channel.operations.values()):
                     self.available_readout_channels[name] = channel
                     self.readout_channel_names.append(name)
@@ -170,12 +184,19 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             for name, channel in readout_mapping.items():
                 self.readout_channel_names.append(name)
                 self.available_readout_channels[name] = channel
+
         self.selected_readout_channel = [self.available_readout_channels[self.readout_channel_names[0]]] if self.available_readout_channels else []
         self.display_readout_name = (self.selected_readout_channel[0].name if self.selected_readout_channel else None)
         self.qua_inner_loop_action.selected_readout_channels = self.selected_readout_channel
 
-        self._rebuild_stream_vars()
+
     def _rebuild_stream_vars(self):
+        """
+        Build th number of relevant Stream Vars, based on how many readout channels to acquire.
+        - If only one readout channel is selected, then stream vars is the default (I, Q)
+        - If more than one readout channel is selected, then it builds the appropriate number of vars (I:..., Q:...) for each readout channel, effectively created 2xN 
+            stream vars for N readout channels
+        """
         if len(self.selected_readout_channel) <= 1: 
             self.stream_vars = self.stream_vars_default.copy()
         else: 
@@ -318,6 +339,9 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 )
                 raise
     def _flat_to_2d(self, flat: np.ndarray) -> np.ndarray:
+        """ 
+        Takes a flat numpy array of data, and build a 2D plot based on the appropriate shape and scan mode indices. 
+        """
         shape = (self.y_axis.points, self.x_axis.points)
         output_data_2d = np.zeros(shape, dtype=flat.dtype)
         x_indices, y_indices = self.scan_mode.get_idxs(
@@ -344,6 +368,12 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         num_sel = len(self.selected_readout_channel)
 
         def _normalize_flat(flat: np.ndarray) -> np.ndarray:
+            """
+            Trim or pad a 1D stream of samples to exactly one 2D frame and reshape. 
+            - If more than one frame is concatenated, then keep only the most recent full frame
+            - If fewer samples are available than a full frame, returns a 2D array filled with NaNs
+            - Otherwise, reshape samples into the appropriate dimensions
+            """
             # keep last full frame if concatenated
             if flat.size > expected_points:
                 flat = np.asarray(flat)[-expected_points:]
@@ -397,14 +427,14 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 else:
                     raise ValueError(f"Invalid result_type '{self.result_type}'.")
 
-                # trim/pad per-layer
+                # trim/pad per-layer, similar to _normalize_flat
                 if flat.size > expected_points:
                     flat = flat[-expected_points:]
                 if flat.size < expected_points:
                     if is_1d:
                         return np.full((len(names), self.x_axis.points), np.nan, dtype=flat.dtype)
                     else:
-                        return np.full((self.y_axis.points, self.x_axis.points), np.nan, dtype=flat.dtype)
+                        return np.full((len(names), self.y_axis.points, self.x_axis.points), np.nan, dtype=flat.dtype)
 
                 # shape per-layer
                 if is_1d:
@@ -421,13 +451,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             self._regenerate_config_and_reopen_qm()
             self._compilation_flags = ModifiedFlags.NONE
         elif self._compilation_flags & ModifiedFlags.PROGRAM_MODIFIED:
-            logger.info(f"Program recompile triggered for {self.component_id}.")
-            if self.qm_job is not None and getattr(self.qm_job, "status", None) == "running":
-                try:
-                    self.qm_job.halt()
-                except Exception as e:
-                    logger.warning(f"Halting previous QM job failed: {e}")
-            self.qua_program = None  # Clear the program to force a re-generation
+            self._halt_acquisition()
             self.execute_program()
             self._compilation_flags = ModifiedFlags.NONE
 
@@ -515,14 +539,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
                     if old_stream_vars != self.stream_vars:
                         logger.info(f"Stream vars changed from {old_stream_vars} to {self.stream_vars}, forcing program recompile")
-                        if self.qm_job is not None and self.qm_job.status == "running":
-                            try:
-                                self.qm_job.halt()
-                                logger.info(f"Halted QM job due to readout configuration change")
-                            except Exception as e:
-                                logger.warning(f"Failed to half QM job: {e}")
-                            self.qm_job = None
-                        self.qua_program = None
+                        self._halt_acquisition()
+                        self.qm_job = None
                         flags |= ModifiedFlags.PROGRAM_MODIFIED
                     else:
                         flags |= ModifiedFlags.PARAMETERS_MODIFIED
@@ -555,97 +573,105 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         """
         if len(self.selected_readout_channel) <= 1:
             return super().get_latest_data()
-        else: 
+        
+        processed = BaseDataAcquirer.get_latest_data(self)
+        data_np = processed.get("data")
+        error = processed.get("error")
+        status = processed.get("status")
 
-            processed = BaseDataAcquirer.get_latest_data(self)
-            data_np = processed.get("data")
-            error = processed.get("error")
-            status = processed.get("status")
+        if error is not None or data_np is None:
+            return processed
+        if not isinstance(data_np, np.ndarray) or data_np.ndim not in (2, 3):
+            dim_str = data_np.ndim if hasattr(data_np, "ndim") else "N/A"
+            logger.warning(
+                f"{self.component_id}: Expected a 2D or 3D numpy array for xarray conversion "
+                f"but got {type(data_np)} with {dim_str} dimensions. Returning raw data."
+            )
+            return processed
+        try:
+            labels = [ch.name for ch in self.selected_readout_channel]
+            if data_np.shape[0] != len(labels):
+                labels = [f"" for i in range(data_np.shape[0])]
+            if isinstance(data_np, np.ndarray) and data_np.ndim == 3 and data_np.shape[1] == 1:
+                data_np = data_np[:, 0, :]
 
-            if error is not None or data_np is None:
-                return processed
-            if not isinstance(data_np, np.ndarray) or data_np.ndim not in (2, 3):
-                dim_str = data_np.ndim if hasattr(data_np, "ndim") else "N/A"
-                logger.warning(
-                    f"{self.component_id}: Expected a 2D or 3D numpy array for xarray conversion "
-                    f"but got {type(data_np)} with {dim_str} dimensions. Returning raw data."
-                )
-                return processed
-            try:
-                labels = [ch.name for ch in self.selected_readout_channel]
-                if data_np.shape[0] != len(labels):
-                    labels = [f"" for i in range(data_np.shape[0])]
-                if isinstance(data_np, np.ndarray) and data_np.ndim == 3 and data_np.shape[1] == 1:
-                    data_np = data_np[:, 0, :]
+            actual_is_1d = (data_np.ndim == 2)  
 
-                actual_is_1d = (data_np.ndim == 2)  
-
-                if actual_is_1d:
-                    x_len = data_np.shape[-1]
-                    x_coords = list(self.x_axis.sweep_values_with_offset)
-                    if len(x_coords) != x_len:
-                        if len(x_coords) >= 2:
-                            x_coords = np.linspace(x_coords[0], x_coords[-1], x_len)
-                        else:
-                            x_coords = np.arange(x_len)
-
-                    data_xr = xr.DataArray(
-                        data_np,
-                        dims=("readout", self.x_axis.name),
-                        coords={"readout": labels, self.x_axis.name: x_coords},
-                        attrs={"long_name": "Signal"},
-                    )
-                    x_attrs = {"label": self.x_axis.label or self.x_axis.name}
-                    if self.x_axis.units is not None:
-                        x_attrs["units"] = self.x_axis.units
-                    data_xr.coords[self.x_axis.name].attrs.update(x_attrs)
-                    return {"data": data_xr, "error": None, "status": status}
-
+            if actual_is_1d:
                 x_len = data_np.shape[-1]
-                y_len = data_np.shape[-2]
                 x_coords = list(self.x_axis.sweep_values_with_offset)
-                y_coords = list(self.y_axis.sweep_values_with_offset)
-
                 if len(x_coords) != x_len:
                     if len(x_coords) >= 2:
                         x_coords = np.linspace(x_coords[0], x_coords[-1], x_len)
                     else:
                         x_coords = np.arange(x_len)
 
-                if len(y_coords) != y_len:
-                    if len(y_coords) >= 2:
-                        y_coords = np.linspace(y_coords[0], y_coords[-1], y_len)
-                    else:
-                        y_coords = np.arange(y_len)
-
                 data_xr = xr.DataArray(
                     data_np,
-                    dims=("readout", self.y_axis.name, self.x_axis.name),
-                    coords={"readout": labels, self.y_axis.name: y_coords, self.x_axis.name: x_coords},
+                    dims=("readout", self.x_axis.name),
+                    coords={"readout": labels, self.x_axis.name: x_coords},
                     attrs={"long_name": "Signal"},
                 )
-                for axis in [self.x_axis, self.y_axis]:
-                    attrs = {"label": axis.label or axis.name}
-                    if axis.units is not None:
-                        attrs["units"] = self.x_axis.units if axis is self.x_axis else self.y_axis.units
-                    data_xr.coords[axis.name].attrs.update(attrs)
-
+                x_attrs = {"label": self.x_axis.label or self.x_axis.name}
+                if self.x_axis.units is not None:
+                    x_attrs["units"] = self.x_axis.units
+                data_xr.coords[self.x_axis.name].attrs.update(x_attrs)
                 return {"data": data_xr, "error": None, "status": status}
-            except Exception as e:
-                logger.error(
-                    f"Error converting numpy data to xarray.DataArray in "
-                    f"{self.component_id}: {e}"
-                )
-                return {
-                    "data": None,
-                    "error": e,
-                    "status": "error",
-                }
+
+            x_len = data_np.shape[-1]
+            y_len = data_np.shape[-2]
+            x_coords = list(self.x_axis.sweep_values_with_offset)
+            y_coords = list(self.y_axis.sweep_values_with_offset)
+
+            if len(x_coords) != x_len:
+                if len(x_coords) >= 2:
+                    x_coords = np.linspace(x_coords[0], x_coords[-1], x_len)
+                else:
+                    x_coords = np.arange(x_len)
+
+            if len(y_coords) != y_len:
+                if len(y_coords) >= 2:
+                    y_coords = np.linspace(y_coords[0], y_coords[-1], y_len)
+                else:
+                    y_coords = np.arange(y_len)
+
+            data_xr = xr.DataArray(
+                data_np,
+                dims=("readout", self.y_axis.name, self.x_axis.name),
+                coords={"readout": labels, self.y_axis.name: y_coords, self.x_axis.name: x_coords},
+                attrs={"long_name": "Signal"},
+            )
+            for axis in [self.x_axis, self.y_axis]:
+                attrs = {"label": axis.label or axis.name}
+                if axis.units is not None:
+                    attrs["units"] = self.x_axis.units if axis is self.x_axis else self.y_axis.units
+                data_xr.coords[axis.name].attrs.update(attrs)
+
+            return {"data": data_xr, "error": None, "status": status}
+        except Exception as e:
+            logger.error(
+                f"Error converting numpy data to xarray.DataArray in "
+                f"{self.component_id}: {e}"
+            )
+            return {
+                "data": None,
+                "error": e,
+                "status": "error",
+            }
     def get_components(self) -> List[BaseUpdatableComponent]:
         components = super().get_components()
         components.extend(self.qua_inner_loop_action.get_components())
         return components
 
+    def _halt_acquisition(self) -> None: 
+        logger.info(f"Program recompile triggered for {self.component_id}.")
+        if self.qm_job is not None and getattr(self.qm_job, "status", None) == "running":
+            try:
+                self.qm_job.halt()
+            except Exception as e:
+                logger.warning(f"Halting previous QM job failed: {e}")
+        self.qua_program = None 
+        
     def stop_acquisition(self) -> None:
         logger.info(f"OPXDataAcquirer ({self.component_id}) attempting to halt QM job.")
         if self.qm_job and self.qm_job.status == "running":

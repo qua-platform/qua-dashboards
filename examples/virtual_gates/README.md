@@ -1,4 +1,4 @@
-# Virtual Gating Dashboard
+# Virtual Gates Dashboard
 
 The `VirtualLayerEditor` within `qua-dashboards` allows one to add and edit VirtualGateSet layers with user-input matrices and layer names for clarity. This component is essential for quantum dot experiments, in which one must account for both cross-capacitive gate voltage effects and arbitrary axes on the charge stability diagram.  
 

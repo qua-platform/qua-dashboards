@@ -87,7 +87,7 @@ machine.channels["ch1_readout"] = InOutSingleChannel(
 gate_set = None  # Placeholder. Replace with a real GateSet instance.
 
 # ## Example implementation of GateSet
-# from quam_builder.architecture.quantum_dots import GateSet  # Requires quam-builder
+# from quam_builder.architecture.quantum_dots.components import GateSet  # Requires quam-builder
 # channels = {
 #     "ch1": machine.channels["ch1"].get_reference(), # .get_reference() necessary to avoid reparenting the Quam component
 #     "ch2": machine.channels["ch2"].get_reference(),
@@ -97,7 +97,7 @@ gate_set = None  # Placeholder. Replace with a real GateSet instance.
 
 
 # ## Example implementation of VirtualGateSet
-# from quam_builder.architecture.quantum_dots import VirtualGateSet  # Requires quam-builder
+# from quam_builder.architecture.quantum_dots.components import VirtualGateSet  # Requires quam-builder
 # channels = {
 #     "ch1": machine.channels["ch1"].get_reference(), # .get_reference() necessary to avoid reparenting the Quam component
 #     "ch2": machine.channels["ch2"].get_reference(),
@@ -139,8 +139,8 @@ data_acquirer = OPXDataAcquirer(
     x_axis_name="ch1",  # Must appear in gate_set.valid_channel_names; Virtual gate names also valid
     y_axis_name="ch2",  # Must appear in gate_set.valid_channel_names; Virtual gate names also valid
     scan_mode=scan_mode,
-    readout_pulse=readout_pulse,
     result_type="I",  # "I", "Q", "amplitude", or "phase"
+    available_readout_pulses=[readout_pulse] # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI. 
 )
 
 # %% (Optional) Test: Run QUA program once and acquire data directly
@@ -164,7 +164,7 @@ video_mode_component = VideoModeComponent(
     data_polling_interval_s=0.5,  # How often the dashboard polls for new data
     save_path = save_path
 )
-from qua_dashboards.virtual_gating import VirtualLayerEditor, ui_update
+from qua_dashboards.virtual_gates import VirtualLayerEditor, ui_update
 virtual_gating_component = VirtualLayerEditor(gateset = gate_set, component_id = 'Virtual Gates UI')
 
 # Build the Dash application layout using the VideoModeComponent.

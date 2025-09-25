@@ -121,6 +121,7 @@ class VirtualLayerEditor(BaseComponent):
 
         @app.callback(
             Output(f"{self.component_id}-edit-output", "children"),
+            Output("vg-layer-refresh-trigger", "data", allow_duplicate=True),
             Input(f"{self.component_id}-apply-edit", "n_clicks"),
             State(f"{self.component_id}-layer-dropdown", "value"), 
             State({'type': 'edit-matrix-cell', 'layer': ALL, 'row': ALL, 'col': ALL}, 'value'),
@@ -134,15 +135,17 @@ class VirtualLayerEditor(BaseComponent):
             length = len(layer.source_gates)
             M = np.reshape(np.array(matrix_flat), (length, length)).tolist()
             layer.matrix = M
-            return "Updated!"
+            return "Updated!", dash.no_update if False else 1
         
         @app.callback(
             Output(f"{self.component_id}-layer-matrix-editor", "children", allow_duplicate=True),
+            Output("vg-layer-refresh-trigger", "data", allow_duplicate=True),
             Input(f"{self.component_id}-identity-reset", 'n_clicks'),
             State(f"{self.component_id}-layer-dropdown", 'value'),
+            State("vg-layer-refresh-trigger", "data"),
             prevent_initial_call=True
         )
-        def reset_to_identity_and_refresh(n_clicks, layer_idx):
+        def reset_to_identity_and_refresh(n_clicks, layer_idx, vg_val):
             if not n_clicks or layer_idx is None:
                 raise PreventUpdate
             
@@ -151,7 +154,7 @@ class VirtualLayerEditor(BaseComponent):
             identity = [[1.0 if i == j else 0.0 for j in range(N)] for i in range(N)]
             layer.matrix = identity
             
-            return self._render_matrix_editor(layer_idx)
+            return self._render_matrix_editor(layer_idx), (vg_val or 0) + 1
 
         @app.callback(
             Output(f"{self.component_id}-layer-dropdown", "options"),

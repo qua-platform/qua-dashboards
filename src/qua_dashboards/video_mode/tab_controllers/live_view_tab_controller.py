@@ -239,6 +239,27 @@ class LiveViewTabController(BaseTabController):
         self._register_parameter_update_callback(app)
         self._register_gate_selection_callback(app)
         self._register_gridlines_callback(app, shared_viewer_store_ids)
+        self._register_readoutparams_callback(app)
+
+    def _register_readoutparams_callback(self, app):
+        @app.callback(
+            Output(f"{self._data_acquirer_instance.qua_inner_loop_action.component_id}-readout-params-container", "children"),
+            Input(self._data_acquirer_instance._get_id("readouts"), "value"),
+            prevent_initial_call=True,
+        )
+        def _refresh_readout_params(selected_names):
+            names = selected_names or []
+            if not isinstance(names, list):
+                names = [names]
+
+            self._data_acquirer_instance.selected_readout_channel = [
+                self._data_acquirer_instance.available_readout_channels[n]
+                for n in names
+                if n in self._data_acquirer_instance.available_readout_channels
+            ]
+            self._data_acquirer_instance.qua_inner_loop_action.selected_readout_channels = self._data_acquirer_instance.selected_readout_channel
+
+            return self._data_acquirer_instance.qua_inner_loop_action.build_readout_controls()
 
     def _register_gridlines_callback(
             self, 
@@ -257,36 +278,42 @@ class LiveViewTabController(BaseTabController):
             show = "on" in toggle_val
             shapes = []
             alpha = float(opacity)/100
+            n_subplots = max(1, len(self._data_acquirer_instance.selected_readout_channel))
 
             if show: 
-                #Get the range from the data acquirer instance
+                def ax_suffix(i):  # i = 1..N
+                    return "" if i == 1 else str(i)
+
                 xr = list(self._data_acquirer_instance.x_axis.sweep_values_unattenuated)
                 yr = list(self._data_acquirer_instance.y_axis.sweep_values_unattenuated)
+                xs = np.linspace(xr[0], xr[-1], 15).tolist() + [0]
+                ys = np.linspace(yr[0], yr[-1], 15).tolist() + [0]
 
-                #Set grid lines points, and ensure that 0 is included
-                xs, ys = np.linspace(xr[0], xr[-1], 15).tolist() + [0], np.linspace(yr[0], yr[-1], 15).tolist() + [0]
-
-                for xv in xs:
-                    #0 grid line has 5x higher alpha
-                    grid_color = f"rgba(0,0,0,{alpha*5})" if xv == 0 else f"rgba(0,0,0,{alpha})"
-                    shapes.append({
-                        "type": "line",
-                        "xref": "x", "yref": "paper",
-                        "x0": xv, "x1": xv, "y0": 0, "y1": 1,
-                        "line": {"width": 4, "color": grid_color},
-                        "layer": "above",
-                        "name": "grid-x",
-                    })
-                for yv in ys:
-                    grid_color = f"rgba(0,0,0,{alpha*5})" if yv == 0 else f"rgba(0,0,0,{alpha})"
-                    shapes.append({
-                        "type": "line",
-                        "xref": "paper", "yref": "y",
-                        "x0": 0, "x1": 1, "y0": yv, "y1": yv,
-                        "line": {"width": 4, "color": grid_color},
-                        "layer": "above",
-                        "name": "grid-y",
-                    })
+                for i in range(1, n_subplots + 1):
+                    sfx = ax_suffix(i)
+                    xref = f"x{sfx}"
+                    yref = f"y{sfx}"
+                    for xv in xs:
+                        #0 grid line has 3x higher alpha
+                        grid_color = f"rgba(0,0,0,{alpha*3})" if xv == 0 else f"rgba(0,0,0,{alpha})"
+                        shapes.append({
+                            "type": "line",
+                            "xref": xref, "yref": yref,
+                            "x0": xv, "x1": xv, "y0": min(ys), "y1": max(ys),
+                            "line": {"width": 4, "color": grid_color},
+                            "layer": "above",
+                            "name": "grid-x",
+                        })
+                    for yv in ys:
+                        grid_color = f"rgba(0,0,0,{alpha*3})" if yv == 0 else f"rgba(0,0,0,{alpha})"
+                        shapes.append({
+                            "type": "line",
+                            "xref": xref, "yref": yref,
+                            "x0": min(xs), "x1": max(xs), "y0": yv, "y1": yv,
+                            "line": {"width": 4, "color": grid_color},
+                            "layer": "above",
+                            "name": "grid-y",
+                        })
             layout["shapes"] = shapes
             return layout
 
@@ -360,6 +387,8 @@ class LiveViewTabController(BaseTabController):
             acquirer_state = self._data_acquirer_instance.get_latest_data()
             current_status = acquirer_state.get("status", "unknown").upper()
             error_details = acquirer_state.get("error")
+            if not is_button_click and _status_alert_trigger and "STOPPED" in str(_status_alert_trigger).upper():
+                return ("Start Acquisition", "success", "STOPPED", "secondary")
 
             button_text: str
             button_color: str

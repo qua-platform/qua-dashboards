@@ -2,9 +2,9 @@
 from qua_dashboards.core import build_dashboard
 from typing import Dict
 from quam.components import SingleChannel, BasicQuam
-from qua_dashboards.virtual_gating import VirtualLayerEditor, ui_update
+from qua_dashboards.virtual_gates import VirtualLayerEditor, ui_update
 from qua_dashboards.utils import setup_logging
-from quam_builder.architecture.quantum_dots.virtual_gates.virtual_gate_set import VirtualGateSet
+from quam_builder.architecture.quantum_dots.components.virtual_gate_set import VirtualGateSet
 
 
 def setup_single_channel(name, output, controller = 'con1', fem = 5, operations: Dict = None):

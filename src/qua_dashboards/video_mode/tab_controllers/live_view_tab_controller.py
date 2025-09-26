@@ -252,12 +252,12 @@ class LiveViewTabController(BaseTabController):
             if not isinstance(names, list):
                 names = [names]
 
-            self._data_acquirer_instance.selected_readout_channel = [
+            self._data_acquirer_instance.selected_readout_channels = [
                 self._data_acquirer_instance.available_readout_channels[n]
                 for n in names
                 if n in self._data_acquirer_instance.available_readout_channels
             ]
-            self._data_acquirer_instance.qua_inner_loop_action.selected_readout_channels = self._data_acquirer_instance.selected_readout_channel
+            self._data_acquirer_instance.qua_inner_loop_action.selected_readout_channels = self._data_acquirer_instance.selected_readout_channels
 
             return self._data_acquirer_instance.qua_inner_loop_action.build_readout_controls()
 
@@ -278,7 +278,7 @@ class LiveViewTabController(BaseTabController):
             show = "on" in toggle_val
             shapes = []
             alpha = float(opacity)/100
-            n_subplots = max(1, len(self._data_acquirer_instance.selected_readout_channel))
+            n_subplots = max(1, len(self._data_acquirer_instance.selected_readout_channels))
 
             if show: 
                 def ax_suffix(i):  # i = 1..N

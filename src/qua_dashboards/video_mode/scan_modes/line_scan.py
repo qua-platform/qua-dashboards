@@ -18,11 +18,11 @@ class LineScan(ScanMode):
         return x_idxs, y_idxs
 
     def scan(
-        self, x_vals: Sequence[float], y_vals: Sequence[float]
+        self, x_vals: Sequence[float], y_vals: Sequence[float], x_kind, y_kind
     ) -> Generator[Tuple[QuaVariableFloat], None, None]:
 
         x_list = list(x_vals)
 
-        qx = declare(fixed)
+        qx = declare(int) if x_kind == "Frequency" else declare(fixed)
         with for_each_((qx), (x_list)):
             yield qx, None

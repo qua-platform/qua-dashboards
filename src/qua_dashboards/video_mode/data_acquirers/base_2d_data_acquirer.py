@@ -34,6 +34,8 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         y_axis_name: str,
         component_id: str,
         acquisition_interval_s: float = 0.1,
+        amp_sweep_axes: List[SweepAxis] = [], 
+        freq_sweep_axes: List[SweepAxis] = [], 
         **kwargs: Any,
     ) -> None:
         """
@@ -54,6 +56,8 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         )
         # Store all axes and resolve selected X/Y by name
         self.sweep_axes: List[SweepAxis] = sweep_axes
+        self.amp_sweep_axes: List[SweepAxis] = amp_sweep_axes
+        self.freq_sweep_axes: List[SweepAxis] = freq_sweep_axes
 
         if x_axis_name == y_axis_name:
             raise ValueError("x_axis_name and y_axis_name must be different")
@@ -68,12 +72,34 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         }
         self.selected_function = self.post_processing_functions["Raw_data"]
 
+        self.x_mode = "Voltage"
+        self.y_mode = "Voltage"
+    
+    @property
+    def _display_x_sweep_axes(self): 
+        if self.x_mode == "Voltage":
+            return self.sweep_axes
+        elif self.x_mode == "Frequency": 
+            return self.freq_sweep_axes
+        elif self.x_mode == "Amplitude": 
+            return self.amp_sweep_axes
+        
+    @property
+    def _display_y_sweep_axes(self): 
+        if self.y_mode == "Voltage":
+            return self.sweep_axes
+        elif self.y_mode == "Frequency": 
+            return self.freq_sweep_axes
+        elif self.y_mode == "Amplitude": 
+            return self.amp_sweep_axes
+
     @property
     def x_axis(self) -> SweepAxis:
         inner_loop = getattr(self, "qua_inner_loop_action", None)
         if inner_loop is not None: 
+            inner_loop.x_mode = self.x_mode
             inner_loop.x_axis_name = self.x_axis_name
-        return self.find_sweepaxis(self.x_axis_name)
+        return self.find_sweepaxis(self.x_axis_name, self.x_mode)
     @property
     def y_axis(self) -> SweepAxis:
         inner_loop = getattr(self, "qua_inner_loop_action", None)
@@ -83,18 +109,26 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                 inner_loop.y_axis_name = self._dummy_axis.name
                 return self._dummy_axis
             self._is_1d = False
+            inner_loop.y_mode = self.y_mode
             inner_loop.y_axis_name = self.y_axis_name
-        return self.find_sweepaxis(self.y_axis_name)
+        return self.find_sweepaxis(self.y_axis_name, self.y_mode)
     
-    def find_sweepaxis(self, axis_name:str) -> SweepAxis:
+    def find_sweepaxis(self, axis_name:str, mode) -> SweepAxis:
         if axis_name is None: 
             return self._dummy_axis
-        names = [ax.name for ax in self.sweep_axes]
+        if mode == "Voltage":
+            axes = self.sweep_axes
+        if mode == "Amplitude":
+            axes = self.amp_sweep_axes
+        if mode == "Frequency": 
+            axes = self.freq_sweep_axes
+
+        names = [ax.name for ax in axes]
         if axis_name not in names:
             raise ValueError(
                 f"axis_name '{axis_name}' not found in available axes: {names}"
             )
-        return next(ax for ax in self.sweep_axes if ax.name == axis_name)
+        return next(ax for ax in axes if ax.name == axis_name)
     
     def add_processing_function(self, name: str, fn, overwrite:bool = False): 
         """
@@ -126,6 +160,40 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         """
         components = super().get_dash_components(include_subcomponents)
 
+        mode_selection_ui = [
+            html.Div(
+                [
+                    dbc.Row(
+                        [
+                            dbc.Col([
+                                html.H6("Select X Mode"),
+                                dcc.Dropdown(
+                                    id = self._get_id("x-mode"),
+                                    options = [{"label" : mode, "value" : mode} for mode in ["Voltage", "Amplitude", "Frequency"]],
+                                    value = self.x_mode, 
+                                    style = {"color":"black"},
+                                    className="mb-2", 
+                                    clearable=False
+                                ),
+                            ]),
+                            dbc.Col([
+                                html.H6("Select Y Mode"),
+                                dcc.Dropdown(
+                                    id = self._get_id("y-mode"),
+                                    options = [{"label" : mode, "value" : mode} for mode in ["Voltage", "Amplitude", "Frequency"]],
+                                    value = self.y_mode, 
+                                    style = {"color":"black"},
+                                    className="mb-2", 
+                                    placeholder="None",
+                                    clearable = False
+                                ),
+                            ]),
+                        ]
+                    )
+                ]
+            )
+        ]
+
         selection_ui = [
             html.Div(
                 [
@@ -135,7 +203,7 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                                 html.H6("Select X Axis"),
                                 dcc.Dropdown(
                                     id = self._get_id("gate-select-x"),
-                                    options = [{"label" : gate_name, "value" : gate_name} for gate_name in [axis.name for axis in self.sweep_axes]],
+                                    options = [{"label" : gate_name, "value" : gate_name} for gate_name in [axis.name for axis in self._display_x_sweep_axes]],
                                     value = self.x_axis_name, 
                                     style = {"color":"black"},
                                     className="mb-2", 
@@ -146,7 +214,7 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                                 html.H6("Select Y Axis"),
                                 dcc.Dropdown(
                                     id = self._get_id("gate-select-y"),
-                                    options = [{"label" : gate_name, "value" : gate_name} for gate_name in [axis.name for axis in self.sweep_axes]],
+                                    options = [{"label" : gate_name, "value" : gate_name} for gate_name in [axis.name for axis in self._display_y_sweep_axes]],
                                     value = self.y_axis_name, 
                                     style = {"color":"black"},
                                     className="mb-2", 
@@ -158,7 +226,7 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                 ]
             )
         ]
-        components = components + selection_ui 
+        components = components + mode_selection_ui + selection_ui 
         row = [self.x_axis.get_layout(), self.y_axis.get_layout()] if self.y_axis_name is not None else [self.x_axis.get_layout()]
         axis_ui = [
             html.Div(

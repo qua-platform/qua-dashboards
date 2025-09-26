@@ -240,6 +240,7 @@ class LiveViewTabController(BaseTabController):
         self._register_gate_selection_callback(app)
         self._register_gridlines_callback(app, shared_viewer_store_ids)
         self._register_readoutparams_callback(app)
+        self._register_mode_callback(app)
 
     def _register_readoutparams_callback(self, app):
         @app.callback(
@@ -340,6 +341,52 @@ class LiveViewTabController(BaseTabController):
             }
             self._data_acquirer_instance.update_parameters(params)
             return "", self._data_acquirer_instance.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
+    def _register_mode_callback(
+            self, app: Dash
+    ) -> None:
+        """Registers callback for mode selection"""
+
+        @app.callback(
+            Output(self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX), "children", allow_duplicate=True), 
+            Output(self._get_id(self._ACQUIRER_CONTROLS_DIV_ID_SUFFIX), "children", allow_duplicate=True),
+            Input(self._data_acquirer_instance._get_id("x-mode"), "value"), 
+            Input(self._data_acquirer_instance._get_id("y-mode"), "value"), 
+            prevent_initial_call = True
+        )
+
+        def on_mode_select(x_mode, y_mode):
+            da = self._data_acquirer_instance
+
+            # 1) update modes immediately
+            da.x_mode = x_mode
+            da.y_mode = y_mode
+
+            # 2) compute valid names under the NEW modes
+            x_names = [ax.name for ax in da._display_x_sweep_axes]
+            y_names = [ax.name for ax in da._display_y_sweep_axes]
+
+            # 3) keep-or-fallback purely by membership in the NEW lists
+            x_keep = da.x_axis_name if da.x_axis_name in x_names else (x_names[0] if x_names else None)
+            y_keep = da.y_axis_name if (da.y_axis_name in y_names) else None
+
+            # 4) reflect locally
+            da.x_axis_name = x_keep
+            da.y_axis_name = y_keep
+
+            # 5) emit params; ‘gate-select-y’ must not be a stale voltage name
+            params = {
+                da.component_id: {
+                    "x-mode": x_mode,
+                    "y-mode": y_mode,
+                    "gate-select-x": x_keep,
+                    "gate-select-y": y_keep,
+                }
+            }
+
+            da.update_parameters(params)
+            return "", da.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
+
+
 
     def _register_acquisition_control_callback(
         self, app: Dash, orchestrator_stores: Dict[str, Any]
@@ -553,3 +600,4 @@ class LiveViewTabController(BaseTabController):
                     f"{param_id_dict} of type {component_id}"
                 )
         return current_type_params
+

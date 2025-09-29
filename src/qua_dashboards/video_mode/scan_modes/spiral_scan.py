@@ -48,13 +48,13 @@ class SpiralScan(ScanMode):
         return np.array(idxs_x), np.array(idxs_y)
 
     def scan(
-        self, x_vals: Sequence[float], y_vals: Sequence[float], x_kind: str = None, y_kind: str = None
+        self, x_vals: Sequence[float], y_vals: Sequence[float], x_mode: str = None, y_mode: str = None
     ) -> Generator[Tuple[QuaVariableFloat, QuaVariableFloat], None, None]:
         movement_direction = declare(fixed)
         half_spiral_idx = declare(int)
         k = declare(int)
-        x = declare(int) if x_kind == "Frequency" else declare(fixed)
-        y = declare(int) if y_kind == "Frequency" else declare(fixed)
+        x = declare(int) if x_mode == "Frequency" else declare(fixed)
+        y = declare(int) if y_mode == "Frequency" else declare(fixed)
         voltages = {"x": x, "y": y}
 
         assert len(x_vals) == len(y_vals), (

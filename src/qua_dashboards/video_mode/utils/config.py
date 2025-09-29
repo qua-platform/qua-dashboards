@@ -49,8 +49,8 @@ class AlignLinearConfig:  # "align-linear" method
     use_mse: bool = False
 
     def __post_init__(self):
-        if self.max_w0 < self.min_w0:
-            raise ValueError(f"Config: max_w0 = {self.max_w0} < min_w0 = {self.min_w0}")
+        if self.w_max < self.w_min:
+            raise ValueError(f"Config: w_max = {self.w_max} < w_min = {self.w_min}")
         if self.sigma_gaussian <= 0:
             raise ValueError(f"Config: Invalid sigma_gaussian value: {self.sigma_gaussian}")
 

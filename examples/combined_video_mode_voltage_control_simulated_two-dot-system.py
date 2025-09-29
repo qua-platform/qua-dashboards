@@ -40,7 +40,6 @@ def get_video_mode_component() -> VideoModeComponent:
     C_DD[1,2] = 1.4/2 #capacitance between sensor dot 2 and dot 1
     C_DD = C_DD + C_DD.T
 
-    # C_DG=11*np.eye(N) #dot-to-gate capacitances 
     C_DG=11*np.eye(N,N+1) #dot-to-gate capacitances, there is one barrier gate (index 3)
     # cross-capacitances
     C_DG[0,1] = 1.5 #dot 0 from gate 1

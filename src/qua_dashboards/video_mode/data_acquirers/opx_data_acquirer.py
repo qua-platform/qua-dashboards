@@ -5,6 +5,7 @@ from qualang_tools.units.units import unit
 import numpy as np
 from qm import QuantumMachinesManager, Program
 from qm.jobs.running_qm_job import RunningQmJob
+from qm.qua.lib import Cast
 from qm.qua import (
     program,
     declare_stream,
@@ -222,7 +223,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         have = {ax.name for ax in self.sweep_axes}
         for nm in gs.valid_channel_names:
             if nm not in have:
-                self.sweep_axes.append(SweepAxis(name=nm))
+                self.sweep_axes.append(SweepAxis(name=nm, units = "V"))
 
 
     @staticmethod
@@ -286,7 +287,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         return sweep_axes
     
     @staticmethod
-    def _sweepvals_validator(vals, mode, dbm):
+    def _sweep_vals_validator(vals, mode, dbm):
         """
         Validate the sweep vals based on the X or Y mode. 
         - If mode is 'Frequency', then round the sweepvalues to the nearest int
@@ -304,8 +305,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         """
         Generates the QUA program for the 2D scan.
         """
-        x_qua_values = self._sweepvals_validator(list(self.x_axis.sweep_values_unattenuated), self.x_mode, self.x_axis.dbm)
-        y_qua_values = self._sweepvals_validator(list(self.y_axis.sweep_values_unattenuated), self.y_mode, self.y_axis.dbm)
+        x_qua_values = self._sweep_vals_validator(list(self.x_axis.sweep_values_unattenuated), self.x_mode, self.x_axis.dbm)
+        y_qua_values = self._sweep_vals_validator(list(self.y_axis.sweep_values_unattenuated), self.y_mode, self.y_axis.dbm)
             
         self.qua_inner_loop_action.selected_readout_channels = (
             self.selected_readout_channels
@@ -321,8 +322,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 for x_qua_var, y_qua_var in self.scan_mode.scan(
                     x_vals=x_qua_values,
                     y_vals=y_qua_values,
-                    x_kind = self.x_mode, 
-                    y_kind = self.y_mode  # type: ignore
+                    x_mode = self.x_mode, 
+                    y_mode = self.y_mode  # type: ignore
                 ):
                     measured_qua_values = self.qua_inner_loop_action(
                         x_qua_var, y_qua_var

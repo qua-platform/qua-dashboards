@@ -22,9 +22,9 @@ class RasterScan(ScanMode):
         return x_idxs, y_idxs
 
     def scan(
-        self, x_vals: Sequence[float], y_vals: Sequence[float], x_kind: str = None, y_kind: str = None
+        self, x_vals: Sequence[float], y_vals: Sequence[float], x_mode: str = None, y_mode: str = None
     ) -> Generator[Tuple[QuaVariableFloat, QuaVariableFloat], None, None]:
-        voltages = {"x": declare(int) if x_kind == "Frequency" else declare(fixed), "y": declare(int) if y_kind == "Frequency" else declare(fixed)}
+        voltages = {"x": declare(int) if x_mode == "Frequency" else declare(fixed), "y": declare(int) if y_mode == "Frequency" else declare(fixed)}
         
 
         with for_(*from_array(voltages["y"], y_vals)):  # type: ignore

@@ -18,7 +18,7 @@ class LineScan(ScanMode):
         return x_idxs, y_idxs
 
     def scan(
-        self, x_vals: Sequence[float], y_vals: Sequence[float], x_kind, y_kind
+        self, x_vals: Sequence[float], y_vals: Sequence[float], x_kind: str = None, y_kind: str = None
     ) -> Generator[Tuple[QuaVariableFloat], None, None]:
 
         x_list = list(x_vals)

@@ -4,7 +4,7 @@ from dash import Dash
 from dash.development.base_component import Component
 import numpy as np
 import dash_bootstrap_components as dbc
-
+from qualang_tools.units.units import unit
 from qua_dashboards.core import BaseUpdatableComponent, ModifiedFlags
 from qua_dashboards.utils.basic_parameter import BasicParameter
 from qua_dashboards.utils.dash_utils import create_input_field
@@ -51,6 +51,7 @@ class SweepAxis(BaseUpdatableComponent):
         self.offset_parameter = offset_parameter
         self.attenuation = attenuation
         self.non_voltage_offset = non_voltage_offset
+        self.dbm: bool = False
 
     @property
     def sweep_values(self):
@@ -96,8 +97,24 @@ class SweepAxis(BaseUpdatableComponent):
         ids = {
             "span": {"type": "number-input", "index": f"{self.component_id}::span"},
             "points": {"type": "number-input", "index": f"{self.component_id}::points"},
-            "offset": {"type": "number-input", "index": f"{self.component_id}::offset"}
+            "offset": {"type": "number-input", "index": f"{self.component_id}::offset"}, 
+            "dbm-toggle": {"type": "toggle", "index": f"{self.component_id}::dbm-toggle"}
         }
+
+        toggle = dbc.Row(
+                    [dbc.Col("V", width="auto", className="me-2"),
+                    dbc.Col(
+                        dbc.Checklist(
+                            id=ids["dbm-toggle"],
+                            options=[{"label": "", "value": "on"}],
+                            value=["on"] if self.dbm else [],
+                            switch=True,
+                        ),
+                        width="auto",
+                    ),
+                    dbc.Col("dBm", width="auto", className="ms-2"),],
+                    className="align-items-center g-1"
+                    )
 
         input_list = [
             create_input_field(
@@ -129,6 +146,8 @@ class SweepAxis(BaseUpdatableComponent):
                     units=self.units if self.units is not None else "",
                 )
             )
+        if (self.non_voltage_offset is not None) and (self.units != "Hz"): 
+            input_list.append(toggle)
         
         return dbc.Col(
             dbc.Card(
@@ -167,4 +186,23 @@ class SweepAxis(BaseUpdatableComponent):
             self.non_voltage_offset = params["offset"]
             flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
 
+        if "dbm-toggle" in params: 
+            raw = params["dbm-toggle"]
+            new_dbm = bool(raw) if isinstance(raw, (list, tuple, set)) else (raw == "on")
+
+            if self.dbm != new_dbm: 
+                off = self.non_voltage_offset
+                spn = self.span
+
+                if new_dbm:
+                    new_off, new_span = unit.volts2dBm(off), unit.volts2dBm(spn)
+                    self.non_voltage_offset = new_off
+                    self.span = new_span
+                else:
+                    new_off, new_span = unit.dBm2volts(off), unit.dBm2volts(spn)
+                    self.non_voltage_offset = new_off
+                    self.span = new_span
+
+            self.dbm = new_dbm
+            flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
         return flags

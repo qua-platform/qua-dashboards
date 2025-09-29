@@ -57,14 +57,6 @@ class BasicInnerLoopAction(InnerLoopAction):
         else:
             return self.readout_pulse_mapping[ch.name]
         
-    @staticmethod
-    def _single_voltage_sweep(voltage_ax_name, voltage, non_voltage_ax_name, non_voltage, non_voltage_ax_type):
-        levels = {voltage_ax_name: voltage}
-        if non_voltage_ax_type == "Frequency": 
-            elem = non_voltage_ax_name.replace("_frequency", "")
-            qua.update_frequency(elem, non_voltage)
-        return levels
-
 
     @staticmethod
     def element_finder(name: str) -> Tuple[str, str]:
@@ -72,8 +64,8 @@ class BasicInnerLoopAction(InnerLoopAction):
             return None
         if "frequency" in name.lower():
             return name.replace("_frequency", "")
-        if "amplitude" in name.lower():
-            return name.replace("_amplitude", "")
+        if "drive" in name.lower():
+            return name.replace("_drive", "")
         return name
 
     @staticmethod
@@ -88,9 +80,9 @@ class BasicInnerLoopAction(InnerLoopAction):
             return None
         return (elem, val)
     
-    def _amp_contrib(self, axis_name: Optional[str], mode: str, val: QuaVariableFloat):
+    def _amp_contrib(self, axis_name: Optional[str], mode: str, val: QuaVariableFloat, dbm:bool = False):
         elem = self.element_finder(axis_name)
-        if axis_name is None or elem is None or mode != "Amplitude":
+        if axis_name is None or elem is None or mode != "Drive":
             return {}
         amp = None
         for ch in self.selected_readout_channels:
@@ -110,8 +102,8 @@ class BasicInnerLoopAction(InnerLoopAction):
                     self, x: QuaVariableFloat, y: QuaVariableFloat
     ) -> Tuple[QuaVariableFloat, QuaVariableFloat]:
 
-        v_x = self._voltage_contrib(self.x_axis_name, self.x_mode, x)
-        v_y = self._voltage_contrib(self.y_axis_name, self.y_mode, y) if y is not None else {}
+        v_x = self._voltage_contrib(self.x_axis_name, self.x_mode, (x>>12)<<12)
+        v_y = self._voltage_contrib(self.y_axis_name, self.y_mode, (y>>12)<<12) if y is not None else {}
 
         f_x = self._freq_contrib(self.x_axis_name, self.x_mode, x)
         f_y = self._freq_contrib(self.y_axis_name, self.y_mode, y) if y is not None else None
@@ -122,8 +114,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         levels: Dict[str, QuaVariableFloat] = {**v_x, **v_y}
         freq_updates = [u for u in (f_x, f_y) if u is not None]
         amp_scale: Dict[str, QuaVariableFloat] = {**a_x, **a_y}
-
-
+ 
         if levels: 
             last_voltages: Dict[str, QuaVariableFloat] = {}
             if self.x_mode == "Voltage": 
@@ -135,11 +126,15 @@ class BasicInnerLoopAction(InnerLoopAction):
 
             ramp_time = qua.fixed(1 / self.ramp_duration / 4)
             for ch_string in self.gate_set.channels.keys():
+                qua.assign(self.loop_current, resolved_voltages[ch_string])
+                qua.assign(self.loop_current, (self.loop_current>>12)<<12)
+                qua.assign(self.loop_past, last_resolved_voltages[ch_string])
+                qua.assign(self.loop_past, (self.loop_past>>12)<<12)
                 applied_voltage = (
-                    resolved_voltages[ch_string] - last_resolved_voltages[ch_string]
+                    self.loop_current - self.loop_past
                 )
                 qua.assign(self.slope, applied_voltage)
-                qua.assign(self.slope, (self.slope >> 12) << 12)
+                qua.assign(self.slope, (self.slope))
                 qua.assign(self.slope, self.slope * ramp_time)
                 qua.play(qua.ramp(self.slope), ch_string, duration=self.ramp_duration)
 
@@ -197,6 +192,9 @@ class BasicInnerLoopAction(InnerLoopAction):
         qua.assign(self.last_v_y, 0)
         self.helper_var = qua.declare(qua.fixed)
         self.scale_var = qua.declare(qua.fixed, value = 1)
+
+        self.loop_current= qua.declare(qua.fixed)
+        self.loop_past = qua.declare(qua.fixed)
 
         # Initialize all channels to zero
         self.voltage_sequence.ramp_to_zero()

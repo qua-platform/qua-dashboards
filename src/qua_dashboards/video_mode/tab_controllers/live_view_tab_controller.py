@@ -516,18 +516,21 @@ class LiveViewTabController(BaseTabController):
 
         @app.callback(
             Output(self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX), "children", allow_duplicate=True),
+            Output(self._get_id(self._ACQUIRER_CONTROLS_DIV_ID_SUFFIX), "children", allow_duplicate=True),
             Input({"type": "number-input", "index": ALL}, "value"),
+            Input({"type": "toggle", "index": ALL}, "value"),
             *static_inputs,
             State({"type": "number-input", "index": ALL}, "id"),
+            State({"type": "toggle", "index": ALL}, "id"),
             *static_states,
             prevent_initial_call=True,
         )
         def handle_hybrid_parameter_update(*args):
             """Handle both pattern-matched axis parameters and static component parameters."""
 
-            num_pattern_inputs = 1
+            num_pattern_inputs = 2
             num_static_inputs = len(static_inputs)
-            num_pattern_states = 1
+            num_pattern_states = 2
             num_static_states = len(static_states)
 
             pattern_values = args[:num_pattern_inputs]
@@ -537,6 +540,19 @@ class LiveViewTabController(BaseTabController):
             static_states_data = args[num_pattern_inputs + num_static_inputs + num_pattern_states:]
 
             parameters_to_update = {}
+
+            toggle_values = pattern_values[1]
+            toggle_ids = pattern_states[1]
+            rebuild = False
+            if toggle_values and toggle_ids:
+                for value, id_dict in zip(toggle_values, toggle_ids):
+                    if not isinstance(id_dict, dict):
+                        continue
+                    comp_id, param = self._parse_param_id(id_dict.get("index", ""))
+                    if comp_id and param:
+                        parameters_to_update.setdefault(comp_id, {})[param] = value
+                        if param.endswith("dbm-toggle"):
+                            rebuild = True
 
             if len(pattern_values) >= 1 and len(pattern_states) >= 1:
                 number_values = pattern_values[0]
@@ -562,7 +578,10 @@ class LiveViewTabController(BaseTabController):
 
             if parameters_to_update:
                 self._data_acquirer_instance.update_parameters(parameters_to_update)
-            return dash.no_update
+            if rebuild == True: 
+                new_children = self._data_acquirer_instance.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
+                return dash.no_update, new_children
+            return dash.no_update, dash.no_update
 
     def _parse_param_id(self, param_id_str):
         """Parse parameter ID string to extract component_id and parameter name."""

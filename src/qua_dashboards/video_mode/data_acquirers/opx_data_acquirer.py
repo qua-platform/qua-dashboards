@@ -1,7 +1,7 @@
 import logging
 import time
 from typing import Any, Dict, List, Literal, Optional, Tuple
-
+from qualang_tools.units.units import unit
 import numpy as np
 from qm import QuantumMachinesManager, Program
 from qm.jobs.running_qm_job import RunningQmJob
@@ -138,8 +138,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self.stream_vars: List[str] = stream_vars or self.stream_vars_default
         self.result_types: List[str] = self.result_types_default
         self.available_readout_pulses = available_readout_pulses
-        self.amp_sweep_axes = self._generate_amp_sweep_axes()
-        self.freq_sweep_axes = self._generate_freq_sweep_axes()
+        self.freq_sweep_axes, self.amp_sweep_axes = self._generate_non_voltage_axes(self.available_readout_pulses)
         self._ensure_pulse_names()
         self._configure_readout()
         self._rebuild_stream_vars()
@@ -225,37 +224,39 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             if nm not in have:
                 self.sweep_axes.append(SweepAxis(name=nm))
 
-    def _generate_freq_sweep_axes(self) -> List[SweepAxis]:
-        sweep_axes: List[SweepAxis] = []
+
+    @staticmethod
+    def _generate_non_voltage_axes(available_readout_pulses):
+        """
+        Checks through the available readout pulses and creates sweepaxis lists based off of them. 
+        If you have qubit elements, be sure to add them here; the frequency and drive power sweepaxes will be created
+        """
+        drive_axes: List[SweepAxis] = []
+        freq_axes: List[SweepAxis] = []
         default_freq_span = 20e6
         default_points = 51
-        for pulse in self.available_readout_pulses: 
+        default_amp_span = 0.01
+        for pulse in available_readout_pulses: 
             channel_name = pulse.channel.name
-            sweep_axes.append(
+            freq_axes.append(
                 SweepAxis(name = f"{channel_name}_frequency", 
                           offset_parameter = None, 
                           non_voltage_offset=pulse.channel.intermediate_frequency,
                           span = default_freq_span, 
-                          points = default_points
+                          points = default_points, 
+                          units = "Hz"
                 )
             )
-        return sweep_axes
-
-    def _generate_amp_sweep_axes(self) -> List[SweepAxis]:
-        sweep_axes: List[SweepAxis] = []
-        default_amp_span = 0.01
-        default_points = 51
-        for pulse in self.available_readout_pulses: 
-            channel_name = pulse.channel.name
-            sweep_axes.append(
-                SweepAxis(name = f"{channel_name}_amplitude", 
+            drive_axes.append(
+                SweepAxis(name = f"{channel_name}_drive", 
                           offset_parameter = None,
                           non_voltage_offset=pulse.amplitude, 
                           span = default_amp_span, 
-                          points = default_points
+                          points = default_points, 
                 )
             )
-        return sweep_axes
+
+        return freq_axes, drive_axes
 
     @staticmethod
     def _generate_sweep_axes(gate_set: GateSet) -> List[SweepAxis]:
@@ -279,20 +280,31 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                     name=channel_name,
                     offset_parameter=offset_parameter,
                     attenuation=attenuation,
+                    units = "V"
                 )
             )
         return sweep_axes
+    @staticmethod
+    def _sweepvals_validator(vals, mode, dbm):
+        """
+        Validate the sweep vals based on the X or Y mode. 
+        - If mode is 'Frequency', then round the sweepvalues to the nearest int
+        - If mode if 'Drive', then checks for dbm bool and converts to volts if necessary
+        """
+        vals = np.array(vals)
+        if mode == "Frequency": 
+            vals = [round(v) for v in vals]
+        if mode == "Drive":
+            if dbm: 
+                vals = unit.dBm2volts(vals)
+        return vals
 
     def generate_qua_program(self) -> Program:
         """
         Generates the QUA program for the 2D scan.
         """
-        x_qua_values = list(self.x_axis.sweep_values_unattenuated)
-        y_qua_values = list(self.y_axis.sweep_values_unattenuated)
-        if self.x_mode == "Frequency": 
-            x_qua_values = [round(v) for v in x_qua_values]
-        if self.y_mode == "Frequency": 
-            y_qua_values = [round(v) for v in y_qua_values]
+        x_qua_values = self._sweepvals_validator(list(self.x_axis.sweep_values_unattenuated), self.x_mode, self.x_axis.dbm)
+        y_qua_values = self._sweepvals_validator(list(self.y_axis.sweep_values_unattenuated), self.y_mode, self.y_axis.dbm)
             
         self.qua_inner_loop_action.selected_readout_channels = (
             self.selected_readout_channels

@@ -54,7 +54,7 @@ class SwitchRasterScan(ScanMode):
         return x_idxs, y_idxs
 
     def scan(
-        self, x_vals: Sequence[float], y_vals: Sequence[float], x_kind, y_kind
+        self, x_vals: Sequence[float], y_vals: Sequence[float], x_kind: str = None, y_kind: str = None
     ) -> Generator[Tuple[QuaVariableFloat, QuaVariableFloat], None, None]:
         voltages = {"x": declare(int) if x_kind == "Frequency" else declare(fixed), "y": declare(int) if y_kind == "Frequency" else declare(fixed)}
 

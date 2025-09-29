@@ -357,29 +357,23 @@ class LiveViewTabController(BaseTabController):
         def on_mode_select(x_mode, y_mode):
             da = self._data_acquirer_instance
 
-            # 1) update modes immediately
             da.x_mode = x_mode
             da.y_mode = y_mode
 
-            # 2) compute valid names under the NEW modes
             x_names = [ax.name for ax in da._display_x_sweep_axes]
             y_names = [ax.name for ax in da._display_y_sweep_axes]
 
-            # 3) keep-or-fallback purely by membership in the NEW lists
-            x_keep = da.x_axis_name if da.x_axis_name in x_names else (x_names[0] if x_names else None)
-            y_keep = da.y_axis_name if (da.y_axis_name in y_names) else None
+            if da.x_axis_name not in x_names:
+                da.x_axis_name = x_names[0] if x_names else None
+            if da.y_axis_name not in y_names:
+                da.y_axis_name = None
 
-            # 4) reflect locally
-            da.x_axis_name = x_keep
-            da.y_axis_name = y_keep
-
-            # 5) emit params; ‘gate-select-y’ must not be a stale voltage name
             params = {
                 da.component_id: {
                     "x-mode": x_mode,
                     "y-mode": y_mode,
-                    "gate-select-x": x_keep,
-                    "gate-select-y": y_keep,
+                    "gate-select-x": da.x_axis_name,
+                    "gate-select-y": da.y_axis_name,
                 }
             }
 

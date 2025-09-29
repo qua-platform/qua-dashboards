@@ -83,7 +83,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             scan_mode: The scan mode defining how the 2D grid is traversed.
             x_axis_name: Name of the X sweep axis (must match a GateSet channel or virtual gate).
             y_axis_name: Name of the Y sweep axis (must match a GateSet channel or virtual gate).
-            readout_pulse: The QUAM Pulse object to measure.
+            available_readout_pulses: A list of the QUAM Pulse objects to measure.
             qua_inner_loop_action: Optional custom QUA inner loop action. If not provided,
                                    BasicInnerLoopAction will be created automatically.
             component_id: Unique ID for Dash elements.
@@ -284,6 +284,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 )
             )
         return sweep_axes
+    
     @staticmethod
     def _sweepvals_validator(vals, mode, dbm):
         """

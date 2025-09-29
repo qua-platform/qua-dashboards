@@ -186,13 +186,10 @@ class BasicInnerLoopAction(InnerLoopAction):
         )
 
         self.slope = qua.declare(qua.fixed)
-        self.last_v_x = qua.declare(qua.fixed)
-        self.last_v_y = qua.declare(qua.fixed)
-        qua.assign(self.last_v_x, 0)
-        qua.assign(self.last_v_y, 0)
+        self.last_v_x = qua.declare(qua.fixed, value = 0)
+        self.last_v_y = qua.declare(qua.fixed, value = 0)
         self.helper_var = qua.declare(qua.fixed)
         self.scale_var = qua.declare(qua.fixed, value = 1)
-
         self.loop_current= qua.declare(qua.fixed)
         self.loop_past = qua.declare(qua.fixed)
 

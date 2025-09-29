@@ -93,7 +93,13 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         if inner_loop is not None: 
             inner_loop.x_mode = self.x_mode
             inner_loop.x_axis_name = self.x_axis_name
-        return self.find_sweepaxis(self.x_axis_name, self.x_mode)
+        try:
+            return self.find_sweepaxis(self.x_axis_name, self.x_mode)
+        except ValueError:
+            valid_axes = self._display_x_sweep_axes
+            self.x_axis_name = valid_axes[0].name
+            return valid_axes[0]
+
     @property
     def y_axis(self) -> SweepAxis:
         inner_loop = getattr(self, "qua_inner_loop_action", None)
@@ -105,7 +111,12 @@ class Base2DDataAcquirer(BaseDataAcquirer):
             self._is_1d = False
             inner_loop.y_mode = self.y_mode
             inner_loop.y_axis_name = self.y_axis_name
-        return self.find_sweepaxis(self.y_axis_name, self.y_mode)
+
+        try:
+            return self.find_sweepaxis(self.y_axis_name, self.y_mode)
+        except ValueError:
+            self.y_axis_name = None
+            return self._dummy_axis
     
     def find_sweepaxis(self, axis_name:str, mode) -> SweepAxis:
         if axis_name is None: 
@@ -139,7 +150,7 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                                 html.H6("Select X Mode"),
                                 dcc.Dropdown(
                                     id = self._get_id("x-mode"),
-                                    options = [{"label" : mode, "value" : mode} for mode in ["Voltage", "Drive", "Frequency"]],
+                                    options = [{"label" : mode, "value" : mode} for mode in ["Voltage", "Frequency", "Drive"]],
                                     value = self.x_mode, 
                                     style = {"color":"black"},
                                     className="mb-2", 
@@ -150,7 +161,7 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                                 html.H6("Select Y Mode"),
                                 dcc.Dropdown(
                                     id = self._get_id("y-mode"),
-                                    options = [{"label" : mode, "value" : mode} for mode in ["Voltage", "Drive", "Frequency"]],
+                                    options = [{"label" : mode, "value" : mode} for mode in ["Voltage", "Frequency", "Drive"]],
                                     value = self.y_mode, 
                                     style = {"color":"black"},
                                     className="mb-2", 

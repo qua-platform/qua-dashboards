@@ -286,8 +286,8 @@ class LiveViewTabController(BaseTabController):
 
                 xr = list(self._data_acquirer_instance.x_axis.sweep_values_unattenuated)
                 yr = list(self._data_acquirer_instance.y_axis.sweep_values_unattenuated)
-                xs = np.linspace(xr[0], xr[-1], 15).tolist() + [0]
-                ys = np.linspace(yr[0], yr[-1], 15).tolist() + [0]
+                xs = np.linspace(xr[0], xr[-1], 15).tolist() 
+                ys = np.linspace(yr[0], yr[-1], 15).tolist() 
 
                 for i in range(1, n_subplots + 1):
                     sfx = ax_suffix(i)

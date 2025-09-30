@@ -143,12 +143,6 @@ class BasicInnerLoopAction(InnerLoopAction):
             if self.y_mode == "Voltage" and y is not None: 
                 qua.assign(self.last_v_y, (y>>12)<<12)
 
-        qua.assign(self.last_v_x, x)
-        qua.assign(self.last_v_x, (self.last_v_x >> 12) << 12)
-        if y is not None: 
-            qua.assign(self.last_v_y, y)
-            qua.assign(self.last_v_y, (self.last_v_y >> 12) << 12)
-
         qua.align()
         duration = max(
             self._pulse_for(op).length for op in self.selected_readout_channels

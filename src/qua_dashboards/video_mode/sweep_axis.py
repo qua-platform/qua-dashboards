@@ -195,13 +195,19 @@ class SweepAxis(BaseUpdatableComponent):
                 spn = self.span
 
                 if new_dbm:
-                    new_off, new_span = unit.volts2dBm(off), unit.volts2dBm(spn)
-                    self.non_voltage_offset = new_off
-                    self.span = new_span
+                    vmin, vmax = off - spn/2, off + spn/2
+                    pmin, pmax = unit.volts2dBm(vmin), unit.volts2dBm(vmax)
+                    center = unit.volts2dBm(off)
+                    span_db = pmax-pmin
+                    self.non_voltage_offset = center
+                    self.span = span_db
                 else:
-                    new_off, new_span = unit.dBm2volts(off), unit.dBm2volts(spn)
-                    self.non_voltage_offset = new_off
-                    self.span = new_span
+                    pmin, pmax = off-spn/2, off+spn/2
+                    vmin, vmax = unit.dBm2volts(pmin), unit.dBm2volts(pmax)
+                    center_v = (vmax+vmin) / 2
+                    span_v = vmax - vmin
+                    self.non_voltage_offset = center_v
+                    self.span = span_v
 
             self.dbm = new_dbm
             flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED

@@ -12,7 +12,7 @@ from quam_builder.architecture.quantum_dots.components import GateSet
 from qm import qua
 
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 
 
 class BasicInnerLoopAction(InnerLoopAction):
@@ -54,32 +54,51 @@ class BasicInnerLoopAction(InnerLoopAction):
             raise ValueError("Channel not in registered readout pulses")
         else:
             return self.readout_pulse_mapping[ch.name]
+    
+    @staticmethod
+    def _voltage_contrib(axis_name: Optional[str], val: QuaVariableFloat):
+        if axis_name is None: 
+            return {}
+        return {axis_name: val}
 
     def __call__(
         self, x: QuaVariableFloat, y: QuaVariableFloat
     ) -> Tuple[QuaVariableFloat, QuaVariableFloat]:
-        # Map sweep values to named channels via axis names
-        if y is None:
-            levels = {self.x_axis_name: x}
-            last_resolved_voltages = self.gate_set.resolve_voltages(
-                {self.x_axis_name: self.last_v_x}
-            )
-        else:
-            levels = {self.x_axis_name: x, self.y_axis_name: y}
-            last_resolved_voltages = self.gate_set.resolve_voltages(
-                {self.x_axis_name: self.last_v_x, self.y_axis_name: self.last_v_y}
-            )
-        resolved_voltages = self.gate_set.resolve_voltages(levels)
+        
+        v_x = self._voltage_contrib(self.x_axis_name, (x>>12)<<12)
+        v_y = self._voltage_contrib(self.y_axis_name, (y>>12)<<12) if y is not None else {}
+
+        levels: Dict[str, QuaVariableFloat] = {**v_x, **v_y}
+
+        if levels: 
+            last_voltages: Dict[str, QuaVariableFloat] = {}
+            last_voltages[self.x_axis_name] = self.last_v_x
+
+            if y is not None: 
+                last_voltages[self.y_axis_name] = self.last_v_y
+            
+            last_resolved_voltages = self.gate_set.resolve_voltages(last_voltages)
+            resolved_voltages = self.gate_set.resolve_voltages(levels)
 
         ramp_time = qua.fixed(1 / self.ramp_duration / 4)
         for ch_string in self.gate_set.channels.keys():
+            qua.assign(self.loop_current, resolved_voltages[ch_string])
+            qua.assign(self.loop_current, (self.loop_current >> 12) <<12)
+            qua.assign(self.loop_past, last_resolved_voltages[ch_string])
+            qua.assign(self.loop_past, (self.loop_past >> 12) <<12)
             applied_voltage = (
-                resolved_voltages[ch_string] - last_resolved_voltages[ch_string]
+                self.loop_current - self.loop_past
             )
             qua.assign(self.slope, applied_voltage)
-            qua.assign(self.slope, (self.slope >> 12) << 12)
+            qua.assign(self.slope, (self.slope))
             qua.assign(self.slope, self.slope * ramp_time)
             qua.play(qua.ramp(self.slope), ch_string, duration=self.ramp_duration)
+
+        qua.assign(self.last_v_x, x)
+        qua.assign(self.last_v_x, (self.last_v_x >> 12) << 12)
+        if y is not None: 
+            qua.assign(self.last_v_y, y)
+            qua.assign(self.last_v_y, (self.last_v_y >> 12) << 12)
 
         qua.align()
         duration = max(
@@ -96,14 +115,6 @@ class BasicInnerLoopAction(InnerLoopAction):
             result.extend([I, Q])
         qua.align()
 
-        qua.assign(self.last_v_x, x)
-        if y is not None:
-            qua.assign(self.last_v_y, y)
-
-        qua.assign(self.last_v_x, (self.last_v_x >> 12) << 12)
-        if y is not None:
-            qua.assign(self.last_v_y, (self.last_v_y >> 12) << 12)
-
         for channel in self.selected_readout_channels:
             qua.ramp_to_zero(channel.name, duration=self.ramp_duration)
         qua.align()
@@ -117,10 +128,10 @@ class BasicInnerLoopAction(InnerLoopAction):
             track_integrated_voltage=self.track_integrated_voltage
         )
         self.slope = qua.declare(qua.fixed)
-        self.last_v_x = qua.declare(qua.fixed)
-        self.last_v_y = qua.declare(qua.fixed)
-        qua.assign(self.last_v_x, 0)
-        qua.assign(self.last_v_y, 0)
+        self.last_v_x = qua.declare(qua.fixed, 0)
+        self.last_v_y = qua.declare(qua.fixed, 0)
+        self.loop_current = qua.declare(qua.fixed)
+        self.loop_past = qua.declare(qua.fixed)
 
         # Initialize all channels to zero
         self.voltage_sequence.ramp_to_zero()

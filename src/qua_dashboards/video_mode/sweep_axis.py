@@ -93,30 +93,32 @@ class SweepAxis(BaseUpdatableComponent):
             "span": {"type": "number-input", "index": f"{self.component_id}::span"},
             "points": {"type": "number-input", "index": f"{self.component_id}::points"},
         }
+
+        input_list = [
+            create_input_field(
+                id=ids["span"],
+                label="Span",
+                value=self.span,
+                min=min_span,
+                max=max_span,
+                input_style={"width": "150px"},
+                units=self.units if self.units is not None else "",
+            ),
+            create_input_field(
+                id=ids["points"],
+                label="Points",
+                value=self.points,
+                min=1,
+                max=501,
+                step=1,
+            ),
+        ]
         
         return dbc.Col(
             dbc.Card(
                 [
                     dbc.CardBody(
-                        [
-                            create_input_field(
-                                id=ids["span"],
-                                label="Span",
-                                value=self.span,
-                                min=min_span,
-                                max=max_span,
-                                input_style={"width": "100px"},
-                                units=self.units if self.units is not None else "",
-                            ),
-                            create_input_field(
-                                id=ids["points"],
-                                label="Points",
-                                value=self.points,
-                                min=1,
-                                max=501,
-                                step=1,
-                            ),
-                        ],
+                        input_list,
                         className="text-light",
                     ),
                 ],

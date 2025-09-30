@@ -295,7 +295,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         """
         vals = np.array(vals)
         if mode == "Frequency": 
-            vals = [round(v) for v in vals]
+            vals = [int(round(float(v))) for v in vals]
         if mode == "Drive":
             if dbm: 
                 vals = unit.dBm2volts(vals)

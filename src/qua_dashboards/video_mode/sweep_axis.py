@@ -4,7 +4,7 @@ from dash import Dash
 from dash.development.base_component import Component
 import numpy as np
 import dash_bootstrap_components as dbc
-
+from qualang_tools.units.units import unit
 from qua_dashboards.core import BaseUpdatableComponent, ModifiedFlags
 from qua_dashboards.utils.basic_parameter import BasicParameter
 from qua_dashboards.utils.dash_utils import create_input_field
@@ -35,7 +35,8 @@ class SweepAxis(BaseUpdatableComponent):
         points: Optional[int] = None,
         label: Optional[str] = None,
         units: Optional[str] = None,
-        offset_parameter: Optional[BasicParameter] = None,
+        offset_parameter = None,
+        non_voltage_offset: float = None,
         attenuation: float = 0,
         component_id: Optional[str] = None,
     ):
@@ -49,6 +50,8 @@ class SweepAxis(BaseUpdatableComponent):
         self.units = units
         self.offset_parameter = offset_parameter
         self.attenuation = attenuation
+        self.non_voltage_offset = non_voltage_offset
+        self.dbm: bool = False
 
     @property
     def sweep_values(self):
@@ -58,6 +61,8 @@ class SweepAxis(BaseUpdatableComponent):
     @property
     def sweep_values_unattenuated(self):
         """Returns axis sweep values without attenuation."""
+        if self.non_voltage_offset is not None: 
+            return self.sweep_values + self.non_voltage_offset
         return self.sweep_values * 10 ** (self.attenuation / 20)
 
     @property
@@ -65,7 +70,7 @@ class SweepAxis(BaseUpdatableComponent):
         """Returns axis sweep values with offset."""
         if self.offset_parameter is None:
             return self.sweep_values_unattenuated
-        return self.sweep_values_unattenuated + self.offset_parameter.get_latest()
+        return self.sweep_values_unattenuated + self.offset_parameter()
 
     @property
     def scale(self):
@@ -92,7 +97,24 @@ class SweepAxis(BaseUpdatableComponent):
         ids = {
             "span": {"type": "number-input", "index": f"{self.component_id}::span"},
             "points": {"type": "number-input", "index": f"{self.component_id}::points"},
+            "offset": {"type": "number-input", "index": f"{self.component_id}::offset"}, 
+            "dbm-toggle": {"type": "toggle", "index": f"{self.component_id}::dbm-toggle"}
         }
+
+        toggle = dbc.Row(
+                    [dbc.Col("V", width="auto", className="me-2"),
+                    dbc.Col(
+                        dbc.Checklist(
+                            id=ids["dbm-toggle"],
+                            options=[{"label": "", "value": "on"}],
+                            value=["on"] if self.dbm else [],
+                            switch=True,
+                        ),
+                        width="auto",
+                    ),
+                    dbc.Col("dBm", width="auto", className="ms-2"),],
+                    className="align-items-center g-1"
+                    )
 
         input_list = [
             create_input_field(
@@ -113,6 +135,19 @@ class SweepAxis(BaseUpdatableComponent):
                 step=1,
             ),
         ]
+
+        if self.non_voltage_offset is not None:
+            input_list.append(
+                create_input_field(
+                    id=ids["offset"],
+                    label="Offset",
+                    value=self.non_voltage_offset,
+                    input_style={"width": "150px"},
+                    units=self.units if self.units is not None else "",
+                )
+            )
+        if (self.non_voltage_offset is not None) and (self.units != "Hz"): 
+            input_list.append(toggle)
         
         return dbc.Col(
             dbc.Card(
@@ -146,5 +181,34 @@ class SweepAxis(BaseUpdatableComponent):
             flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
         if "points" in params and self.points != params["points"]:
             self.points = params["points"]
+            flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
+        if "offset" in params and self.non_voltage_offset != params["offset"]:
+            self.non_voltage_offset = params["offset"]
+            flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
+
+        if "dbm-toggle" in params: 
+            raw = params["dbm-toggle"]
+            new_dbm = bool(raw) if isinstance(raw, (list, tuple, set)) else (raw == "on")
+
+            if self.dbm != new_dbm: 
+                off = self.non_voltage_offset
+                spn = self.span
+
+                if new_dbm:
+                    vmin, vmax = off - spn/2, off + spn/2
+                    pmin, pmax = unit.volts2dBm(vmin), unit.volts2dBm(vmax)
+                    center = unit.volts2dBm(off)
+                    span_db = pmax-pmin
+                    self.non_voltage_offset = center
+                    self.span = span_db
+                else:
+                    pmin, pmax = off-spn/2, off+spn/2
+                    vmin, vmax = unit.dBm2volts(pmin), unit.dBm2volts(pmax)
+                    center_v = (vmax+vmin) / 2
+                    span_v = vmax - vmin
+                    self.non_voltage_offset = center_v
+                    self.span = span_v
+
+            self.dbm = new_dbm
             flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
         return flags

@@ -1,10 +1,11 @@
 import logging
 import time
 from typing import Any, Dict, List, Literal, Optional, Tuple
-
+from qualang_tools.units.units import unit
 import numpy as np
 from qm import QuantumMachinesManager, Program
 from qm.jobs.running_qm_job import RunningQmJob
+from quam.components import Channel
 from qm.qua import (
     program,
     declare_stream,
@@ -83,7 +84,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             scan_mode: The scan mode defining how the 2D grid is traversed.
             x_axis_name: Name of the X sweep axis (must match a GateSet channel or virtual gate).
             y_axis_name: Name of the Y sweep axis (must match a GateSet channel or virtual gate).
-            readout_pulse: The QUAM Pulse object to measure.
+            available_readout_pulses: A list of the QUAM Pulse objects to measure.
             qua_inner_loop_action: Optional custom QUA inner loop action. If not provided,
                                    BasicInnerLoopAction will be created automatically.
             component_id: Unique ID for Dash elements.
@@ -138,6 +139,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self.stream_vars: List[str] = stream_vars or self.stream_vars_default
         self.result_types: List[str] = self.result_types_default
         self.available_readout_pulses = available_readout_pulses
+        self.non_voltage_pulses = self.available_readout_pulses
+        self.freq_sweep_axes, self.amp_sweep_axes = self._generate_non_voltage_axes(self.non_voltage_pulses)
         self._ensure_pulse_names()
         self._configure_readout()
         self._rebuild_stream_vars()
@@ -221,7 +224,41 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         have = {ax.name for ax in self.sweep_axes}
         for nm in gs.valid_channel_names:
             if nm not in have:
-                self.sweep_axes.append(SweepAxis(name=nm))
+                self.sweep_axes.append(SweepAxis(name=nm, units = "V"))
+
+
+    @staticmethod
+    def _generate_non_voltage_axes(available_pulses):
+        """
+        Checks through the available readout pulses and creates sweepaxis lists based off of them. 
+        If you have qubit elements, be sure to add them here; the frequency and drive power sweepaxes will be created
+        """
+        drive_axes: List[SweepAxis] = []
+        freq_axes: List[SweepAxis] = []
+        default_freq_span = 20e6
+        default_points = 51
+        default_amp_span = 0.01
+        for pulse in available_pulses: 
+            channel_name = pulse.channel.name
+            freq_axes.append(
+                SweepAxis(name = f"{channel_name}_frequency", 
+                          offset_parameter = None, 
+                          non_voltage_offset=pulse.channel.intermediate_frequency,
+                          span = default_freq_span, 
+                          points = default_points, 
+                          units = "Hz"
+                )
+            )
+            drive_axes.append(
+                SweepAxis(name = f"{channel_name}_drive", 
+                          offset_parameter = None,
+                          non_voltage_offset=pulse.amplitude, 
+                          span = default_amp_span, 
+                          points = default_points, 
+                )
+            )
+
+        return freq_axes, drive_axes
 
     @staticmethod
     def _generate_sweep_axes(gate_set: GateSet) -> List[SweepAxis]:
@@ -245,16 +282,33 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                     name=channel_name,
                     offset_parameter=offset_parameter,
                     attenuation=attenuation,
+                    units = "V"
                 )
             )
         return sweep_axes
+    
+    @staticmethod
+    def _sweep_vals_validator(vals, mode, dbm):
+        """
+        Validate the sweep vals based on the X or Y mode. 
+        - If mode is 'Frequency', then round the sweepvalues to the nearest int
+        - If mode if 'Drive', then checks for dbm bool and converts to volts if necessary
+        """
+        vals = np.array(vals)
+        if mode == "Frequency": 
+            vals = [int(round(float(v))) for v in vals]
+        if mode == "Drive":
+            if dbm: 
+                vals = unit.dBm2volts(vals)
+        return vals
 
     def generate_qua_program(self) -> Program:
         """
         Generates the QUA program for the 2D scan.
         """
-        x_qua_values = list(self.x_axis.sweep_values_unattenuated)
-        y_qua_values = list(self.y_axis.sweep_values_unattenuated)
+        x_qua_values = self._sweep_vals_validator(list(self.x_axis.sweep_values_unattenuated), self.x_mode, self.x_axis.dbm)
+        y_qua_values = self._sweep_vals_validator(list(self.y_axis.sweep_values_unattenuated), self.y_mode, self.y_axis.dbm)
+            
         self.qua_inner_loop_action.selected_readout_channels = (
             self.selected_readout_channels
         )
@@ -268,7 +322,9 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
                 for x_qua_var, y_qua_var in self.scan_mode.scan(
                     x_vals=x_qua_values,
-                    y_vals=y_qua_values,  # type: ignore
+                    y_vals=y_qua_values,
+                    x_mode = self.x_mode, 
+                    y_mode = self.y_mode  # type: ignore
                 ):
                     measured_qua_values = self.qua_inner_loop_action(
                         x_qua_var, y_qua_var
@@ -525,7 +581,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
         flags = super().update_parameters(parameters)
         try:
-            for ax in self.sweep_axes:
+            for ax in self.sweep_axes + self.freq_sweep_axes + self.amp_sweep_axes:
                 child_flags = ax.update_parameters(parameters)
                 flags |= child_flags
         except Exception as e:
@@ -555,7 +611,6 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 and params["gate-select-x"] != self.x_axis_name
             ):
                 self.x_axis_name = params["gate-select-x"]
-                _ = self.x_axis
                 flags |= (
                     ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
                 )
@@ -564,7 +619,6 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 new_y = None if new_y in (None, "", "null", "dummy") else new_y
                 if new_y != self.y_axis_name:
                     self.y_axis_name = new_y
-                    _ = self.y_axis
                     flags |= (
                         ModifiedFlags.PARAMETERS_MODIFIED
                         | ModifiedFlags.PROGRAM_MODIFIED
@@ -595,6 +649,15 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                         flags |= ModifiedFlags.PROGRAM_MODIFIED
                     else:
                         flags |= ModifiedFlags.PARAMETERS_MODIFIED
+
+            if "x-mode" in params and params["x-mode"] != self.x_mode: 
+                self.x_mode = params["x-mode"]
+                flags |= ModifiedFlags.PROGRAM_MODIFIED | ModifiedFlags.PARAMETERS_MODIFIED
+
+            if "y-mode" in params and params["y-mode"] != self.y_mode: 
+                self.y_mode = params["y-mode"]
+                flags |= ModifiedFlags.PROGRAM_MODIFIED | ModifiedFlags.PARAMETERS_MODIFIED
+
 
         self._compilation_flags |= flags & (
             ModifiedFlags.PROGRAM_MODIFIED | ModifiedFlags.CONFIG_MODIFIED
@@ -761,3 +824,4 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             self._compilation_flags |= ModifiedFlags.CONFIG_MODIFIED
         else:
             self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
+

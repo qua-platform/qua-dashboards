@@ -48,57 +48,100 @@ class BasicInnerLoopAction(InnerLoopAction):
         self.ramp_duration = 16
         self.selected_readout_channels = []
         self.readout_pulse_mapping = {}
+        self.x_mode = "Voltage"
+        self.y_mode = "Voltage"
 
     def _pulse_for(self, ch):
         if ch.name not in self.readout_pulse_mapping.keys():
             raise ValueError("Channel not in registered readout pulses")
         else:
             return self.readout_pulse_mapping[ch.name]
-    
+        
+
     @staticmethod
-    def _voltage_contrib(axis_name: Optional[str], val: QuaVariableFloat):
-        if axis_name is None: 
+    def element_finder(name: str) -> Tuple[str, str]:
+        if name is None: 
+            return None
+        if "frequency" in name.lower():
+            return name.replace("_frequency", "")
+        if "drive" in name.lower():
+            return name.replace("_drive", "")
+        return name
+
+    @staticmethod
+    def _voltage_contrib(axis_name: Optional[str], mode: str, val: QuaVariableFloat):
+        if axis_name is None or mode != "Voltage": 
             return {}
         return {axis_name: val}
+    
+    def _freq_contrib(self, axis_name: Optional[str], mode: str, val: QuaVariableFloat):
+        elem = self.element_finder(axis_name)
+        if axis_name is None or elem is None or mode != "Frequency":
+            return None
+        return (elem, val)
+    
+    def _amp_contrib(self, axis_name: Optional[str], mode: str, val: QuaVariableFloat, dbm:bool = False):
+        elem = self.element_finder(axis_name)
+        if axis_name is None or elem is None or mode != "Drive":
+            return {}
+        amp = None
+        for ch in self.selected_readout_channels:
+            if ch.name == elem: 
+                amp = self._pulse_for(ch).amplitude
+                break 
+        if amp is None: 
+            return {}
+        
+        qua.assign(self.helper_var, float(min(max(amp, 0.0), 1.999)))
+        qua.assign(self.scale_var, val / self.helper_var)
+
+        return {elem: self.scale_var}
+
 
     def __call__(
         self, x: QuaVariableFloat, y: QuaVariableFloat
     ) -> Tuple[QuaVariableFloat, QuaVariableFloat]:
-        
-        v_x = self._voltage_contrib(self.x_axis_name, (x>>12)<<12)
-        v_y = self._voltage_contrib(self.y_axis_name, (y>>12)<<12) if y is not None else {}
+
+        v_x = self._voltage_contrib(self.x_axis_name, self.x_mode, (x>>12)<<12)
+        v_y = self._voltage_contrib(self.y_axis_name, self.y_mode, (y>>12)<<12) if y is not None else {}
+
+        f_x = self._freq_contrib(self.x_axis_name, self.x_mode, x)
+        f_y = self._freq_contrib(self.y_axis_name, self.y_mode, y) if y is not None else None
+
+        a_x = self._amp_contrib(self.x_axis_name, self.x_mode, x)
+        a_y = self._amp_contrib(self.y_axis_name, self.y_mode, y) if y is not None else {}
 
         levels: Dict[str, QuaVariableFloat] = {**v_x, **v_y}
-
+        freq_updates = [u for u in (f_x, f_y) if u is not None]
+        amp_scale: Dict[str, QuaVariableFloat] = {**a_x, **a_y}
+ 
         if levels: 
             last_voltages: Dict[str, QuaVariableFloat] = {}
-            last_voltages[self.x_axis_name] = self.last_v_x
-
-            if y is not None: 
+            if self.x_mode == "Voltage": 
+                last_voltages[self.x_axis_name] = self.last_v_x
+            if self.y_mode == "Voltage" and y is not None: 
                 last_voltages[self.y_axis_name] = self.last_v_y
-            
             last_resolved_voltages = self.gate_set.resolve_voltages(last_voltages)
             resolved_voltages = self.gate_set.resolve_voltages(levels)
 
-        ramp_time = qua.fixed(1 / self.ramp_duration / 4)
-        for ch_string in self.gate_set.channels.keys():
-            qua.assign(self.loop_current, resolved_voltages[ch_string])
-            qua.assign(self.loop_current, (self.loop_current >> 12) <<12)
-            qua.assign(self.loop_past, last_resolved_voltages[ch_string])
-            qua.assign(self.loop_past, (self.loop_past >> 12) <<12)
-            applied_voltage = (
-                self.loop_current - self.loop_past
-            )
-            qua.assign(self.slope, applied_voltage)
-            qua.assign(self.slope, (self.slope))
-            qua.assign(self.slope, self.slope * ramp_time)
-            qua.play(qua.ramp(self.slope), ch_string, duration=self.ramp_duration)
+            ramp_time = qua.fixed(1 / self.ramp_duration / 4)
+            for ch_string in self.gate_set.channels.keys():
+                qua.assign(self.loop_current, resolved_voltages[ch_string])
+                qua.assign(self.loop_current, (self.loop_current>>12)<<12)
+                qua.assign(self.loop_past, last_resolved_voltages[ch_string])
+                qua.assign(self.loop_past, (self.loop_past>>12)<<12)
+                applied_voltage = (
+                    self.loop_current - self.loop_past
+                )
+                qua.assign(self.slope, applied_voltage)
+                qua.assign(self.slope, (self.slope))
+                qua.assign(self.slope, self.slope * ramp_time)
+                qua.play(qua.ramp(self.slope), ch_string, duration=self.ramp_duration)
 
-        qua.assign(self.last_v_x, x)
-        qua.assign(self.last_v_x, (self.last_v_x >> 12) << 12)
-        if y is not None: 
-            qua.assign(self.last_v_y, y)
-            qua.assign(self.last_v_y, (self.last_v_y >> 12) << 12)
+            if self.x_mode == "Voltage": 
+                qua.assign(self.last_v_x, (x>>12)<<12)
+            if self.y_mode == "Voltage" and y is not None: 
+                qua.assign(self.last_v_y, (y>>12)<<12)
 
         qua.align()
         duration = max(
@@ -109,9 +152,16 @@ class BasicInnerLoopAction(InnerLoopAction):
             qua.wait(duration)
 
         qua.align()
+        for elem, freq in freq_updates:
+            qua.update_frequency(elem, freq)
+        
         result = []
         for channel in self.selected_readout_channels:
-            I, Q = channel.measure(self._pulse_for(channel).id)
+            elem = channel.name
+            scale = 1
+            if elem in amp_scale:
+                scale = amp_scale[elem]
+            I, Q = channel.measure(self._pulse_for(channel).id, amplitude_scale = scale)
             result.extend([I, Q])
         qua.align()
 
@@ -128,9 +178,11 @@ class BasicInnerLoopAction(InnerLoopAction):
             track_integrated_voltage=self.track_integrated_voltage
         )
         self.slope = qua.declare(qua.fixed)
-        self.last_v_x = qua.declare(qua.fixed, 0)
-        self.last_v_y = qua.declare(qua.fixed, 0)
-        self.loop_current = qua.declare(qua.fixed)
+        self.last_v_x = qua.declare(qua.fixed, value = 0)
+        self.last_v_y = qua.declare(qua.fixed, value = 0)
+        self.helper_var = qua.declare(qua.fixed)
+        self.scale_var = qua.declare(qua.fixed, value = 1)
+        self.loop_current= qua.declare(qua.fixed)
         self.loop_past = qua.declare(qua.fixed)
 
         # Initialize all channels to zero

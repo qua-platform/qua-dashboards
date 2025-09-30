@@ -57,23 +57,32 @@ def get_video_mode_component() -> VideoModeComponent:
 
     #All capacitances are given in aF
     N = 3 #number of dots   
-    C_DD=20* np.eye((N))/2 #The self-capacitance of each dot, NOTE: factor of 2 due to symmetrization
-    C_DD[0,1] = 10 #capacitance between dot 0 and dot 1 (Left double dot) 
+    C_DD=20* np.eye((N))/ 2 #The self-capacitance of each dot, NOTE: factor of 2 due to symmetrization
+    C_DD[1,1] = 10 / 2 #NOTE: factor of 2 due to symmetrization
+    C_DD[0,1] = 5 #capacitance between dot 0 and dot 1 (Left double dot) 
 
-    C_DD[0,2] = 1.6/2 #capacitance between sensor dot 4 and dot 0
-    C_DD[1,2] = 1.4/2 #capacitance between sensor dot 4 and dot 1
+    C_DD[0,2] = 1.6/2 #capacitance between sensor dot 2 and dot 0
+    C_DD[1,2] = 1.4/2 #capacitance between sensor dot 2 and dot 1
     C_DD = C_DD + C_DD.T
 
-    C_DG=11*np.eye(N) #dot-to-gate capacitances 
-    #cross-capacitances
-    C_DG[0,1] = 1.5 #dot 0 from dot 1
-    C_DG[1,0] = 1.2 #dot 1 from dot 0
+    C_DG=11*np.eye(N,N+1) #dot-to-gate capacitances, there is one barrier gate (index 3)
+    # cross-capacitances
+    C_DG[0,1] = 1.5 #dot 0 from gate 1
+    C_DG[1,0] = 1.2 #dot 1 from gate 0
+    C_DG[0,3] = 0   #dot 0 from barrier gate
+    C_DG[1,3] = 0   #dot 1 from barrier gate
 
     # Definition of the tunnel couplings in eV 
     # NOTE: we use the convention that tc is the energy gap at avoided crossing H = tc/2 sx
     tunnel_couplings = np.zeros((N,N))
     tunnel_couplings[0,1] = 50*1e-6
     tunnel_couplings[1,0] = 50*1e-6
+
+    # Definition of barrier levels
+    barrier_levers = np.zeros((N,N,N+1))  # barrier between dot i and dot j is affected by gate k
+    barrier_levers[0,1,3] = 100*1e-6
+    barrier_levers[1,0,3] = 100*1e-6
+    barrier_levers = np.log(barrier_levers + 1.e-20)
 
     # Experiment configurations
     capacitance_config = {
@@ -85,8 +94,10 @@ def get_video_mode_component() -> VideoModeComponent:
     tunneling_config = {
             "tunnel_couplings": tunnel_couplings, #tunnel coupling matrix
             "temperature": 0.1,                   #temperature in Kelvin
-            "energy_range_factor": 5,  #energy scale for the Hamiltonian generation. NOTE: Smaller -> faster but less accurate computation 
+            "energy_range_factor": 1,  #energy scale for the Hamiltonian generation. NOTE: Smaller -> faster but less accurate computation 
+            "barrier_levers": barrier_levers,  #barrier levels matrix
     }
+
     sensor_config = {
             "sensor_dot_indices": [2],  #Indices of the sensor dots
             "sensor_detunings": [-0.0005],  #Detuning of the sensor dots
@@ -105,13 +116,16 @@ def get_video_mode_component() -> VideoModeComponent:
     points_x = 50
     points_y = 50
 
-    P=np.zeros((3,2))
+    P=np.zeros((N+1,2))
     P[0,0]=1
     P[1,1]=1
-    state_hint_lower_left = [1,1,3]
+    state_hint_lower_left = [1,1,5]
+
+    W = np.eye(2)
 
     args_sensor_scan_2D = {
         "P": P,
+        "virtualisation_matrix": W,
         "minV": [-span_x/2.*factor_mV_to_V,-span_y/2.*factor_mV_to_V],
         "maxV": [ span_x/2.*factor_mV_to_V, span_y/2.*factor_mV_to_V],
         "resolution": [points_x,points_y],

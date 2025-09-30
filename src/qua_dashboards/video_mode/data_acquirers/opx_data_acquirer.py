@@ -5,7 +5,7 @@ from qualang_tools.units.units import unit
 import numpy as np
 from qm import QuantumMachinesManager, Program
 from qm.jobs.running_qm_job import RunningQmJob
-from qm.qua.lib import Cast
+from quam.components import Channel
 from qm.qua import (
     program,
     declare_stream,
@@ -139,7 +139,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self.stream_vars: List[str] = stream_vars or self.stream_vars_default
         self.result_types: List[str] = self.result_types_default
         self.available_readout_pulses = available_readout_pulses
-        self.freq_sweep_axes, self.amp_sweep_axes = self._generate_non_voltage_axes(self.available_readout_pulses)
+        self.non_voltage_pulses = self.available_readout_pulses
+        self.freq_sweep_axes, self.amp_sweep_axes = self._generate_non_voltage_axes(self.non_voltage_pulses)
         self._ensure_pulse_names()
         self._configure_readout()
         self._rebuild_stream_vars()
@@ -227,7 +228,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
 
     @staticmethod
-    def _generate_non_voltage_axes(available_readout_pulses):
+    def _generate_non_voltage_axes(available_pulses):
         """
         Checks through the available readout pulses and creates sweepaxis lists based off of them. 
         If you have qubit elements, be sure to add them here; the frequency and drive power sweepaxes will be created
@@ -237,7 +238,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         default_freq_span = 20e6
         default_points = 51
         default_amp_span = 0.01
-        for pulse in available_readout_pulses: 
+        for pulse in available_pulses: 
             channel_name = pulse.channel.name
             freq_axes.append(
                 SweepAxis(name = f"{channel_name}_frequency", 

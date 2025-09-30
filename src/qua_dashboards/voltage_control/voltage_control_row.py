@@ -103,7 +103,7 @@ class VoltageControlRow:
                 ),
                 dbc.Col(
                     dbc.Label(
-                        children=self.param.units, style={"whiteSpace": "nowrap"}
+                        children=self.param.unit, style={"whiteSpace": "nowrap"}
                     ),
                     style={
                         "width": UNITS_WIDTH,

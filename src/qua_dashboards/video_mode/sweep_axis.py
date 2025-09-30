@@ -1,3 +1,4 @@
+import logging
 from typing import Optional, Dict, Any
 
 from dash import Dash
@@ -8,6 +9,8 @@ import dash_bootstrap_components as dbc
 from qua_dashboards.core import BaseUpdatableComponent, ModifiedFlags
 from qua_dashboards.utils.basic_parameter import BasicParameter
 from qua_dashboards.utils.dash_utils import create_input_field
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["SweepAxis"]
 
@@ -144,7 +147,9 @@ class SweepAxis(BaseUpdatableComponent):
         if "span" in params and self.span != params["span"]:
             self.span = params["span"]
             flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
+            flags |= ModifiedFlags.PLOT_PARAMETERS_MODIFIED
         if "points" in params and self.points != params["points"]:
             self.points = params["points"]
             flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
+            flags |= ModifiedFlags.PLOT_PARAMETERS_MODIFIED
         return flags

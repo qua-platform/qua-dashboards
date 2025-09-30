@@ -99,7 +99,7 @@ class BasicInnerLoopAction(InnerLoopAction):
 
 
     def __call__(
-                    self, x: QuaVariableFloat, y: QuaVariableFloat
+        self, x: QuaVariableFloat, y: QuaVariableFloat
     ) -> Tuple[QuaVariableFloat, QuaVariableFloat]:
 
         v_x = self._voltage_contrib(self.x_axis_name, self.x_mode, (x>>12)<<12)
@@ -151,14 +151,13 @@ class BasicInnerLoopAction(InnerLoopAction):
 
         qua.align()
         duration = max(
-                    self._pulse_for(op).length for op in self.selected_readout_channels
-                )
+            self._pulse_for(op).length for op in self.selected_readout_channels
+        )
         if self.pre_measurement_delay > 0:
             duration += self.pre_measurement_delay
             qua.wait(duration//4)
 
         qua.align()
-
         for elem, freq in freq_updates:
             qua.update_frequency(elem, freq)
         
@@ -178,13 +177,12 @@ class BasicInnerLoopAction(InnerLoopAction):
         qua.wait(2000)
 
         return result
-    
+
     def initial_action(self):
         # Create VoltageSequence within QUA program context
         self.voltage_sequence = self.gate_set.new_sequence(
             track_integrated_voltage=self.track_integrated_voltage
         )
-
         self.slope = qua.declare(qua.fixed)
         self.last_v_x = qua.declare(qua.fixed, value = 0)
         self.last_v_y = qua.declare(qua.fixed, value = 0)

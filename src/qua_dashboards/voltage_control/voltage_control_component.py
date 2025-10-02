@@ -11,6 +11,7 @@ from dash import (
     html,
     Input,
     Output,
+    State
 )
 
 from qua_dashboards.core import BaseComponent, ParameterProtocol
@@ -63,12 +64,17 @@ class VoltageControlComponent(BaseComponent):
             )
         return html.Div(
             [
+                dcc.Store(id = self._get_id("offsets-refresh-trigger"), data = 0),
                 dcc.Interval(
                     id=self._get_id("update-interval"),
                     interval=self.update_interval_ms,
                     n_intervals=0,
                 ),
                 *[row.get_layout() for row in self._row_components.values()],
+                html.Div([
+                    html.Button("Apply", id = self._get_id("apply"), className="btn btn-primary"),
+                ], 
+                style={"maxWidth": COMPONENT_MAX_WIDTH, "margin": "0 auto 8px auto"},),
             ],
             style={"maxWidth": COMPONENT_MAX_WIDTH, "margin": "0 auto"},
         )
@@ -79,6 +85,7 @@ class VoltageControlComponent(BaseComponent):
 
         output_list_for_periodic_update = []
         input_id_type_str = self._get_id_type_str("input")
+        param_input_ids = [{"type": input_id_type_str, "index": param.name} for param in self.voltage_parameters]
         for param in self.voltage_parameters:
             param_input_id = {"type": input_id_type_str, "index": param.name}
             output_list_for_periodic_update.append(
@@ -93,43 +100,26 @@ class VoltageControlComponent(BaseComponent):
         if not output_list_for_periodic_update:
             return
 
+        apply_id = self._get_id("apply")
+        bump_store = self._get_id("offsets-refresh-trigger")
+        
         @app.callback(
-            output_list_for_periodic_update,
-            Input(self._get_id("update-interval"), "n_intervals"),
-            prevent_initial_call="initial_duplicate",
+            Output(bump_store, "data"),
+            Input(apply_id, "n_clicks"),                            # reuse same outputs
+            *[State(pid, "value") for pid in param_input_ids],
+            prevent_initial_call=True,
         )
-        def periodic_update(_n_intervals: int):
-            outputs_tuple_elements = []
-            first_load = not self._initial_values_loaded
+        def on_apply(n_clicks, *texts):
+            if not n_clicks:
+                raise dash.exceptions.PreventUpdate
 
-            for param in self.voltage_parameters:
-                param_name = param.name
-                control_row = self._row_components[param_name]
-                current_input_field_value = control_row.current_input_text
-
+            ok = True
+            for param, text in zip(self.voltage_parameters, texts):
                 try:
-                    live_value = param.get_latest()
-                    text_to_display = format_voltage(live_value)
+                    val = float(str(text).replace("V", "").strip())
+                    param.set(val)
                 except Exception as e:
-                    logger.error(f"Err get_latest for {param_name}: {e}", exc_info=True)
-                    text_to_display = format_voltage(live_value)
+                    ok = False
+                    logger.warning(f"APPLY parse/set failed for {param.name}: {e}")
 
-                if not first_load and current_input_field_value is not None:
-                    # User has typed something, don't overwrite from periodic update immediately
-                    # Let blur/submit handle it. But ensure formatting is eventually correct.
-                    # The row's blur callback will restore to last_known_value (formatted).
-                    # The row's submit callback will set to submitted_value (formatted).
-                    outputs_tuple_elements.append(dash.no_update)
-                else:
-                    outputs_tuple_elements.append(text_to_display)
-
-                outputs_tuple_elements.append(
-                    DEFAULT_INPUT_CLASS_NAME
-                )  # Always default class
-
-            if first_load and self.voltage_parameters:
-                self._initial_values_loaded = True
-            return tuple(outputs_tuple_elements)
-
-        for row_component in self._row_components.values():
-            row_component.register_callbacks(app)
+            return n_clicks

@@ -7,7 +7,7 @@ import logging
 from typing import Optional
 
 import dash
-from dash import Input, Output, State, ClientsideFunction, html
+from dash import Input, Output, State, ClientsideFunction, html, dcc
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 
@@ -64,6 +64,7 @@ class VoltageControlRow:
         self,
         input_id_type: str,
         param: ParameterProtocol,
+        defer_commit = True
     ):
         self.input_id_type = input_id_type
         self.param = param
@@ -75,6 +76,7 @@ class VoltageControlRow:
             "type": f"{self.input_id_type}-blur-trigger",
             "index": self.param.name,
         }
+        self.defer_commit = defer_commit
 
     def get_layout(self) -> dbc.Row:
         """Generates the Dash layout for this single voltage control row."""
@@ -113,6 +115,7 @@ class VoltageControlRow:
                 ),
                 # Hidden Div to trigger clientside callback for blur
                 html.Div(id=self.blur_trigger_id, style={"display": "none"}),  # type: ignore
+                dcc.Store(id={"type": f"{self.input_id_type}-typed-cache", "index": self.param.name})
             ],
             align="center",
             className="mb-2 g-3 flex-nowrap",
@@ -120,6 +123,15 @@ class VoltageControlRow:
 
     def register_callbacks(self, app: dash.Dash) -> None:
         """Registers callbacks specific to this row's input field."""
+
+        @app.callback(
+            Output({"type": f"{self.input_id_type}-typed-cache", "index": self.param.name}, "data"),
+            Input({"type": self.input_id_type, "index": self.param.name}, "value"),
+            prevent_initial_call=True,
+        )
+        def _remember_typed_text(v):
+            self.current_input_text = v
+            return v
 
         @app.callback(
             Output(self.input_id, "className", allow_duplicate=True),
@@ -146,7 +158,8 @@ class VoltageControlRow:
                 raise PreventUpdate
             try:
                 float_value = float(submitted_text_value)
-                self.param.set(float_value)
+                if not self.defer_commit:
+                    self.param.set(float_value)
                 self.current_input_text = format_voltage(float_value)
                 # Return formatted value and trigger for blur
                 return self.current_input_text, _n_submit
@@ -170,6 +183,8 @@ class VoltageControlRow:
         def handle_input_blur(_n_blur: int):
             if not _n_blur:
                 raise PreventUpdate
+            if self.defer_commit:
+                return dash.no_update
             self.current_input_text = format_voltage(self.param.get_latest())
             return self.current_input_text
 

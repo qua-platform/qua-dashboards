@@ -255,6 +255,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         """
         x_qua_values = list(self.x_axis.sweep_values_unattenuated)
         y_qua_values = list(self.y_axis.sweep_values_unattenuated)
+        self.set_offsets()
         self.qua_inner_loop_action.selected_readout_channels = (
             self.selected_readout_channels
         )
@@ -658,10 +659,11 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 data_np = data_np[:, 0, :]
 
             actual_is_1d = data_np.ndim == 2
+            x_vals_with_offset, y_vals_with_offset = self.x_axis.sweep_values_unattenuated + self.offsets[0], self.y_axis.sweep_values_unattenuated + self.offsets[1]
 
             if actual_is_1d:
                 x_len = data_np.shape[-1]
-                x_coords = list(self.x_axis.sweep_values_with_offset)
+                x_coords = list(x_vals_with_offset)
                 if len(x_coords) != x_len:
                     if len(x_coords) >= 2:
                         x_coords = np.linspace(x_coords[0], x_coords[-1], x_len)
@@ -682,8 +684,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
             x_len = data_np.shape[-1]
             y_len = data_np.shape[-2]
-            x_coords = list(self.x_axis.sweep_values_with_offset)
-            y_coords = list(self.y_axis.sweep_values_with_offset)
+            x_coords = list(x_vals_with_offset)
+            y_coords = list(y_vals_with_offset)
 
             if len(x_coords) != x_len:
                 if len(x_coords) >= 2:
@@ -761,3 +763,6 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             self._compilation_flags |= ModifiedFlags.CONFIG_MODIFIED
         else:
             self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
+
+
+

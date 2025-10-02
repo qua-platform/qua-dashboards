@@ -89,6 +89,12 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                 f"axis_name '{axis_name}' not found in available axes: {names}"
             )
         return next(ax for ax in self.sweep_axes if ax.name == axis_name)
+    
+    def set_offsets(self) -> None:
+        self.offsets = (
+            getattr(self.x_axis, "offset_parameter", 0)(), 
+            getattr(self.y_axis, "offset_parameter", 0)(),          
+        )
 
     def get_dash_components(self, include_subcomponents: bool = True) -> List[Any]:
         """
@@ -181,14 +187,15 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                 "error": None,
                 "status": "pending",
             }
+        x_vals_with_offset, y_vals_with_offset = self.x_axis.sweep_values_unattenuated + self.offsets[0], self.y_axis.sweep_values_unattenuated + self.offsets[1]
 
         try:
             # Convert the numpy array to an xarray.DataArray
             data_xr = xr.DataArray(
                 data_np,
                 coords=[
-                    (self.y_axis.name, self.y_axis.sweep_values_with_offset),
-                    (self.x_axis.name, self.x_axis.sweep_values_with_offset),
+                    (self.y_axis.name, y_vals_with_offset),
+                    (self.x_axis.name, x_vals_with_offset),
                 ],
                 attrs={"long_name": "Signal"},
             )

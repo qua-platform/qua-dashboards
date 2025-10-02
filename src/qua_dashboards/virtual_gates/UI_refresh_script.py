@@ -1,12 +1,22 @@
-from dash import dcc, Input, Output
+from dash import dcc, Input, Output, no_update
 
-def ui_update(app, video_mode_component):
+def ui_update(app, video_mode_component, voltage_control_component):
     app.layout.children = list(app.layout.children) + [
     dcc.Store(id="vg-layer-refresh-trigger", data=0)
     ]
     live_tab = next(tc for tc in video_mode_component.tab_controllers if type(tc).__name__ == "LiveViewTabController")
     controls_div_id = live_tab._get_id(live_tab._ACQUIRER_CONTROLS_DIV_ID_SUFFIX)
     acq = video_mode_component.data_acquirer
+
+    @app.callback(
+        Output(controls_div_id, "children", allow_duplicate=True), 
+        Input(voltage_control_component._get_id("apply"), "n_clicks"),
+        prevent_initial_call = True
+    )
+    def refresh_axis_labels(n_interval): 
+        acq.set_offsets()
+        return no_update
+
     @app.callback(
         Output(controls_div_id, "children", allow_duplicate=True),
         Input("vg-layer-refresh-trigger", "data"),

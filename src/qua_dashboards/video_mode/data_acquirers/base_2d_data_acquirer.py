@@ -7,8 +7,8 @@ from dash import html, dcc
 import dash_bootstrap_components as dbc
 
 from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import BaseDataAcquirer
-from qua_dashboards.video_mode.sweep_axis import SweepAxis
-from qua_dashboards.core import ModifiedFlags, BaseUpdatableComponent
+from qua_dashboards.video_mode.sweep_axis import BaseSweepAxis, VoltageSweepAxis
+from qua_dashboards.core import BaseUpdatableComponent
 
 logger = logging.getLogger(__name__)
 
@@ -29,13 +29,11 @@ class Base2DDataAcquirer(BaseDataAcquirer):
     def __init__(
         self,
         *,
-        sweep_axes: List[SweepAxis],
+        sweep_axes: Dict[str, List[BaseSweepAxis]],
         x_axis_name: str,
         y_axis_name: str,
         component_id: str,
         acquisition_interval_s: float = 0.1,
-        amp_sweep_axes: List[SweepAxis] = [], 
-        freq_sweep_axes: List[SweepAxis] = [], 
         **kwargs: Any,
     ) -> None:
         """
@@ -55,16 +53,14 @@ class Base2DDataAcquirer(BaseDataAcquirer):
             **kwargs,
         )
         # Store all axes and resolve selected X/Y by name
-        self.sweep_axes: List[SweepAxis] = sweep_axes
-        self.amp_sweep_axes: List[SweepAxis] = amp_sweep_axes
-        self.freq_sweep_axes: List[SweepAxis] = freq_sweep_axes
+        self.sweep_axes = sweep_axes
 
         if x_axis_name == y_axis_name:
             raise ValueError("x_axis_name and y_axis_name must be different")
         self.x_axis_name = x_axis_name
         self.y_axis_name = y_axis_name
         self._is_1d = y_axis_name is None
-        self._dummy_axis = SweepAxis(name="dummy", span=0.0, points=1, units="", attenuation=0, component_id=f"{self.component_id}-dummy")
+        self._dummy_axis = VoltageSweepAxis(name="dummy", span=0.0, points=1, attenuation=0, component_id=f"{self.component_id}-dummy")
         self.post_processing_functions = {
             "Raw_data": lambda da: da, 
             "x_derivative": lambda da: da.differentiate(self.x_axis_name, edge_order = 1), 
@@ -77,63 +73,50 @@ class Base2DDataAcquirer(BaseDataAcquirer):
     
     @property
     def _display_x_sweep_axes(self): 
-        if self.x_mode == "Voltage":
-            return self.sweep_axes
-        elif self.x_mode == "Frequency": 
-            return self.freq_sweep_axes
-        elif self.x_mode == "Drive": 
-            return self.amp_sweep_axes
+        return self.sweep_axes[self.x_mode]
         
     @property
     def _display_y_sweep_axes(self): 
-        if self.y_mode == "Voltage":
-            return self.sweep_axes
-        elif self.y_mode == "Frequency": 
-            return self.freq_sweep_axes
-        elif self.y_mode == "Drive": 
-            return self.amp_sweep_axes
+        return self.sweep_axes[self.y_mode]
 
     @property
-    def x_axis(self) -> SweepAxis:
+    def x_axis(self) -> BaseSweepAxis:
         inner_loop = getattr(self, "qua_inner_loop_action", None)
         if inner_loop is not None: 
             inner_loop.x_mode = self.x_mode
-            inner_loop.x_axis_name = self.x_axis_name
         try:
-            return self.find_sweepaxis(self.x_axis_name, self.x_mode)
+            axis = self.find_sweepaxis(self.x_axis_name, self.x_mode)
+            if inner_loop is not None:
+                inner_loop.x_axis = axis
+            return axis
         except ValueError:
             valid_axes = self._display_x_sweep_axes
             self.x_axis_name = valid_axes[0].name
             return valid_axes[0]
 
     @property
-    def y_axis(self) -> SweepAxis:
+    def y_axis(self) -> BaseSweepAxis:
         inner_loop = getattr(self, "qua_inner_loop_action", None)
         if inner_loop is not None: 
             if self.y_axis_name is None:
                 self._is_1d = True
-                inner_loop.y_axis_name = self._dummy_axis.name
                 return self._dummy_axis
             self._is_1d = False
             inner_loop.y_mode = self.y_mode
             inner_loop.y_axis_name = self.y_axis_name
-
         try:
-            return self.find_sweepaxis(self.y_axis_name, self.y_mode)
+            axis = self.find_sweepaxis(self.y_axis_name, self.y_mode)
+            if inner_loop is not None:
+                inner_loop.y_axis = axis
+            return axis
         except ValueError:
             self.y_axis_name = None
             return self._dummy_axis
     
-    def find_sweepaxis(self, axis_name:str, mode) -> SweepAxis:
+    def find_sweepaxis(self, axis_name:str, mode) -> BaseSweepAxis:
         if axis_name is None: 
             return self._dummy_axis
-        if mode == "Voltage":
-            axes = self.sweep_axes
-        if mode == "Drive":
-            axes = self.amp_sweep_axes
-        if mode == "Frequency": 
-            axes = self.freq_sweep_axes
-
+        axes = self.sweep_axes[mode]
         names = [ax.name for ax in axes]
         if axis_name not in names:
             raise ValueError(
@@ -170,6 +153,7 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         Returns Dash UI components for X and Y axis configuration.
         """
         components = super().get_dash_components(include_subcomponents)
+        keys = self.sweep_axes.keys()
 
         mode_selection_ui = [
             html.Div(
@@ -180,7 +164,7 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                                 html.H6("Select X Mode"),
                                 dcc.Dropdown(
                                     id = self._get_id("x-mode"),
-                                    options = [{"label" : mode, "value" : mode} for mode in ["Voltage", "Frequency", "Drive"]],
+                                    options = [{"label" : mode, "value" : mode} for mode in keys],
                                     value = self.x_mode, 
                                     style = {"color":"black"},
                                     className="mb-2", 
@@ -191,7 +175,7 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                                 html.H6("Select Y Mode"),
                                 dcc.Dropdown(
                                     id = self._get_id("y-mode"),
-                                    options = [{"label" : mode, "value" : mode} for mode in ["Voltage", "Frequency", "Drive"]],
+                                    options = [{"label" : mode, "value" : mode} for mode in keys],
                                     value = self.y_mode, 
                                     style = {"color":"black"},
                                     className="mb-2", 
@@ -296,8 +280,8 @@ class Base2DDataAcquirer(BaseDataAcquirer):
             data_xr = xr.DataArray(
                 data_np,
                 coords=[
-                    (self.y_axis.name, self.y_axis.sweep_values_with_offset),
-                    (self.x_axis.name, self.x_axis.sweep_values_with_offset),
+                    (self.y_axis.coord_name, self.y_axis.sweep_values_with_offset),
+                    (self.x_axis.coord_name, self.x_axis.sweep_values_with_offset),
                 ],
                 attrs={"long_name": "Signal"},
             )
@@ -307,7 +291,7 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                 attrs = {"label": axis.label or axis.name}
                 if axis.units is not None:
                     attrs["units"] = axis.units
-                data_xr.coords[axis.name].attrs.update(attrs)
+                data_xr.coords[axis.coord_name].attrs.update(attrs)
 
             return {
                 "data": data_xr,

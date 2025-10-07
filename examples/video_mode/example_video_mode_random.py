@@ -35,11 +35,10 @@ and the RandomDataAcquirer (Software Averages, Simulated Acquire Time).
 from qua_dashboards.core import build_dashboard
 from qua_dashboards.utils import setup_logging
 from qua_dashboards.video_mode import (
-    SweepAxis,
     RandomDataAcquirer,
     VideoModeComponent,
 )
-
+from qua_dashboards.video_mode.sweep_axis import VoltageSweepAxis
 
 def get_video_mode_component() -> VideoModeComponent:
     """
@@ -52,7 +51,7 @@ def get_video_mode_component() -> VideoModeComponent:
         VideoModeComponent: The configured video mode component.
     """
     # Define the X-axis for the 2D scan.
-    x_axis = SweepAxis(
+    x_axis = VoltageSweepAxis(
         name="x",  # Internal identifier for the axis.
         label="X Coordinate",  # Display label in the UI.
         units="µm",  # Physical units of the axis.
@@ -61,7 +60,7 @@ def get_video_mode_component() -> VideoModeComponent:
     )
 
     # Define the Y-axis for the 2D scan.
-    y_axis = SweepAxis(
+    y_axis = VoltageSweepAxis(
         name="y",  # Internal identifier for the axis.
         label="Y Coordinate",  # Display label in the UI.
         units="µm",  # Physical units of the axis.

@@ -285,8 +285,8 @@ class LiveViewTabController(BaseTabController):
                 def ax_suffix(i):  # i = 1..N
                     return "" if i == 1 else str(i)
 
-                xr = list(self._data_acquirer_instance.x_axis.sweep_values_unattenuated)
-                yr = list(self._data_acquirer_instance.y_axis.sweep_values_unattenuated)
+                xr = list(self._data_acquirer_instance.x_axis.qua_sweep_values)
+                yr = list(self._data_acquirer_instance.y_axis.qua_sweep_values)
                 xs = np.linspace(xr[0], xr[-1], 15).tolist() 
                 ys = np.linspace(yr[0], yr[-1], 15).tolist() 
 

@@ -11,7 +11,7 @@ from qua_dashboards.utils.dash_utils import create_input_field
 from qua_dashboards.video_mode.data_acquirers.base_2d_data_acquirer import (
     Base2DDataAcquirer,
 )
-from qua_dashboards.video_mode.sweep_axis import SweepAxis
+from qua_dashboards.video_mode.sweep_axis.voltage_sweep_axis import BaseSweepAxis
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class RandomDataAcquirer(Base2DDataAcquirer):
     def __init__(
         self,
         *,
-        sweep_axes: List[SweepAxis],
+        sweep_axes: List[BaseSweepAxis],
         x_axis_name: str,
         y_axis_name: str,
         component_id: str = "random-data-acquirer",

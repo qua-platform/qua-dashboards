@@ -66,15 +66,9 @@ class AmplitudeSweepAxis(BaseSweepAxis):
     def qua_sweep_values(self) -> np.ndarray: 
         """Returns the actual array to be processed by the DataAcquirer"""
         if self.dbm:
-            return unit.dBm2volts(self.sweep_values_with_offset)
-        return np.array(self.sweep_values_with_offset)
+            return np.asarray(unit.dBm2volts(self.sweep_values_with_offset))
+        return np.asarray(self.sweep_values_with_offset)
 
-    
-    def apply(self, element, value, var1, var2): 
-        amp_now = self.offset
-        assign(var1, float(min(max(amp_now, 0.0), 1.999)))
-        assign(var2, value / var1)
-        return {element: var2}
 
     def register_callbacks(self, app: Dash) -> None:
         pass
@@ -135,6 +129,9 @@ class AmplitudeSweepAxis(BaseSweepAxis):
             "amplitude_scales" : {self.name: self.scale_var}
         }
         return out
+    
+    def apply(self, value): 
+        pass
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
         """

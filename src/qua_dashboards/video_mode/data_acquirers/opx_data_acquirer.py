@@ -266,10 +266,10 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
     def ensure_axis(self) -> None:
         gs = self.gate_set
-        have = {ax.name for ax in self.sweep_axes.values()}
+        have = {axis.name for ax in self.sweep_axes.values() for axis in ax}
         for nm in gs.valid_channel_names:
             if nm not in have:
-                self.sweep_axes.append(VoltageSweepAxis(name=nm, units = "V"))
+                self.sweep_axes["Voltage"].append(VoltageSweepAxis(name=nm))
 
 
     @staticmethod
@@ -323,8 +323,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         """
         Generates the QUA program for the 2D scan.
         """
-        x_qua_values = list(self.x_axis.qua_sweep_values)
-        y_qua_values = list(self.y_axis.qua_sweep_values)
+        x_qua_values = self.x_axis.qua_sweep_values
+        y_qua_values = self.y_axis.qua_sweep_values
             
         self.qua_inner_loop_action.selected_readout_channels = (
             self.selected_readout_channels

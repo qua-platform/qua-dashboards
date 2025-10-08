@@ -145,11 +145,13 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
     @property
     def x_axis(self) -> BaseSweepAxis:
-        inner_loop = self.qua_inner_loop_action
-        inner_loop.x_mode = self.x_mode
+        inner_loop = getattr(self, "qua_inner_loop_action", None)
+        if inner_loop is not None:
+            inner_loop.x_mode = self.x_mode
         try:
             axis = self.find_sweepaxis(self.x_axis_name, self.x_mode)
-            inner_loop.x_axis = axis
+            if inner_loop is not None:
+                inner_loop.x_axis = axis
             return axis
         except ValueError:
             valid_axes = self._display_x_sweep_axes
@@ -158,17 +160,16 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
     @property
     def y_axis(self) -> BaseSweepAxis:
-        inner_loop = self.qua_inner_loop_action
-
+        inner_loop = getattr(self, "qua_inner_loop_action", None)
         if self.y_axis_name is None:
-            self._is_1d = True
             return self._dummy_axis
-        self._is_1d = False
-        inner_loop.y_mode = self.y_mode
-        inner_loop.y_axis_name = self.y_axis_name
+        if inner_loop is not None:
+            inner_loop.y_mode = self.y_mode
+            inner_loop.y_axis_name = self.y_axis_name
         try:
             axis = self.find_sweepaxis(self.y_axis_name, self.y_mode)
-            inner_loop.y_axis = axis
+            if inner_loop is not None:
+                inner_loop.y_axis = axis
             return axis
         except ValueError:
             self.y_axis_name = None

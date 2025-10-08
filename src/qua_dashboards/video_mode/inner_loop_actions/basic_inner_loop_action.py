@@ -101,7 +101,7 @@ class BasicInnerLoopAction(InnerLoopAction):
             "volt_levels": {**x_contributions["volt_levels"], **y_contributions["volt_levels"]},
             "last_levels": {**x_contributions["last_levels"], **y_contributions["last_levels"]},
             "freq_updates": {**x_contributions["freq_updates"], **y_contributions["freq_updates"]},
-            "amplitude_scales":  {**x_contributions["amp_scales"],  **y_contributions["amp_scales"]},
+            "amplitude_scales":  {**x_contributions["amplitude_scales"],  **y_contributions["amplitude_scales"]},
         }
 
         self._resolve_and_ramp(contributions["volt_levels"], contributions["last_levels"])
@@ -125,8 +125,8 @@ class BasicInnerLoopAction(InnerLoopAction):
         for channel in self.selected_readout_channels:
             elem = channel.name
             scale = 1
-            if elem in contributions["amp_scales"]:
-                scale = contributions["amp_scales"].get(elem, 1)
+            if elem in contributions["amplitude_scales"]:
+                scale = contributions["amplitude_scales"].get(elem, 1)
             I, Q = channel.measure(self._pulse_for(channel).id, amplitude_scale = scale)
             result.extend([I, Q])
         qua.align()

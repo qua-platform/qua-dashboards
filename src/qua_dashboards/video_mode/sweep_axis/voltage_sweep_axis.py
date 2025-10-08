@@ -75,11 +75,12 @@ class VoltageSweepAxis(BaseSweepAxis):
         self.loop_past = declare(fixed)
 
     def gather_contributions(self, target_value: QuaVariableFloat): 
+        clean_value = (target_value>>12) <<12
         out: Dict[str, Dict[str, QuaVariableFloat]] = {
-            "volt_levels" : {self.name: (target_value>>12) <<12}, 
-            "last_levels" : {self.name: (self.last_val>>12) <<12}, 
-            "freq_updates" : {}, 
-            "amplitude_scales" : {}
+            "volt_levels": {self.name: clean_value}, 
+            "last_levels": {}, 
+            "freq_updates": {}, 
+            "amplitude_scales": {}
         }
         return out
         

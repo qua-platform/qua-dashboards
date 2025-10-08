@@ -142,6 +142,37 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self._ensure_pulse_names()
         self._configure_readout()
         self._rebuild_stream_vars()
+
+    @property
+    def x_axis(self) -> BaseSweepAxis:
+        inner_loop = self.qua_inner_loop_action
+        inner_loop.x_mode = self.x_mode
+        try:
+            axis = self.find_sweepaxis(self.x_axis_name, self.x_mode)
+            inner_loop.x_axis = axis
+            return axis
+        except ValueError:
+            valid_axes = self._display_x_sweep_axes
+            self.x_axis_name = valid_axes[0].name
+            return valid_axes[0]
+
+    @property
+    def y_axis(self) -> BaseSweepAxis:
+        inner_loop = self.qua_inner_loop_action
+
+        if self.y_axis_name is None:
+            self._is_1d = True
+            return self._dummy_axis
+        self._is_1d = False
+        inner_loop.y_mode = self.y_mode
+        inner_loop.y_axis_name = self.y_axis_name
+        try:
+            axis = self.find_sweepaxis(self.y_axis_name, self.y_mode)
+            inner_loop.y_axis = axis
+            return axis
+        except ValueError:
+            self.y_axis_name = None
+            return self._dummy_axis
         
 
     def _ensure_pulse_names(self):
@@ -234,7 +265,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
     def ensure_axis(self) -> None:
         gs = self.gate_set
-        have = {ax.name for ax in self.sweep_axes}
+        have = {ax.name for ax in self.sweep_axes.values()}
         for nm in gs.valid_channel_names:
             if nm not in have:
                 self.sweep_axes.append(VoltageSweepAxis(name=nm, units = "V"))

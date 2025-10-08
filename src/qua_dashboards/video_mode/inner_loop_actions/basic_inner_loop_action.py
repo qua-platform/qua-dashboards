@@ -91,20 +91,20 @@ class BasicInnerLoopAction(InnerLoopAction):
         self, x: QuaVariableFloat, y: QuaVariableFloat
     ) -> Tuple[QuaVariableFloat, QuaVariableFloat]:
         
-        x_contrib = self.x_axis.gather_contribs(x)
+        x_contributions = self.x_axis.gather_contributions(x)
         if self.y_axis and y is not None: 
-            y_contrib = self.y_axis.gather_contribs(y) 
+            y_contributions = self.y_axis.gather_contributions(y) 
         else:
-            y_contrib = {"volt_levels": {}, "last_levels": {}, "freq_updates": {}, "amp_scales": {}}
+            y_contributions = {"volt_levels": {}, "last_levels": {}, "freq_updates": {}, "amplitude_scales": {}}
 
-        contribs = {
-            "volt_levels": {**x_contrib["volt_levels"], **y_contrib["volt_levels"]},
-            "last_levels": {**x_contrib["last_levels"], **y_contrib["last_levels"]},
-            "freq_updates": {**x_contrib["freq_updates"], **y_contrib["freq_updates"]},
-            "amp_scales":  {**x_contrib["amp_scales"],  **y_contrib["amp_scales"]},
+        contributions = {
+            "volt_levels": {**x_contributions["volt_levels"], **y_contributions["volt_levels"]},
+            "last_levels": {**x_contributions["last_levels"], **y_contributions["last_levels"]},
+            "freq_updates": {**x_contributions["freq_updates"], **y_contributions["freq_updates"]},
+            "amplitude_scales":  {**x_contributions["amp_scales"],  **y_contributions["amp_scales"]},
         }
 
-        self._resolve_and_ramp(contribs["volt_levels"], contribs["last_levels"])
+        self._resolve_and_ramp(contributions["volt_levels"], contributions["last_levels"])
         self.x_axis.apply(x)
         if self.y_axis and y is not None: 
             self.y_axis.apply(y)
@@ -125,8 +125,8 @@ class BasicInnerLoopAction(InnerLoopAction):
         for channel in self.selected_readout_channels:
             elem = channel.name
             scale = 1
-            if elem in contribs["amp_scales"]:
-                scale = contribs["amp_scales"].get(elem, 1)
+            if elem in contributions["amp_scales"]:
+                scale = contributions["amp_scales"].get(elem, 1)
             I, Q = channel.measure(self._pulse_for(channel).id, amplitude_scale = scale)
             result.extend([I, Q])
         qua.align()

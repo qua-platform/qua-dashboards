@@ -52,19 +52,19 @@ class FrequencySweepAxis(BaseSweepAxis):
         return self.sweep_values + self.offset
     
     @property 
-    def qua_sweep_values(self): 
+    def qua_sweep_values(self) -> np.ndarray: 
         """Returns the actual array to be processed by the DataAcquirer"""
         return np.array([int(round(k)) for k in self.sweep_values_with_offset])
 
     def register_callbacks(self, app: Dash) -> None:
         pass
 
-    def gather_contribs(self, value): 
+    def gather_contributions(self, value): 
         out: Dict[str, Dict[str, QuaVariableFloat]] = {
             "volt_levels" : {}, 
             "last_levels" : {}, 
             "freq_updates" : {self.name: value}, 
-            "amp_scales" : {}
+            "amplitude_scales" : {}
         }
         return out
     

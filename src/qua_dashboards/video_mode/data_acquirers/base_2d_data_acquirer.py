@@ -59,7 +59,7 @@ class Base2DDataAcquirer(BaseDataAcquirer):
             raise ValueError("x_axis_name and y_axis_name must be different")
         self.x_axis_name = x_axis_name
         self.y_axis_name = y_axis_name
-        self._is_1d = y_axis_name is None
+        
         self._dummy_axis = VoltageSweepAxis(name="dummy", span=0.0, points=1, attenuation=0, component_id=f"{self.component_id}-dummy")
         self.post_processing_functions = {
             "Raw_data": lambda da: da, 
@@ -72,6 +72,10 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         self.y_mode = "Voltage"
     
     @property
+    def _is_1d(self):
+        return self.y_axis_name is None
+
+    @property
     def _display_x_sweep_axes(self): 
         return self.sweep_axes[self.x_mode]
         
@@ -81,14 +85,8 @@ class Base2DDataAcquirer(BaseDataAcquirer):
 
     @property
     def x_axis(self) -> BaseSweepAxis:
-        inner_loop = getattr(self, "qua_inner_loop_action", None)
-        if inner_loop is not None: 
-            inner_loop.x_mode = self.x_mode
         try:
-            axis = self.find_sweepaxis(self.x_axis_name, self.x_mode)
-            if inner_loop is not None:
-                inner_loop.x_axis = axis
-            return axis
+            return self.find_sweepaxis(self.x_axis_name, self.x_mode)
         except ValueError:
             valid_axes = self._display_x_sweep_axes
             self.x_axis_name = valid_axes[0].name
@@ -96,19 +94,10 @@ class Base2DDataAcquirer(BaseDataAcquirer):
 
     @property
     def y_axis(self) -> BaseSweepAxis:
-        inner_loop = getattr(self, "qua_inner_loop_action", None)
-        if inner_loop is not None: 
-            if self.y_axis_name is None:
-                self._is_1d = True
-                return self._dummy_axis
-            self._is_1d = False
-            inner_loop.y_mode = self.y_mode
-            inner_loop.y_axis_name = self.y_axis_name
+        if self.y_axis_name is None:
+            return self._dummy_axis
         try:
-            axis = self.find_sweepaxis(self.y_axis_name, self.y_mode)
-            if inner_loop is not None:
-                inner_loop.y_axis = axis
-            return axis
+            return self.find_sweepaxis(self.y_axis_name, self.y_mode)
         except ValueError:
             self.y_axis_name = None
             return self._dummy_axis

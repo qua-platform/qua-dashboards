@@ -28,7 +28,7 @@ class RandomDataAcquirer(Base2DDataAcquirer):
     def __init__(
         self,
         *,
-        sweep_axes: List[BaseSweepAxis],
+        sweep_axes: Dict[str, List[BaseSweepAxis]],
         x_axis_name: str,
         y_axis_name: str,
         component_id: str = "random-data-acquirer",

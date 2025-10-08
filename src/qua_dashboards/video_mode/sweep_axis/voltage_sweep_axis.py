@@ -59,7 +59,7 @@ class VoltageSweepAxis(BaseSweepAxis):
         return self.sweep_values_unattenuated + self.offset_parameter() if self.offset_parameter is not None else self.sweep_values_unattenuated
     
     @property 
-    def qua_sweep_values(self): 
+    def qua_sweep_values(self) -> np.ndarray: 
         """Returns the actual array to be processed by the DataAcquirer"""
         return np.array(self.sweep_values_unattenuated)
 
@@ -74,12 +74,12 @@ class VoltageSweepAxis(BaseSweepAxis):
         self.loop_current = declare(fixed)
         self.loop_past = declare(fixed)
 
-    def gather_contribs(self, target_value: QuaVariableFloat): 
+    def gather_contributions(self, target_value: QuaVariableFloat): 
         out: Dict[str, Dict[str, QuaVariableFloat]] = {
             "volt_levels" : {self.name: (target_value>>12) <<12}, 
             "last_levels" : {self.name: (self.last_val>>12) <<12}, 
             "freq_updates" : {}, 
-            "amp_scales" : {}
+            "amplitude_scales" : {}
         }
         return out
         

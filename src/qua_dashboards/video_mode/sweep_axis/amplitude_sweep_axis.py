@@ -63,7 +63,7 @@ class AmplitudeSweepAxis(BaseSweepAxis):
         return self.sweep_values + self.offset
     
     @property 
-    def qua_sweep_values(self): 
+    def qua_sweep_values(self) -> np.ndarray: 
         """Returns the actual array to be processed by the DataAcquirer"""
         if self.dbm:
             return unit.dBm2volts(self.sweep_values_with_offset)
@@ -124,7 +124,7 @@ class AmplitudeSweepAxis(BaseSweepAxis):
     def declare_vars(self): 
         self.scale_var = declare(fixed)
 
-    def gather_contribs(self, value): 
+    def gather_contributions(self, value): 
         default_amp_v = float(min(max(self._offset_volts(), 0.0), 1.999))
         assign(self.scale_var, value / default_amp_v)
 
@@ -132,12 +132,9 @@ class AmplitudeSweepAxis(BaseSweepAxis):
             "volt_levels" : {}, 
             "last_levels" : {}, 
             "freq_updates" : {}, 
-            "amp_scales" : {self.name: self.scale_var}
+            "amplitude_scales" : {self.name: self.scale_var}
         }
         return out
-    
-    def apply(self, value): 
-        return
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
         """

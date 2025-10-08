@@ -78,7 +78,7 @@ class VoltageSweepAxis(BaseSweepAxis):
         clean_value = (target_value>>12) <<12
         out: Dict[str, Dict[str, QuaVariableFloat]] = {
             "volt_levels": {self.name: clean_value}, 
-            "last_levels": {}, 
+            "last_levels": {self.name: (self.last_val>>12)<<12}, 
             "freq_updates": {}, 
             "amplitude_scales": {}
         }

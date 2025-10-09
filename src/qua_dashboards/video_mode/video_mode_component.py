@@ -401,6 +401,11 @@ class VideoModeComponent(BaseComponent):
 
             try:
                 details = self.save(results_key=results_key)
+                import os
+                save_dir = details["path"]
+                if not os.path.isdir(save_dir):
+                    save_dir = os.path.dirname(save_dir)
+                self.data_acquirer.machine.save(save_dir)
             except Exception as e:
                 message = (
                     f"Error saving data, please configure the data_root_folder. "

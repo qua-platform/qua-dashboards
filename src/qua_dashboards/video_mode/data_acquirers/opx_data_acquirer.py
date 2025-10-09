@@ -80,7 +80,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             qmm: The QuantumMachinesManager instance.
             machine: The QUAM Machine instance to use for generating the QUA config.
             gate_set: The GateSet object containing voltage channels.
-            scan_mode: The scan mode defining how the 2D grid is traversed.
+            scan_modes: A dictionary of scan modes defining how the 2D grid is traversed.
             x_axis_name: Name of the X sweep axis (must match a GateSet channel or virtual gate).
             y_axis_name: Name of the Y sweep axis (must match a GateSet channel or virtual gate).
             readout_pulse: The QUAM Pulse object to measure.

@@ -55,11 +55,11 @@ This is highly useful for fine-tuning experimental parameters during an experime
 More details can be found in the [Voltage Control README](./examples/voltage_control/README.md).
 Examples are provided for simulated channels ([examples/voltage_control/example_voltage_control.py](examples/voltage_control/example_voltage_control.py)) and for QDevil QDAC integration ([examples/voltage_control/example_voltage_control_qdac.py](examples/voltage_control/example_voltage_control_qdac.py)).
 
-### Virtual Gating
+### Virtual Gates
 
-The Virtual Gating component is a GUI to add and edit virtual gating matrix layers, in conjunction with quam_builder's VirtualGateSet. 
+The Virtual Gates component is a GUI to add and edit virtual gating matrix layers, in conjunction with quam_builder's VirtualGateSet. 
 This is particularly useful when correcting for cross-capacitance, defining arbitrary axes along the charge stability diagram, or rotating the frame of the stability diagram. 
-An example, with an example quam machine is provided in ([examples/virtual_gating/example_virtual_gating.py](examples/virtual_gating/example_virtual_gating.py))
+An example, with an example quam machine is provided in ([examples/virtual_gating/example_virtual_gating.py](examples/virtual_gates/example_virtual_gates.py))
 
 ## Combining Components
 
@@ -68,3 +68,9 @@ The script [examples/combined_video_mode_voltage_control.py](examples/combined_v
 This allows for use cases such as interactively tuning DC voltage offsets for a 2D scan in Video Mode while observing the results in real-time.
 
 Please explore the individual example folders and their READMEs for comprehensive guides on how to run and customize each dashboard.
+
+## Full example with Video Mode, Virtual Gates, and Voltage Control
+
+This example script, found in [examples/full_video_mode_example_qdac.py](examples/full_video_mode_example_qdac.py) shows an example using VideoModeComponent, VirtualGatesComponent and VoltageControlComponent to give the user full control over live calibrations of their quantum dot device. This example script combines AC control of the OPX with DC control using the QDAC via `VoltageGate` channels. 
+
+

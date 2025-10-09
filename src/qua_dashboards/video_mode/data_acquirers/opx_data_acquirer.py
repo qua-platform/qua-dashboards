@@ -125,7 +125,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         else:
             self.qua_inner_loop_action = qua_inner_loop_action
         self.scan_modes = scan_modes
-        self.scan_2d: ScanMode = next(iter(self.scan_modes.items()))
+        self.scan_2d: ScanMode = next(iter(self.scan_modes.values()))
         self.scan_1d: ScanMode = LineScan()
 
         self.initial_delay_s: Optional[float] = initial_delay_s

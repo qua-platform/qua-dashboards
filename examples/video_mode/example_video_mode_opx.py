@@ -114,7 +114,7 @@ gate_set = None  # Placeholder. Replace with a real GateSet instance.
 # --- QMM Connection ---
 # Replace with your actual OPX host and cluster name
 # Example: qmm = QuantumMachinesManager(host="your_opx_ip", cluster_name="your_cluster")
-qmm = QuantumMachinesManager(host="`127.0.0.1", cluster_name="CS_1")
+qmm = QuantumMachinesManager(host="127.0.0.1", cluster_name="CS_1")
 
 # Generate the QUA configuration from the QUAM machine object
 config = machine.generate_config()
@@ -172,15 +172,18 @@ video_mode_component = VideoModeComponent(
     data_polling_interval_s=0.5,  # How often the dashboard polls for new data
     save_path = save_path
 )
-from qua_dashboards.virtual_gates import VirtualLayerEditor, ui_update
-virtual_gating_component = VirtualLayerEditor(gateset = gate_set, component_id = 'Virtual Gates UI')
+
+# ### If virtual gates editing/adding is required. 
+# from qua_dashboards.virtual_gates import VirtualLayerEditor, ui_update
+# virtual_gating_component = VirtualLayerEditor(gateset = gate_set, component_id = 'Virtual Gates UI')
 
 # Build the Dash application layout using the VideoModeComponent.
 app = build_dashboard(
-    components=[video_mode_component, virtual_gating_component],
+    components=[video_mode_component],
     title="OPX Video Mode Dashboard",  # Title for the web page
 )
-ui_update(app, video_mode_component)
+# ### Use ui_update to keep video_mode_component up to date with virtual_gating_component changes
+#ui_update(app, video_mode_component)
 logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
 # Run the Dash server.
 # `host="0.0.0.0"` makes it accessible on your network.

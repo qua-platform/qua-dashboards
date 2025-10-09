@@ -164,7 +164,7 @@ def main():
 
     voltage_parameters = define_DC_params(machine, ["ch1", "ch2", "ch3"])
 
-    # Currently no Quam channel to combine readout + DC control
+    # Currently no Quam channel to combine readout + DC control. Relevant QUAM components to come in the future
     voltage_parameters.extend([
         DelegateParameter(name = "ch1_readout", label = "ch1_readout", source = qdac.channel(4).dc_constant_V), 
         DelegateParameter(name = "ch2_readout", label = "ch2_readout", source = qdac.channel(5).dc_constant_V)

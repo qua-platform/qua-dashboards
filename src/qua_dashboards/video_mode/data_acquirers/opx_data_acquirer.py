@@ -551,6 +551,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             flags |= il_flags
         except Exception as e:
             logger.warning("Inner-loop dispatch error: %s", e)
+            raise 
 
         if self.component_id in parameters:
             params = parameters[self.component_id]

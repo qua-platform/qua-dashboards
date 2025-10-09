@@ -61,6 +61,12 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         self.y_axis_name = y_axis_name
         self._is_1d = y_axis_name is None
         self._dummy_axis = SweepAxis(name="dummy", span=0.0, points=1, units="", attenuation=0, component_id=f"{self.component_id}-dummy")
+        self.post_processing_functions = {
+            "Raw_data": lambda da: da, 
+            "x_derivative": lambda da: da.differentiate(self.x_axis_name, edge_order = 1), 
+            "y_derivative": lambda da: (da if (self.y_axis_name is None or self.y_axis_name not in da.dims) else da.differentiate(self.y_axis_name, edge_order = 1)), 
+        }
+        self.selected_function = self.post_processing_functions["Raw_data"]
 
     @property
     def x_axis(self) -> SweepAxis:
@@ -89,6 +95,30 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                 f"axis_name '{axis_name}' not found in available axes: {names}"
             )
         return next(ax for ax in self.sweep_axes if ax.name == axis_name)
+    
+    def add_processing_function(self, name: str, fn, overwrite:bool = False): 
+        """
+        Register a new post processing function. 
+        Expected format: fn(da: xr.DataArray) -> xr.DataArray
+        """
+        if not callable(fn):
+            raise TypeError("fn must be callable")
+        
+        if (name in self.post_processing_functions) and not overwrite: 
+            raise ValueError(f"Function '{name}' already exists. User overwrite = True to repalce.")
+        
+        def wrapped(da: xr.DataArray):
+            try:
+                out = fn(da)
+                if not isinstance(out, xr.DataArray):
+                    out = xr.DataArray(out, dims=da.dims, coords=da.coords, attrs=da.attrs)
+                return out
+            except Exception as e:
+                logger.warning("Post-processing '%s' failed: %s. Returning input.", name, e)
+                return da
+
+        self.post_processing_functions[name] = wrapped
+        return name
 
     def get_dash_components(self, include_subcomponents: bool = True) -> List[Any]:
         """
@@ -192,6 +222,7 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                 ],
                 attrs={"long_name": "Signal"},
             )
+            data_xr = self.selected_function(data_xr)
 
             for axis in [self.x_axis, self.y_axis]:
                 attrs = {"label": axis.label or axis.name}

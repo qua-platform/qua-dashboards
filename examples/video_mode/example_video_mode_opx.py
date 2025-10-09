@@ -128,7 +128,11 @@ qm = qmm.open_qm(config, close_other_machines=True)
 
 # Select the scan mode (how the 2D grid is traversed in QUA)
 # Options include: RasterScan, SpiralScan, SwitchRasterScan
-scan_mode = scan_modes.SwitchRasterScan()
+scan_mode_dict = {
+    "Switch_Raster_Scan": scan_modes.SwitchRasterScan(), 
+    "Raster_Scan": scan_modes.RasterScan(), 
+    "Spiral_Scan": scan_modes.SpiralScan(),
+}
 
 # Instantiate the OPXDataAcquirer.
 # This component handles the QUA program generation, execution, and data fetching.
@@ -138,10 +142,14 @@ data_acquirer = OPXDataAcquirer(
     gate_set=gate_set,  # Replace with your GateSet instance
     x_axis_name="ch1",  # Must appear in gate_set.valid_channel_names; Virtual gate names also valid
     y_axis_name="ch2",  # Must appear in gate_set.valid_channel_names; Virtual gate names also valid
-    scan_mode=scan_mode,
+    scan_modes=scan_mode_dict,
     result_type="I",  # "I", "Q", "amplitude", or "phase"
     available_readout_pulses=[readout_pulse] # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI. 
 )
+
+# ### Add post-processing functions as needed. Default post-processing functions are x- and y- derivative functions. 
+# import xarray as xr
+# data_acquirer.add_processing_function("Log10", lambda da: np.log10(np.abs(da)))
 
 # %% (Optional) Test: Run QUA program once and acquire data directly
 # This section can be used for a single acquisition test before launching the dashboard.

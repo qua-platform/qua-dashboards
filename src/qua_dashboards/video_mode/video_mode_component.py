@@ -253,6 +253,21 @@ class VideoModeComponent(BaseComponent):
             ],
             className="mb-3 g-2 justify-content-start",
         )
+        notes_row = dbc.Row(
+            dbc.Col(
+                [
+                    dbc.Label("Experiment Notes"), 
+                    dbc.Textarea(
+                        id = self._get_id("save-notes-textarea"), 
+                        rows = 6, 
+                        placeholder = "Add notes about this run (e.g. B_field = 10mT, temp = 20mK)", 
+                        style = {"width": "100%", "minHeight": "200px"},
+                    ),
+                ], 
+                width = 12,
+            ), 
+            className = "mb-3",
+        )
 
         right_panel_viewer = self.shared_viewer.get_layout()
 
@@ -286,6 +301,7 @@ class VideoModeComponent(BaseComponent):
                             [
                                 left_panel_controls,
                                 bottom_left_row,  # Insert buttons (save, ...)
+                                notes_row,
                             ],
                             width=12,
                             lg=4,
@@ -386,10 +402,11 @@ class VideoModeComponent(BaseComponent):
             ),
             Input(self._get_id("save-button"), "n_clicks"),
             State(self._get_store_id(self.VIEWER_DATA_STORE_SUFFIX), "data"),
+            State(self._get_id("save-notes-textarea"), "value"),
             prevent_initial_call=True,
         )
         def handle_save_button(
-            n_clicks, current_viewer_data_ref: Optional[Dict[str, str]]
+            n_clicks, current_viewer_data_ref: Optional[Dict[str, str]], notes_text
         ):
             if not n_clicks:
                 raise PreventUpdate
@@ -406,6 +423,14 @@ class VideoModeComponent(BaseComponent):
                 if not os.path.isdir(save_dir):
                     save_dir = os.path.dirname(save_dir)
                 self.data_acquirer.machine.save(save_dir)
+                notes = (notes_text or "").strip()
+                if notes: 
+                    try:
+                        notes_path = os.path.join(save_dir, "notes.txt")
+                        with open(notes_path, "w", encoding="utf-8") as f:
+                            f.write(notes)
+                    except Exception as e_notes: 
+                        logger.error(f"(Notes save failed: {e_notes})")
             except Exception as e:
                 message = (
                     f"Error saving data, please configure the data_root_folder. "
@@ -436,13 +461,23 @@ class VideoModeComponent(BaseComponent):
         @app.callback(
             Output(self._get_id(self._MAIN_STATUS_ALERT_ID_SUFFIX), "children", allow_duplicate=True),
             Input(self._get_id("save-quam-button"), "n_clicks"),
+            State(self._get_id("save-notes-textarea"), "value"),
             prevent_initial_call=True,
         )
-        def handle_save_quam_button(n_clicks):
+        def handle_save_quam_button(n_clicks, notes_text):
             if not n_clicks:
                 raise PreventUpdate
             try:
                 self.data_acquirer.machine.save(self.save_path) 
+                import os
+                notes = (notes_text or "").strip()
+                if notes: 
+                    try:
+                        notes_path = os.path.join(self.save_path, "notes.txt")
+                        with open(notes_path, "w", encoding="utf-8") as f:
+                            f.write(notes)
+                    except Exception as e_notes: 
+                        logger.error(f"(Notes save failed: {e_notes})")
                 message = "QUAM state successfully saved."
                 color = "success"
                 print(message)

@@ -61,7 +61,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         gate_set: GateSet,
         x_axis_name: str,
         y_axis_name: str,
-        scan_mode: ScanMode,
+        scan_modes: Dict[str, ScanMode],
         available_readout_pulses: List[ReadoutPulse],
         qua_inner_loop_action: Optional[InnerLoopAction] = None,
         component_id: str = "opx-data-acquirer",
@@ -124,8 +124,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             )
         else:
             self.qua_inner_loop_action = qua_inner_loop_action
-
-        self.scan_2d: ScanMode = scan_mode
+        self.scan_modes = scan_modes
+        self.scan_2d: ScanMode = next(iter(self.scan_modes.items()))
         self.scan_1d: ScanMode = LineScan()
 
         self.initial_delay_s: Optional[float] = initial_delay_s
@@ -208,6 +208,21 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             for channel in self.selected_readout_channels:
                 svars = svars + [f"I:{channel.name}", f"Q:{channel.name}"]
             self.stream_vars = svars
+
+    @property
+    def current_scan_mode(self) -> str:
+        for (name, mode) in self.scan_modes.items():
+            if self.scan_2d == mode: 
+                return name
+        return next(iter(self.scan_modes.keys()))
+    
+    def set_scan_mode(self, name:str) -> None:
+        if self.scan_2d is self.scan_modes[name]:
+            return
+        self.scan_2d = self.scan_modes[name]
+        self._halt_acquisition()
+        self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
+
 
     @property
     def scan_mode(self):
@@ -674,6 +689,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                     coords={"readout": labels, self.x_axis.name: x_coords},
                     attrs={"long_name": "Signal"},
                 )
+                data_xr = self.selected_function(data_xr)
                 x_attrs = {"label": self.x_axis.label or self.x_axis.name}
                 if self.x_axis.units is not None:
                     x_attrs["units"] = self.x_axis.units
@@ -707,6 +723,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 },
                 attrs={"long_name": "Signal"},
             )
+            data_xr = self.selected_function(data_xr)
             for axis in [self.x_axis, self.y_axis]:
                 attrs = {"label": axis.label or axis.name}
                 if axis.units is not None:

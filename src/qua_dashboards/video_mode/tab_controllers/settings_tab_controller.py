@@ -86,6 +86,44 @@ class SettingsTabController(BaseTabController):
             className="mb-2 align-items-center",
         )
 
+        post_processing_fn_selector = dbc.Row([            
+            dbc.Label("Post-Processing Function", width = "auto", className = "col-form-label"), 
+            dbc.Col(
+                dcc.Dropdown(
+                    id = self._data_acquirer_instance._get_id("post-processing-function"), 
+                    options = [
+                        {"label": fn_name, "value": fn_name} for (fn_name) in self._data_acquirer_instance.post_processing_functions.keys()
+                    ], 
+                    value = "Raw_data", 
+                    multi= False,
+                    clearable = False, 
+                    style = {"color": "black"}, 
+                ), 
+                width = True,
+            ),
+            ], 
+            className = "mb-2 align-items-center"
+        )
+
+        scan_mode_selector = dbc.Row([            
+            dbc.Label("2D Scan Mode", width = "auto", className = "col-form-label"), 
+            dbc.Col(
+                dcc.Dropdown(
+                    id = self._data_acquirer_instance._get_id("scan-mode-selection"), 
+                    options = [
+                        {"label": scan_mode, "value": scan_mode} for (scan_mode) in self._data_acquirer_instance.scan_modes.keys()
+                    ], 
+                    value = self._data_acquirer_instance.current_scan_mode, 
+                    multi= False,
+                    clearable = False, 
+                    style = {"color": "black"}, 
+                ), 
+                width = True,
+            ),
+            ], 
+            className = "mb-2 align-items-center"
+        )
+
         result_type_selector = dbc.Row(
             [
                 dbc.Label("Result Type", width="auto", className="col-form-label"),
@@ -113,6 +151,8 @@ class SettingsTabController(BaseTabController):
                     html.H5("Settings", className="text-light"),
                     readout_selector,
                     result_type_selector,
+                    post_processing_fn_selector,
+                    scan_mode_selector,
                     ramp_duration_input,
                     *inner_controls,
                     html.Div(
@@ -147,7 +187,7 @@ class SettingsTabController(BaseTabController):
         dummy_out = self._get_id(self._DUMMY_OUT_SUFFIX)
 
         @app.callback(
-            Output(dummy_out, "children"),
+            Output(dummy_out, "children", allow_duplicate = True),
             Input({"type": "comp-inner-loop", "index": ALL}, "value"),
             State({"type": "comp-inner-loop", "index": ALL}, "id"),
             Input({"type": "select", "index": ALL}, "value"),
@@ -189,3 +229,24 @@ class SettingsTabController(BaseTabController):
                 acq.update_parameters(params_to_update)
 
             return no_update
+        
+        @app.callback(
+            Output(dummy_out, "children", allow_duplicate = True), 
+            Input(self._data_acquirer_instance._get_id("post-processing-function"), "value"), 
+            prevent_initial_call = True,
+        ) 
+        def _alter_post_processing_function(fn_name): 
+            self._data_acquirer_instance.selected_function = self._data_acquirer_instance.post_processing_functions[fn_name]
+            logger.info(f"Post Processing Function Changed to {fn_name}")
+            return no_update
+        
+        @app.callback(
+            Output(dummy_out, "children", allow_duplicate = True), 
+            Input(self._data_acquirer_instance._get_id("scan-mode-selection"), "value"), 
+            prevent_initial_call = True,
+        ) 
+        def _alter_scan_mode(name): 
+            self._data_acquirer_instance.set_scan_mode(name)
+            logger.info(f"Scan Mode Changed to {name}")
+            return no_update
+        

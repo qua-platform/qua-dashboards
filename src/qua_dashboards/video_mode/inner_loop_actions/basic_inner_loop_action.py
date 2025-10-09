@@ -106,7 +106,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         )
         if self.pre_measurement_delay > 0:
             duration += self.pre_measurement_delay
-            qua.wait(duration//4)
+            qua.wait(duration)
 
         qua.align()
         result = []
@@ -249,8 +249,6 @@ class BasicInnerLoopAction(InnerLoopAction):
                 flags |= ModifiedFlags.CONFIG_MODIFIED
 
             if dur is not None and pulse.length != dur:
-                if dur % 4 != 0:
-                    raise ValueError(f"{name}: readout duration must be multiple of 4 (got {dur} ns)")
                 pulse.length = dur
                 flags |= ModifiedFlags.PARAMETERS_MODIFIED
                 flags |= ModifiedFlags.PROGRAM_MODIFIED

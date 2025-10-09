@@ -185,8 +185,10 @@ class SettingsTabController(BaseTabController):
     def register_callbacks(self, app: Dash, **kwargs):
         acq = self._data_acquirer_instance
         dummy_out = self._get_id(self._DUMMY_OUT_SUFFIX)
+        main_status_id = kwargs["orchestrator_stores"]["main-status-alert"]
 
         @app.callback(
+            Output(main_status_id, "children", allow_duplicate=True),
             Output(dummy_out, "children", allow_duplicate = True),
             Input({"type": "comp-inner-loop", "index": ALL}, "value"),
             State({"type": "comp-inner-loop", "index": ALL}, "id"),
@@ -225,10 +227,14 @@ class SettingsTabController(BaseTabController):
                 comp_id, param = idx.split("::", 1)
                 params_to_update.setdefault(comp_id, {})[param] = ramp_vals[0]
 
-            if params_to_update:
+            if not params_to_update:
+                return no_update, no_update
+            try: 
                 acq.update_parameters(params_to_update)
-
-            return no_update
+                return "", no_update
+            except Exception as e:  
+                import dash_bootstrap_components as dbc
+                return dbc.Alert(str(e), color="danger", dismissable=True), no_update
         
         @app.callback(
             Output(dummy_out, "children", allow_duplicate = True), 

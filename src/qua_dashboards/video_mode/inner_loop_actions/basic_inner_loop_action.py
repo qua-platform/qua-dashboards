@@ -106,7 +106,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         )
         if self.pre_measurement_delay > 0:
             duration += self.pre_measurement_delay
-            qua.wait(duration)
+            qua.wait(duration//4)
 
         qua.align()
         result = []
@@ -163,7 +163,7 @@ class BasicInnerLoopAction(InnerLoopAction):
                     label="Duration",
                     value=pulse.length,
                     units="ns",
-                    step=10,
+                    step=1,
                 ),
             ]
             if self.use_dBm:
@@ -247,12 +247,17 @@ class BasicInnerLoopAction(InnerLoopAction):
                 flags |= ModifiedFlags.PARAMETERS_MODIFIED
                 flags |= ModifiedFlags.PROGRAM_MODIFIED
                 flags |= ModifiedFlags.CONFIG_MODIFIED
-
-            if dur is not None and pulse.length != dur:
-                pulse.length = dur
-                flags |= ModifiedFlags.PARAMETERS_MODIFIED
-                flags |= ModifiedFlags.PROGRAM_MODIFIED
-                flags |= ModifiedFlags.CONFIG_MODIFIED
+            
+            if dur not in (None, ""):
+                dur = int(dur)
+                if dur % 4 != 0:
+                    message = f"{name}: readout duration must be multiple of 4 (got {dur} ns)"
+                    raise ValueError(message)
+                if pulse.length != dur:
+                    pulse.length = dur
+                    flags |= ModifiedFlags.PARAMETERS_MODIFIED
+                    flags |= ModifiedFlags.PROGRAM_MODIFIED
+                    flags |= ModifiedFlags.CONFIG_MODIFIED
 
             if self.use_dBm:
                 if amp_dbm is not None and unit.volts2dBm(pulse.amplitude) != amp_dbm:

@@ -329,6 +329,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self.qua_inner_loop_action.selected_readout_channels = (
             self.selected_readout_channels
         )
+        self._rebuild_stream_vars()
         with program() as prog:
             qua_streams = {var: declare_stream() for var in self.stream_vars}
 

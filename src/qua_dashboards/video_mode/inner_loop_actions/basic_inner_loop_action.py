@@ -8,7 +8,7 @@ from qua_dashboards.video_mode.inner_loop_actions.inner_loop_action import (
 )
 from qua_dashboards.utils.qua_types import QuaVariableFloat
 from quam_builder.architecture.quantum_dots.components import GateSet
-from qua_dashboards.video_mode.sweep_axis import BaseSweepAxis
+from qua_dashboards.video_mode.sweep_axis import BaseSweepAxis, VoltageSweepAxis
 
 from qm import qua
 
@@ -89,25 +89,31 @@ class BasicInnerLoopAction(InnerLoopAction):
     
     def __call__(
         self, x: QuaVariableFloat, y: QuaVariableFloat
-    ) -> Tuple[QuaVariableFloat, QuaVariableFloat]:
+    ) -> List[QuaVariableFloat]:
         
-        x_contributions = self.x_axis.gather_contributions(x)
-        if self.y_axis and y is not None: 
-            y_contributions = self.y_axis.gather_contributions(y) 
-        else:
-            y_contributions = {"volt_levels": {}, "last_levels": {}, "freq_updates": {}, "amplitude_scales": {}}
+        # Solution until GateSet native VoltageSequence loop is validated
+        x_voltage, y_voltage, x_last_v, y_last_v = {}, {}, {}, {}
+        if isinstance(self.x_axis, VoltageSweepAxis): 
+            x_voltage = {self.x_axis.name: (x>>12)<<12}
+            x_last_v = {self.x_axis.name: (self.x_axis.last_val >>12 ) <<12}
+        if y is not None:
+            if isinstance(self.y_axis, VoltageSweepAxis): 
+                y_voltage = {self.y_axis.name: (y>>12)<<12}
+                y_last_v = {self.y_axis.name: (self.y_axis.last_val >>12 ) <<12}
+        voltages_now, voltages_last = {**x_voltage, **y_voltage}, {**x_last_v, **y_last_v}
 
-        contributions = {
-            "volt_levels": {**x_contributions["volt_levels"], **y_contributions["volt_levels"]},
-            "last_levels": {**x_contributions["last_levels"], **y_contributions["last_levels"]},
-            "freq_updates": {**x_contributions["freq_updates"], **y_contributions["freq_updates"]},
-            "amplitude_scales":  {**x_contributions["amplitude_scales"],  **y_contributions["amplitude_scales"]},
-        }
+        self._resolve_and_ramp(voltages_now, voltages_last)
 
-        self._resolve_and_ramp(contributions["volt_levels"], contributions["last_levels"])
-        self.x_axis.apply(x)
-        if self.y_axis and y is not None: 
-            self.y_axis.apply(y)
+        # Apply functions
+        # For FrequencySweepAxis, applies update_frequency and returns empty dict. 
+        # For VoltageSweepAxis, updates the axis.last_val (will be changed once VoltageSequence is validated) and returns empty dict.
+        # For AmplitudeSweepAxis, calculates amplitude scale and returns the scale as a dict component {element: scale}. 
+        # Add fucntionalities to existing BaseSweepAxis objects in their respective apply commands
+        # For new SweepAxis objects (e.g. QubitSweepAxis), simply have an apply command that returns an empty dict. 
+
+        x_apply = self.x_axis.apply(x)
+        y_apply = self.y_axis.apply(y) if (self.y_axis and y is not None) else None
+        amplitude_scales = {**x_apply, **(y_apply or {})}
 
         qua.align()
         duration = max(
@@ -116,17 +122,13 @@ class BasicInnerLoopAction(InnerLoopAction):
         if self.pre_measurement_delay > 0:
             duration += self.pre_measurement_delay
             qua.wait(duration//4)
-
-        qua.align()
-        for elem, freq in freq_updates:
-            qua.update_frequency(elem, freq)
         
         result = []
         for channel in self.selected_readout_channels:
             elem = channel.name
             scale = 1
-            if elem in contributions["amplitude_scales"]:
-                scale = contributions["amplitude_scales"].get(elem, 1)
+            if elem in amplitude_scales:
+                scale = amplitude_scales.get(elem, 1)
             I, Q = channel.measure(self._pulse_for(channel).id, amplitude_scale = scale)
             result.extend([I, Q])
         qua.align()

@@ -1,12 +1,6 @@
 from typing import Optional, Dict, Any
-from dash import Dash
-from dash.development.base_component import Component
 import numpy as np
-import dash_bootstrap_components as dbc
-from qualang_tools.units.units import unit
-from qua_dashboards.core import BaseUpdatableComponent, ModifiedFlags
-from qua_dashboards.utils.basic_parameter import BasicParameter
-from qua_dashboards.utils.dash_utils import create_input_field
+from qua_dashboards.core import ModifiedFlags
 from qua_dashboards.utils.qua_types import QuaVariableFloat
 from .base_sweep_axis import BaseSweepAxis
 from qm.qua import *
@@ -56,7 +50,13 @@ class VoltageSweepAxis(BaseSweepAxis):
     @property
     def sweep_values_with_offset(self):
         """Returns axis sweep values with offset."""
-        return self.sweep_values_unattenuated + self.offset_parameter() if self.offset_parameter is not None else self.sweep_values_unattenuated
+        offset = 0.0
+        if self.offset_parameter is not None: 
+            try: 
+                offset = self.offset_parameter.get_latest()
+            except: 
+                offset = 0.0
+        return self.sweep_values_unattenuated + offset 
     
     @property 
     def qua_sweep_values(self) -> np.ndarray: 
@@ -73,23 +73,14 @@ class VoltageSweepAxis(BaseSweepAxis):
         self.slope = declare(fixed)
         self.loop_current = declare(fixed)
         self.loop_past = declare(fixed)
-
-    def gather_contributions(self, target_value: QuaVariableFloat): 
-        clean_value = (target_value>>12) <<12
-        out: Dict[str, Dict[str, QuaVariableFloat]] = {
-            "volt_levels": {self.name: clean_value}, 
-            "last_levels": {self.name: (self.last_val>>12)<<12}, 
-            "freq_updates": {}, 
-            "amplitude_scales": {}
-        }
-        return out
         
-    def apply(self, value: QuaVariableFloat): 
+    def apply(self, value: QuaVariableFloat) -> None: 
+        """ 
+        Apply command. Currently just updates the last voltage tracker
+        """
         assign(self.last_val, (value>>12)<<12)
-        return
+        return {}
 
-
-    
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
         """
         Updates data acquirer parameters (axes, averages).

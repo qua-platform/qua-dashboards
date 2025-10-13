@@ -58,19 +58,13 @@ class FrequencySweepAxis(BaseSweepAxis):
 
     def register_callbacks(self, app: Dash) -> None:
         pass
-
-    def gather_contributions(self, value): 
-        out: Dict[str, Dict[str, QuaVariableFloat]] = {
-            "volt_levels" : {}, 
-            "last_levels" : {}, 
-            "freq_updates" : {self.name: value}, 
-            "amplitude_scales" : {}
-        }
-        return out
     
-    def apply(self, value: QuaVariableFloat): 
+    def apply(self, value: QuaVariableFloat) -> None: 
+        """ 
+        Applies the update_frequency command. 
+        """
         update_frequency(self.name, value)
-        return
+        return {}
 
     def create_axis_layout(self, min_span: float, max_span: Optional[float] = None):
         col = super().create_axis_layout(min_span = min_span, max_span = max_span)

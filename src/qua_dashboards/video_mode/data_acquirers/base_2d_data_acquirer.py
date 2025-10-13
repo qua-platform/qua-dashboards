@@ -63,8 +63,8 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         self._dummy_axis = VoltageSweepAxis(name="dummy", span=0.0, points=1, attenuation=0, component_id=f"{self.component_id}-dummy")
         self.post_processing_functions = {
             "Raw_data": lambda da: da, 
-            "x_derivative": lambda da: da.differentiate(self.x_axis_name, edge_order = 1), 
-            "y_derivative": lambda da: (da if (self.y_axis_name is None or self.y_axis_name not in da.dims) else da.differentiate(self.y_axis_name, edge_order = 1)), 
+            "x_derivative": lambda da: da.differentiate(self.x_axis.coord_name, edge_order = 1), 
+            "y_derivative": lambda da: (da if (self.y_axis.coord_name is None or self.y_axis.coord_name not in da.dims) else da.differentiate(self.y_axis.coord_name, edge_order = 1)), 
         }
         self.selected_function = self.post_processing_functions["Raw_data"]
 

@@ -117,21 +117,14 @@ class AmplitudeSweepAxis(BaseSweepAxis):
     
     def declare_vars(self): 
         self.scale_var = declare(fixed)
-
-    def gather_contributions(self, value): 
+    
+    def apply(self, value: QuaVariableFloat): 
+        """ 
+        Apply command. Calculates the amplitude scale necessary, and returns it as a dict to be handled by the inner loop. 
+        """
         default_amp_v = float(min(max(self._offset_volts(), 0.0), 1.999))
         assign(self.scale_var, value / default_amp_v)
-
-        out: Dict[str, Dict[str, QuaVariableFloat]] = {
-            "volt_levels" : {}, 
-            "last_levels" : {}, 
-            "freq_updates" : {}, 
-            "amplitude_scales" : {self.name: self.scale_var}
-        }
-        return out
-    
-    def apply(self, value): 
-        pass
+        return {self.name: self.scale_var}
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
         """

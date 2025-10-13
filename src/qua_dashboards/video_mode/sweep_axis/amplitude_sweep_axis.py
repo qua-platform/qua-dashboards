@@ -124,7 +124,7 @@ class AmplitudeSweepAxis(BaseSweepAxis):
         """
         default_amp_v = float(min(max(self._offset_volts(), 0.0), 1.999))
         assign(self.scale_var, value / default_amp_v)
-        return {self.name: self.scale_var}
+        return {"amplitude_scales": {self.name: self.scale_var}}
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
         """
@@ -139,7 +139,7 @@ class AmplitudeSweepAxis(BaseSweepAxis):
                 self.offset_parameter.amplitude = unit.dBm2volts(params["offset"])
             else: 
                 self.offset_parameter.amplitude = params["offset"]
-            flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
+            flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED | ModifiedFlags.CONFIG_MODIFIED
 
         if "dbm-toggle" in params: 
             raw = params["dbm-toggle"]

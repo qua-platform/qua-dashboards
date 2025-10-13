@@ -150,7 +150,7 @@ def main():
     logger = setup_logging(__name__)
 
     # Adjust the IP and cluster name here
-    qm_ip = "172.16.33.101"
+    qm_ip = "127.0.0.1"
     cluster_name = "CS_1"
     qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
     machine = BasicQuam()
@@ -158,7 +158,7 @@ def main():
     qdac_connect = True
     qdac = None
     if qdac_connect:
-        qdac_ip = "172.16.33.101"
+        qdac_ip = "127.0.0.2"
         logger.info("Connecting to QDAC")
         qdac = connect_to_qdac(qdac_ip)
 
@@ -173,7 +173,7 @@ def main():
         "ch1": setup_DC_channel(machine, name = "ch1", opx_output_port = 1, qdac_port = 1, qdac = qdac, fem = fem), 
         "ch2": setup_DC_channel(machine, name = "ch2", opx_output_port = 2, qdac_port = 2, qdac = qdac, fem = fem), 
         "ch3": setup_DC_channel(machine, name = "ch3", opx_output_port = 3, qdac_port = 3, qdac = qdac, fem = fem), 
-        "ch1_readout": setup_readout_channel(machine, name = "ch1_readout", readout_pulse = readout_pulse_ch1, opx_output_port = 4, opx_input_port = 1, IF = 1.7e8, fem = fem), 
+        "ch1_readout": setup_readout_channel(machine, name = "ch1_readout", readout_pulse = readout_pulse_ch1, opx_output_port = 6, opx_input_port = 1, IF = 1.7e8, fem = fem), 
         "ch2_readout": setup_readout_channel(machine, name = "ch2_readout", readout_pulse = readout_pulse_ch2, opx_output_port = 4, opx_input_port = 1, IF = 2.3e8, fem = fem), 
     }
 

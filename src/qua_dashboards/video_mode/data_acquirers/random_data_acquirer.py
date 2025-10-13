@@ -62,6 +62,23 @@ class RandomDataAcquirer(Base2DDataAcquirer):
             y_axis_name=y_axis_name,
             **kwargs,
         )
+        class Dummy:
+            def __init__(self, name): 
+                self.name = name
+                self.component_id = name
+
+        dummy_channel = Dummy(name = "dummy1")
+        self.qua_inner_loop_action = dummy_channel
+        self.available_readout_channels = {"readout_channel_1": dummy_channel}
+        self.selected_readout_channels = [dummy_channel]
+
+        self.scan_modes = {"Raster": object()}  
+        self.current_scan_mode = "Raster"
+        self.result_types = ["I", "Q", "amplitude", "phase"]
+        self.result_type = self.result_types[0]
+
+        
+
 
     def perform_actual_acquisition(self) -> np.ndarray:
         """Simulates data acquisition by sleeping and returning random data.
@@ -91,7 +108,7 @@ class RandomDataAcquirer(Base2DDataAcquirer):
         results = np.random.rand(self.y_axis.points, self.x_axis.points)
         return results
 
-    def get_dash_components(self, include_subcomponents: bool = True) -> List[html.Div]:
+    def get_dash_components(self, include_subcomponents: bool = True, include_inner_loop_controls:bool = False) -> List[html.Div]:
         """Returns Dash UI components for configuring RandomDataAcquirer.
 
         Extends the components from Base2DDataAcquirer (which includes

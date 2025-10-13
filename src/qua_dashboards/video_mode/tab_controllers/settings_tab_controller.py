@@ -51,15 +51,19 @@ class SettingsTabController(BaseTabController):
                 "index": f"{self._data_acquirer_instance.component_id}::ramp_duration",
             },
             label="Ramp Duration",
-            value=self._data_acquirer_instance.qua_inner_loop_action.ramp_duration,
+            value=getattr(self._data_acquirer_instance.qua_inner_loop_action, "ramp_duration", 16),
             units="ns",
             step=4,
         )
-        inner_controls = (
-            self._data_acquirer_instance.qua_inner_loop_action.get_dash_components(
-                include_subcomponents=True
+        inner_controls = []
+        try:
+            inner_controls = (
+                self._data_acquirer_instance.qua_inner_loop_action.get_dash_components(
+                    include_subcomponents=True
+                )
             )
-        )
+        except: 
+            pass
         readout_selector = dbc.Row(
             [
                 dbc.Label(

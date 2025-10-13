@@ -32,6 +32,7 @@ class VoltageSweepAxis(BaseSweepAxis):
         points: Optional[int] = None,
         attenuation: float = 0,
         component_id: Optional[str] = None,
+        label: str = None
     ):
         super().__init__(component_id=component_id, 
                          name = name, 

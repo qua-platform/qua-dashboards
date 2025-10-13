@@ -101,6 +101,6 @@ class FrequencySweepAxis(BaseSweepAxis):
 
         if "offset" in params and self.offset != params["offset"]:
             self.offset_parameter.channel.intermediate_frequency = params["offset"]
-            flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
+            flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED | ModifiedFlags.CONFIG_MODIFIED
 
         return flags

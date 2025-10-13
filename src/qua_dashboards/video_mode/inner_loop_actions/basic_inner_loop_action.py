@@ -121,7 +121,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         if self.pre_measurement_delay > 0:
             duration += self.pre_measurement_delay
             qua.wait(duration//4)
-        
+        qua.align()
         result = []
         for channel in self.selected_readout_channels:
             elem = channel.name

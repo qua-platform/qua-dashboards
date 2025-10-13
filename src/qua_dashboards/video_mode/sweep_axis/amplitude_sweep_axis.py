@@ -1,5 +1,5 @@
 from typing import Optional, Dict, Any
-from qm.qua import declare, amp, assign
+from qm.qua import declare, assign
 from dash import Dash
 import numpy as np
 import dash_bootstrap_components as dbc

@@ -20,7 +20,6 @@ class BasicInnerLoopAction(InnerLoopAction):
 
     Args:
         gate_set: The GateSet object containing voltage channels.
-        readout_pulse: The QUAM Pulse object to measure.
         x_axis: X SweepAxis object.
         y_axis: Y SweepAxis object.
         pre_measurement_delay: The optional delay before the measurement in ns..

@@ -35,10 +35,10 @@ and the RandomDataAcquirer (Software Averages, Simulated Acquire Time).
 from qua_dashboards.core import build_dashboard
 from qua_dashboards.utils import setup_logging
 from qua_dashboards.video_mode import (
-    SweepAxis,
     RandomDataAcquirer,
     VideoModeComponent,
 )
+from qua_dashboards.video_mode.sweep_axis import VoltageSweepAxis
 
 
 def get_video_mode_component() -> VideoModeComponent:
@@ -52,28 +52,26 @@ def get_video_mode_component() -> VideoModeComponent:
         VideoModeComponent: The configured video mode component.
     """
     # Define the X-axis for the 2D scan.
-    x_axis = SweepAxis(
+    x_axis = VoltageSweepAxis(
         name="x",  # Internal identifier for the axis.
-        label="X Coordinate",  # Display label in the UI.
-        units="µm",  # Physical units of the axis.
         span=10.0,  # The total range of the X-axis sweep.
         points=61,  # The number of points (pixels) along the X-axis.
+        offset_parameter = None
     )
 
     # Define the Y-axis for the 2D scan.
-    y_axis = SweepAxis(
+    y_axis = VoltageSweepAxis(
         name="y",  # Internal identifier for the axis.
-        label="Y Coordinate",  # Display label in the UI.
-        units="µm",  # Physical units of the axis.
         span=8.0,  # The total range of the Y-axis sweep.
         points=51,  # The number of points (pixels) along the Y-axis.
+        offset_parameter = None
     )
 
     # Instantiate the RandomDataAcquirer.
     # This acquirer simulates data fetching by generating random 2D arrays.
     random_acquirer = RandomDataAcquirer(
         component_id="random-data-acquirer",  # Unique ID for Dash elements.
-        sweep_axes=[x_axis, y_axis],
+        sweep_axes={"Voltage": [x_axis, y_axis]},
         x_axis_name=x_axis.name,
         y_axis_name=y_axis.name,
         acquire_time=0.03,  # Simulated delay (seconds) for acquiring one raw frame.

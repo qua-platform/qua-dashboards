@@ -244,16 +244,12 @@ def make_readout_subplots(da: xr.DataArray) -> go.Figure:
         horizontal_spacing=safe_hspace(n),
     )
     yc, xc = da.coords[y_name], da.coords[x_name]
-    y_title = (
-        f"{yc.attrs.get('long_name', y_name)} ({yc.attrs.get('units', '')})".strip(
-            " ()"
-        )
-    )
-    x_title = (
-        f"{xc.attrs.get('long_name', x_name)} ({xc.attrs.get('units', '')})".strip(
-            " ()"
-        )
-    )
+    y_units = yc.attrs.get("units")
+    y_title = f"{yc.attrs.get('long_name', y_name)} ({y_units})" if y_units else yc.attrs.get("long_name", y_name)
+
+    x_units = xc.attrs.get("units")
+    x_title = f"{xc.attrs.get('long_name', x_name)} ({x_units})" if x_units else xc.attrs.get("long_name", x_name)
+
 
     for i in range(n):
         sub = da.isel(readout=i).reset_coords("readout", drop=True)

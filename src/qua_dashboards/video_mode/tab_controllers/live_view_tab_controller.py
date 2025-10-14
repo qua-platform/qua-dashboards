@@ -240,6 +240,7 @@ class LiveViewTabController(BaseTabController):
         self._register_gate_selection_callback(app)
         self._register_gridlines_callback(app, shared_viewer_store_ids)
         self._register_readoutparams_callback(app)
+        self._register_mode_callback(app)
 
     def _register_readoutparams_callback(self, app):
         @app.callback(
@@ -284,8 +285,8 @@ class LiveViewTabController(BaseTabController):
                 def ax_suffix(i):  # i = 1..N
                     return "" if i == 1 else str(i)
 
-                xr = list(self._data_acquirer_instance.x_axis.sweep_values_unattenuated)
-                yr = list(self._data_acquirer_instance.y_axis.sweep_values_unattenuated)
+                xr = list(self._data_acquirer_instance.x_axis.sweep_values_with_offset)
+                yr = list(self._data_acquirer_instance.y_axis.sweep_values_with_offset)
                 xs = np.linspace(xr[0], xr[-1], 15).tolist() 
                 ys = np.linspace(yr[0], yr[-1], 15).tolist() 
 
@@ -340,6 +341,46 @@ class LiveViewTabController(BaseTabController):
             }
             self._data_acquirer_instance.update_parameters(params)
             return "", self._data_acquirer_instance.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
+    def _register_mode_callback(
+            self, app: Dash
+    ) -> None:
+        """Registers callback for mode selection"""
+
+        @app.callback(
+            Output(self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX), "children", allow_duplicate=True), 
+            Output(self._get_id(self._ACQUIRER_CONTROLS_DIV_ID_SUFFIX), "children", allow_duplicate=True),
+            Input(self._data_acquirer_instance._get_id("x-mode"), "value"), 
+            Input(self._data_acquirer_instance._get_id("y-mode"), "value"), 
+            prevent_initial_call = True
+        )
+
+        def on_mode_select(x_mode, y_mode):
+            da = self._data_acquirer_instance
+
+            da.x_mode = x_mode
+            da.y_mode = y_mode
+
+            x_names = [ax.name for ax in da._display_x_sweep_axes]
+            y_names = [ax.name for ax in da._display_y_sweep_axes]
+
+            if da.x_axis_name not in x_names:
+                da.x_axis_name = x_names[0] if x_names else None
+            if da.y_axis_name not in y_names:
+                da.y_axis_name = None
+
+            params = {
+                da.component_id: {
+                    "x-mode": x_mode,
+                    "y-mode": y_mode,
+                    "gate-select-x": da.x_axis_name,
+                    "gate-select-y": da.y_axis_name,
+                }
+            }
+
+            da.update_parameters(params)
+            return "", da.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
+
+
 
     def _register_acquisition_control_callback(
         self, app: Dash, orchestrator_stores: Dict[str, Any]
@@ -469,18 +510,21 @@ class LiveViewTabController(BaseTabController):
 
         @app.callback(
             Output(self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX), "children", allow_duplicate=True),
+            Output(self._get_id(self._ACQUIRER_CONTROLS_DIV_ID_SUFFIX), "children", allow_duplicate=True),
             Input({"type": "number-input", "index": ALL}, "value"),
+            Input({"type": "toggle", "index": ALL}, "value"),
             *static_inputs,
             State({"type": "number-input", "index": ALL}, "id"),
+            State({"type": "toggle", "index": ALL}, "id"),
             *static_states,
             prevent_initial_call=True,
         )
         def handle_hybrid_parameter_update(*args):
             """Handle both pattern-matched axis parameters and static component parameters."""
 
-            num_pattern_inputs = 1
+            num_pattern_inputs = 2
             num_static_inputs = len(static_inputs)
-            num_pattern_states = 1
+            num_pattern_states = 2
             num_static_states = len(static_states)
 
             pattern_values = args[:num_pattern_inputs]
@@ -490,6 +534,19 @@ class LiveViewTabController(BaseTabController):
             static_states_data = args[num_pattern_inputs + num_static_inputs + num_pattern_states:]
 
             parameters_to_update = {}
+
+            toggle_values = pattern_values[1]
+            toggle_ids = pattern_states[1]
+            rebuild = False
+            if toggle_values and toggle_ids:
+                for value, id_dict in zip(toggle_values, toggle_ids):
+                    if not isinstance(id_dict, dict):
+                        continue
+                    comp_id, param = self._parse_param_id(id_dict.get("index", ""))
+                    if comp_id and param:
+                        parameters_to_update.setdefault(comp_id, {})[param] = value
+                        if param.endswith("dbm-toggle"):
+                            rebuild = True
 
             if len(pattern_values) >= 1 and len(pattern_states) >= 1:
                 number_values = pattern_values[0]
@@ -515,7 +572,10 @@ class LiveViewTabController(BaseTabController):
 
             if parameters_to_update:
                 self._data_acquirer_instance.update_parameters(parameters_to_update)
-            return dash.no_update
+            if rebuild == True: 
+                new_children = self._data_acquirer_instance.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
+                return dash.no_update, new_children
+            return dash.no_update, dash.no_update
 
     def _parse_param_id(self, param_id_str):
         """Parse parameter ID string to extract component_id and parameter name."""
@@ -553,3 +613,4 @@ class LiveViewTabController(BaseTabController):
                     f"{param_id_dict} of type {component_id}"
                 )
         return current_type_params
+

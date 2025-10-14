@@ -4,18 +4,16 @@ from dash import Dash
 from dash.development.base_component import Component
 import numpy as np
 import dash_bootstrap_components as dbc
-
 from qua_dashboards.core import BaseUpdatableComponent, ModifiedFlags
-from qua_dashboards.utils.basic_parameter import BasicParameter
 from qua_dashboards.utils.dash_utils import create_input_field
 
-__all__ = ["SweepAxis"]
+__all__ = ["BaseSweepAxis"]
 
 DEFAULT_SPAN = 0.03
 DEFAULT_POINTS = 51
 
 
-class SweepAxis(BaseUpdatableComponent):
+class BaseSweepAxis(BaseUpdatableComponent):
     """Class representing a sweep axis.
 
     Attributes:
@@ -35,8 +33,7 @@ class SweepAxis(BaseUpdatableComponent):
         points: Optional[int] = None,
         label: Optional[str] = None,
         units: Optional[str] = None,
-        offset_parameter: Optional[BasicParameter] = None,
-        attenuation: float = 0,
+        offset_parameter=None,
         component_id: Optional[str] = None,
     ):
         if component_id is None:
@@ -48,7 +45,8 @@ class SweepAxis(BaseUpdatableComponent):
         self.label = label
         self.units = units
         self.offset_parameter = offset_parameter
-        self.attenuation = attenuation
+        self.dbm: bool = False
+        self._coord_name = name
 
     @property
     def sweep_values(self):
@@ -56,21 +54,18 @@ class SweepAxis(BaseUpdatableComponent):
         return np.linspace(-self.span / 2, self.span / 2, self.points)
 
     @property
-    def sweep_values_unattenuated(self):
-        """Returns axis sweep values without attenuation."""
-        return self.sweep_values * 10 ** (self.attenuation / 20)
+    def coord_name(self) -> str:
+        return self._coord_name
 
     @property
     def sweep_values_with_offset(self):
         """Returns axis sweep values with offset."""
-        if self.offset_parameter is None:
-            return self.sweep_values_unattenuated
-        return self.sweep_values_unattenuated + self.offset_parameter.get_latest()
+        return self.sweep_values + self.offset_parameter()
 
     @property
-    def scale(self):
-        """Returns axis scale factor, calculated from attenuation."""
-        return 10 ** (-self.attenuation / 20)
+    def qua_sweep_values(self):
+        """Returns the actual array to be processed by the DataAcquirer"""
+        return self.sweep_values
 
     def get_layout(self) -> Component | None:
         return self.create_axis_layout(
@@ -81,13 +76,21 @@ class SweepAxis(BaseUpdatableComponent):
     def register_callbacks(self, app: Dash) -> None:
         pass
 
+    def declare_vars(self):
+        """Declare the relevant QUA variables"""
+        pass
+
+    def apply(self, value, past_value):
+        """Apply the correct QUA command"""
+        pass
+
     def create_axis_layout(self, min_span: float, max_span: Optional[float] = None):
         """Modified to use pattern-matching IDs"""
         if not self.name.replace("_", "").isalnum():
             raise ValueError(
                 f"Axis {self.name} must only contain alphanumeric characters and underscores."
             )
-        
+
         # Use pattern-matching IDs instead of regular IDs
         ids = {
             "span": {"type": "number-input", "index": f"{self.component_id}::span"},
@@ -113,7 +116,7 @@ class SweepAxis(BaseUpdatableComponent):
                 step=1,
             ),
         ]
-        
+
         return dbc.Col(
             dbc.Card(
                 [
@@ -147,4 +150,5 @@ class SweepAxis(BaseUpdatableComponent):
         if "points" in params and self.points != params["points"]:
             self.points = params["points"]
             flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
+
         return flags

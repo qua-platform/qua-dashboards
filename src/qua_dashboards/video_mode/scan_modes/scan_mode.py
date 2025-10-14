@@ -54,6 +54,6 @@ class ScanMode(BaseUpdatableComponent, ABC):
 
     @abstractmethod
     def scan(
-        self, x_vals: Sequence[float], y_vals: Sequence[float]
+        self, x_vals: Sequence[float], y_vals: Sequence[float], x_mode: str = None, y_mode: str = None
     ) -> Generator[Tuple[QuaVariableFloat, QuaVariableFloat], None, None]:
         pass

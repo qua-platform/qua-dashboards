@@ -58,19 +58,20 @@ from qua_dashboards.video_mode import (
     scan_modes,
     VideoModeComponent,
 )
-from qcodes_contrib_drivers.drivers.QDevil import QDAC2
 from quam_builder.architecture.quantum_dots.components import VoltageGate
 from quam_builder.architecture.quantum_dots.components import VirtualGateSet
 from qua_dashboards.virtual_gates import VirtualLayerEditor, ui_update
 from qua_dashboards.voltage_control import VoltageControlComponent
-from qcodes.parameters import DelegateParameter
+
 
 
 def connect_to_qdac(address): 
+    from qcodes_contrib_drivers.drivers.QDevil import QDAC2
+    from qcodes.parameters import DelegateParameter
     qdac = QDAC2.QDac2('QDAC', visalib='@py', address=f'TCPIP::{address}::5025::SOCKET')
     return qdac
 
-def setup_DC_channel(machine: QuamRoot, name: str, opx_output_port: int, qdac_port: int, qdac: Optional[QDAC2.QDac2] = None, con = "con1", fem: int = None): 
+def setup_DC_channel(machine: QuamRoot, name: str, opx_output_port: int, qdac_port: int, qdac = None, con = "con1", fem: int = None): 
     """
     Set up a DC Channel 
 
@@ -155,7 +156,7 @@ def main():
     qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
     machine = BasicQuam()
 
-    qdac_connect = True
+    qdac_connect = False
     qdac = None
     if qdac_connect:
         qdac_ip = "127.0.0.2"

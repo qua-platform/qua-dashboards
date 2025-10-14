@@ -120,7 +120,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         amplitude_scales = {
             **x_apply.get("amplitude_scales", {}),
             **(y_apply.get("amplitude_scales", {}) or {}),
-        }
+        } if y_apply is not None else {**x_apply.get("amplitude_scales", {})}
 
         qua.align()
         duration = max(

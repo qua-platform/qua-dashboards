@@ -149,6 +149,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self._ensure_pulse_names()
         self._configure_readout()
         self._rebuild_stream_vars()
+        self._compiled_stream_vars: Optional[List[str]] = None
 
     @property
     def x_axis(self) -> BaseSweepAxis:
@@ -344,6 +345,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self._rebuild_stream_vars()
         with program() as prog:
             qua_streams = {var: declare_stream() for var in self.stream_vars}
+            self._compiled_stream_vars = self.stream_vars.copy()
 
             with infinite_loop_():
                 self.qua_inner_loop_action.initial_action()
@@ -451,14 +453,18 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         Processes the raw tuple from QUA's fetch_all into a dictionary of named arrays,
         then derives the final 2D array based on self.result_type.
         """
-        if len(fetched_qua_results) != len(self.stream_vars):
+        compiled = self._compiled_stream_vars or self.stream_vars
+        is_multi_readout = len(compiled) > 2
+
+        if len(fetched_qua_results) != len(compiled):
             logger.warning(
                 f"Fetched {len(fetched_qua_results)} streams, but expected {len(self.stream_vars)}. "
                 f"Expected stream vars: {self.stream_vars}. Likely indicates configuration change in progress - resetting compilation flags."
             )
             self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
+            return np.full((self.y_axis.points, self.x_axis.points), np.nan)
 
-        self._raw_qua_results = dict(zip(self.stream_vars, fetched_qua_results))
+        self._raw_qua_results = dict(zip(compiled, fetched_qua_results))
         expected_points = self.x_axis.points * self.y_axis.points
         num_sel = len(self.selected_readout_channels)
 
@@ -481,7 +487,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 )
             return self._flat_to_2d(flat)
 
-        if num_sel <= 1:
+        if not is_multi_readout:
             if self.result_type == "I" and "I" in self._raw_qua_results:
                 flat = self._raw_qua_results["I"]
             elif self.result_type == "Q" and "Q" in self._raw_qua_results:
@@ -510,13 +516,14 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             return _normalize_flat(flat)
 
         else:
+            channel_names = [ch.name for ch in self.selected_readout_channels]
             # Multi-readout: return (R, X) in 1D, (R, Y, X) in 2D
-            is_1d = (self.y_axis_name is None) or (self.y_axis.points == 1)
+            is_1d = self._is_1d
             expected_points = self.x_axis.points * (1 if is_1d else self.y_axis.points)
 
             output_layers = []
-            names = [ch.name for ch in self.selected_readout_channels]
-            for name in names:
+            #names = [ch.name for ch in self.selected_readout_channels]
+            for name in channel_names:
                 if self.result_type == "I":
                     key = f"I:{name}"
                     flat = np.asarray(self._raw_qua_results[key])
@@ -544,11 +551,11 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 if flat.size < expected_points:
                     if is_1d:
                         return np.full(
-                            (len(names), self.x_axis.points), np.nan, dtype=flat.dtype
+                            (len(channel_names), self.x_axis.points), np.nan, dtype=flat.dtype
                         )
                     else:
                         return np.full(
-                            (len(names), self.y_axis.points, self.x_axis.points),
+                            (len(channel_names), self.y_axis.points, self.x_axis.points),
                             np.nan,
                             dtype=flat.dtype,
                         )
@@ -563,6 +570,17 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             return np.stack(output_layers, axis=0)
 
     def perform_actual_acquisition(self) -> np.ndarray:
+        if self._compiled_stream_vars is not None:
+            if len(self.selected_readout_channels) <= 1:
+                expected_vars = self.stream_vars_default.copy()
+            else:
+                expected_vars = []
+                for channel in self.selected_readout_channels:
+                    expected_vars.extend([f"I:{channel.name}", f"Q:{channel.name}"])
+            if self._compiled_stream_vars != expected_vars:
+                logger.warning(f"Stream vars mismatch! Compiled: {self._compiled_stream_vars}, Expected: {expected_vars}. Regenerating program.")
+                self._halt_acquisition()
+                self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
         if self._compilation_flags & ModifiedFlags.CONFIG_MODIFIED:
             logger.info(f"Config regeneration triggered for {self.component_id}.")
             self._regenerate_config_and_reopen_qm()
@@ -671,16 +689,12 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                     )
 
                     self._rebuild_stream_vars()
-
-                    if old_stream_vars != self.stream_vars:
-                        logger.info(
-                            f"Stream vars changed from {old_stream_vars} to {self.stream_vars}, forcing program recompile"
-                        )
-                        self._halt_acquisition()
-                        self.qm_job = None
-                        flags |= ModifiedFlags.PROGRAM_MODIFIED
-                    else:
-                        flags |= ModifiedFlags.PARAMETERS_MODIFIED
+                    self._compiled_stream_vars = None
+                    self._halt_acquisition()
+                    self.qm_job = None
+                    self.qua_program = None
+                    flags |= ModifiedFlags.PROGRAM_MODIFIED
+                    flags |= ModifiedFlags.PARAMETERS_MODIFIED
 
             if "x-mode" in params and params["x-mode"] != self.x_mode:
                 self.x_mode = params["x-mode"]

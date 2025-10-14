@@ -96,6 +96,8 @@ def setup_DC_channel(machine: QuamRoot, name: str, opx_output_port: int, qdac_po
     )
     if qdac is not None:
         machine.channels[name].offset_parameter = qdac.channel(qdac_port).dc_constant_V
+    else: 
+        machine.channels[name].offset_parameter = None
     return machine.channels[name].get_reference()
 
 
@@ -218,11 +220,12 @@ def main():
 
     voltage_parameters = define_DC_params(machine, ["ch1", "ch2", "ch3"])
 
-    # Currently no Quam channel to combine readout + DC control. Relevant QUAM components to come in the future
-    voltage_parameters.extend([
-        DelegateParameter(name = "ch1_readout", label = "ch1_readout", source = qdac.channel(4).dc_constant_V) if qdac else None, 
-        DelegateParameter(name = "ch2_readout", label = "ch2_readout", source = qdac.channel(5).dc_constant_V) if qdac else None
-        ])
+    if qdac is not None:
+        # Currently no Quam channel to combine readout + DC control. Relevant QUAM components to come in the future
+        voltage_parameters.extend([
+            DelegateParameter(name = "ch1_readout", label = "ch1_readout", source = qdac.channel(4).dc_constant_V) if qdac else None, 
+            DelegateParameter(name = "ch2_readout", label = "ch2_readout", source = qdac.channel(5).dc_constant_V) if qdac else None
+            ])
 
     components = [video_mode_component, virtual_gating_component]
 

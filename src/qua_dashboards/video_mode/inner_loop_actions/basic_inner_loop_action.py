@@ -107,7 +107,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         # For FrequencySweepAxis, applies update_frequency and returns empty dict. 
         # For VoltageSweepAxis, updates the axis.last_val (will be changed once VoltageSequence is validated) and returns empty dict.
         # For AmplitudeSweepAxis, calculates amplitude scale and returns the scale as a dict component {element: scale}. 
-        # Add fucntionalities to existing BaseSweepAxis objects in their respective apply commands
+        # Add functionalities to existing BaseSweepAxis objects in their respective apply commands
         # For new SweepAxis objects (e.g. QubitSweepAxis), simply have an apply command that returns an empty dict. 
 
         x_apply = self.x_axis.apply(x)

@@ -72,15 +72,15 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         self.y_mode = "Voltage"
     
     @property
-    def _is_1d(self):
+    def _is_1d(self) -> bool:
         return self.y_axis_name is None
 
     @property
-    def _display_x_sweep_axes(self): 
+    def _display_x_sweep_axes(self) -> List[BaseSweepAxis]: 
         return self.sweep_axes[self.x_mode]
         
     @property
-    def _display_y_sweep_axes(self): 
+    def _display_y_sweep_axes(self) -> List[BaseSweepAxis]: 
         return self.sweep_axes[self.y_mode]
 
     @property

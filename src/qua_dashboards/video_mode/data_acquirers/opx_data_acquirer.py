@@ -176,7 +176,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             return self._dummy_axis
         
 
-    def _ensure_pulse_names(self):
+    def _ensure_pulse_names(self) -> None:
         """
         Check for pulse name "half_max_square" in each gate_set channel, necessary for operation.
         GateSet.new_sequence() does this check, but this function added to have a conditional regeneration of config and reinitialisation
@@ -205,7 +205,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 self.qm = None
                 self.initialize_qm()
 
-    def _configure_readout(self):
+    def _configure_readout(self) -> None:
         """
         Searches the machine channels and finds the appropriate readout channels.
         """
@@ -227,7 +227,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             self.selected_readout_channels
         )
 
-    def _rebuild_stream_vars(self):
+    def _rebuild_stream_vars(self) -> None:
         """
         Build the number of relevant Stream Vars, based on how many readout channels to acquire.
         - If only one readout channel is selected, then stream vars is the default (I, Q)
@@ -258,7 +258,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
 
     @property
-    def scan_mode(self):
+    def scan_mode(self) -> ScanMode:
         if self._is_1d:
             return self.scan_1d
         else:

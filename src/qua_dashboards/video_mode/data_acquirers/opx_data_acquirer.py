@@ -23,7 +23,12 @@ from qua_dashboards.video_mode.data_acquirers.base_2d_data_acquirer import (
     BaseDataAcquirer,
 )
 from qua_dashboards.core import ModifiedFlags
-from qua_dashboards.video_mode.sweep_axis import BaseSweepAxis, VoltageSweepAxis, AmplitudeSweepAxis, FrequencySweepAxis
+from qua_dashboards.video_mode.sweep_axis import (
+    BaseSweepAxis,
+    VoltageSweepAxis,
+    AmplitudeSweepAxis,
+    FrequencySweepAxis,
+)
 from qua_dashboards.video_mode.scan_modes import ScanMode
 
 from qua_dashboards.video_mode.inner_loop_actions.inner_loop_action import (
@@ -97,7 +102,9 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             inner_loop_kwargs: Additional arguments for BasicInnerLoopAction creation.
             **kwargs: Additional arguments for Base2DDataAcquirer.
         """
-        sweep_axes = self._generate_sweep_axes(gate_set, available_pulses=available_readout_pulses)
+        sweep_axes = self._generate_sweep_axes(
+            gate_set, available_pulses=available_readout_pulses
+        )
         super().__init__(
             sweep_axes=sweep_axes,
             x_axis_name=x_axis_name,
@@ -174,7 +181,6 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         except ValueError:
             self.y_axis_name = None
             return self._dummy_axis
-        
 
     def _ensure_pulse_names(self) -> None:
         """
@@ -211,14 +217,18 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         """
         self.available_readout_channels = {}
         self.readout_pulse_mapping = {}
-        for p in self.available_readout_pulses: 
+        for p in self.available_readout_pulses:
             self.available_readout_channels[p.channel.name] = p.channel
             self.readout_pulse_mapping[p.channel.name] = p
 
         self.qua_inner_loop_action.readout_pulse_mapping = self.readout_pulse_mapping
 
         self.selected_readout_channels = (
-            [self.available_readout_channels[self.available_readout_pulses[0].channel.name]]
+            [
+                self.available_readout_channels[
+                    self.available_readout_pulses[0].channel.name
+                ]
+            ]
             if self.available_readout_channels
             else []
         )
@@ -244,18 +254,17 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
     @property
     def current_scan_mode(self) -> str:
-        for (name, mode) in self.scan_modes.items():
-            if self.scan_2d == mode: 
+        for name, mode in self.scan_modes.items():
+            if self.scan_2d == mode:
                 return name
         return next(iter(self.scan_modes.keys()))
-    
-    def set_scan_mode(self, name:str) -> None:
+
+    def set_scan_mode(self, name: str) -> None:
         if self.scan_2d is self.scan_modes[name]:
             return
         self.scan_2d = self.scan_modes[name]
         self._halt_acquisition()
         self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
-
 
     @property
     def scan_mode(self) -> ScanMode:
@@ -271,9 +280,10 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             if nm not in have:
                 self.sweep_axes["Voltage"].append(VoltageSweepAxis(name=nm))
 
-
     @staticmethod
-    def _generate_sweep_axes(gate_set, available_pulses) -> Dict[str, List[BaseSweepAxis]]: 
+    def _generate_sweep_axes(
+        gate_set, available_pulses
+    ) -> Dict[str, List[BaseSweepAxis]]:
         voltage_axes: List[VoltageSweepAxis] = []
         for channel_name in gate_set.valid_channel_names:
             if channel_name in gate_set.channels:
@@ -294,30 +304,32 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                     name=channel_name,
                     offset_parameter=offset_parameter,
                     attenuation=attenuation,
-                    component_id = f"{channel_name}_volt"
+                    component_id=f"{channel_name}_volt",
                 )
             )
         drive_axes: List[AmplitudeSweepAxis] = []
         freq_axes: List[FrequencySweepAxis] = []
-        for pulse in available_pulses: 
+        for pulse in available_pulses:
             channel_name = pulse.channel.name
             freq_axes.append(
-                FrequencySweepAxis(name = channel_name, 
-                          offset_parameter = pulse, 
-                          component_id = f"{channel_name}_freq"
+                FrequencySweepAxis(
+                    name=channel_name,
+                    offset_parameter=pulse,
+                    component_id=f"{channel_name}_freq",
                 )
             )
             drive_axes.append(
-                AmplitudeSweepAxis(name = channel_name, 
-                          offset_parameter = pulse,
-                          component_id = f"{channel_name}_amp"
+                AmplitudeSweepAxis(
+                    name=channel_name,
+                    offset_parameter=pulse,
+                    component_id=f"{channel_name}_amp",
                 )
             )
         return {
             "Voltage": voltage_axes,
             "Frequency": freq_axes,
-            "Amplitude": drive_axes
-            }
+            "Amplitude": drive_axes,
+        }
 
     def generate_qua_program(self) -> Program:
         """
@@ -325,7 +337,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         """
         x_qua_values = self.x_axis.qua_sweep_values
         y_qua_values = self.y_axis.qua_sweep_values
-            
+
         self.qua_inner_loop_action.selected_readout_channels = (
             self.selected_readout_channels
         )
@@ -341,8 +353,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 for x_qua_var, y_qua_var in self.scan_mode.scan(
                     x_vals=x_qua_values,
                     y_vals=y_qua_values,
-                    x_mode = self.x_mode, 
-                    y_mode = self.y_mode  # type: ignore
+                    x_mode=self.x_mode,
+                    y_mode=self.y_mode,  # type: ignore
                 ):
                     measured_qua_values = self.qua_inner_loop_action(
                         x_qua_var, y_qua_var
@@ -611,7 +623,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             flags |= il_flags
         except Exception as e:
             logger.warning("Inner-loop dispatch error: %s", e)
-            raise 
+            raise
 
         if self.component_id in parameters:
             params = parameters[self.component_id]
@@ -670,14 +682,17 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                     else:
                         flags |= ModifiedFlags.PARAMETERS_MODIFIED
 
-            if "x-mode" in params and params["x-mode"] != self.x_mode: 
+            if "x-mode" in params and params["x-mode"] != self.x_mode:
                 self.x_mode = params["x-mode"]
-                flags |= ModifiedFlags.PROGRAM_MODIFIED | ModifiedFlags.PARAMETERS_MODIFIED
+                flags |= (
+                    ModifiedFlags.PROGRAM_MODIFIED | ModifiedFlags.PARAMETERS_MODIFIED
+                )
 
-            if "y-mode" in params and params["y-mode"] != self.y_mode: 
+            if "y-mode" in params and params["y-mode"] != self.y_mode:
                 self.y_mode = params["y-mode"]
-                flags |= ModifiedFlags.PROGRAM_MODIFIED | ModifiedFlags.PARAMETERS_MODIFIED
-
+                flags |= (
+                    ModifiedFlags.PROGRAM_MODIFIED | ModifiedFlags.PARAMETERS_MODIFIED
+                )
 
         self._compilation_flags |= flags & (
             ModifiedFlags.PROGRAM_MODIFIED | ModifiedFlags.CONFIG_MODIFIED
@@ -846,4 +861,3 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             self._compilation_flags |= ModifiedFlags.CONFIG_MODIFIED
         else:
             self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
-

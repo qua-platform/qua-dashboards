@@ -33,7 +33,7 @@ class BaseSweepAxis(BaseUpdatableComponent):
         points: Optional[int] = None,
         label: Optional[str] = None,
         units: Optional[str] = None,
-        offset_parameter = None,
+        offset_parameter=None,
         component_id: Optional[str] = None,
     ):
         if component_id is None:
@@ -52,7 +52,7 @@ class BaseSweepAxis(BaseUpdatableComponent):
     def sweep_values(self):
         """Returns axis sweep values using span and points."""
         return np.linspace(-self.span / 2, self.span / 2, self.points)
-    
+
     @property
     def coord_name(self) -> str:
         return self._coord_name
@@ -61,9 +61,9 @@ class BaseSweepAxis(BaseUpdatableComponent):
     def sweep_values_with_offset(self):
         """Returns axis sweep values with offset."""
         return self.sweep_values + self.offset_parameter()
-    
-    @property 
-    def qua_sweep_values(self): 
+
+    @property
+    def qua_sweep_values(self):
         """Returns the actual array to be processed by the DataAcquirer"""
         return self.sweep_values
 
@@ -80,10 +80,9 @@ class BaseSweepAxis(BaseUpdatableComponent):
         """Declare the relevant QUA variables"""
         pass
 
-    def apply(self, value, past_value): 
+    def apply(self, value, past_value):
         """Apply the correct QUA command"""
         pass
-
 
     def create_axis_layout(self, min_span: float, max_span: Optional[float] = None):
         """Modified to use pattern-matching IDs"""
@@ -91,7 +90,7 @@ class BaseSweepAxis(BaseUpdatableComponent):
             raise ValueError(
                 f"Axis {self.name} must only contain alphanumeric characters and underscores."
             )
-        
+
         # Use pattern-matching IDs instead of regular IDs
         ids = {
             "span": {"type": "number-input", "index": f"{self.component_id}::span"},
@@ -117,7 +116,7 @@ class BaseSweepAxis(BaseUpdatableComponent):
                 step=1,
             ),
         ]
-        
+
         return dbc.Col(
             dbc.Card(
                 [
@@ -151,6 +150,5 @@ class BaseSweepAxis(BaseUpdatableComponent):
         if "points" in params and self.points != params["points"]:
             self.points = params["points"]
             flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
-
 
         return flags

@@ -27,19 +27,21 @@ class VoltageSweepAxis(BaseSweepAxis):
     def __init__(
         self,
         name: str,
-        offset_parameter = None,
+        offset_parameter=None,
         span: Optional[float] = None,
         points: Optional[int] = None,
         attenuation: float = 0,
         component_id: Optional[str] = None,
-        label: str = None
+        label: str = None,
     ):
-        super().__init__(component_id=component_id, 
-                         name = name, 
-                         span = span or DEFAULT_VOLTAGE_SPAN, 
-                         points = points or DEFAULT_VOLTAGE_POINTS, 
-                         units = "V", 
-                         offset_parameter = offset_parameter)
+        super().__init__(
+            component_id=component_id,
+            name=name,
+            span=span or DEFAULT_VOLTAGE_SPAN,
+            points=points or DEFAULT_VOLTAGE_POINTS,
+            units="V",
+            offset_parameter=offset_parameter,
+        )
         self.attenuation = attenuation
         self._coord_name = f"{name}_volts"
 
@@ -52,15 +54,15 @@ class VoltageSweepAxis(BaseSweepAxis):
     def sweep_values_with_offset(self):
         """Returns axis sweep values with offset."""
         offset = 0.0
-        if self.offset_parameter is not None: 
-            try: 
+        if self.offset_parameter is not None:
+            try:
                 offset = self.offset_parameter.get_latest()
-            except: 
+            except:
                 offset = 0.0
-        return self.sweep_values_unattenuated + offset 
-    
-    @property 
-    def qua_sweep_values(self) -> np.ndarray: 
+        return self.sweep_values_unattenuated + offset
+
+    @property
+    def qua_sweep_values(self) -> np.ndarray:
         """Returns the actual array to be processed by the DataAcquirer"""
         return np.array(self.sweep_values_unattenuated)
 
@@ -68,18 +70,18 @@ class VoltageSweepAxis(BaseSweepAxis):
     def scale(self):
         """Returns axis scale factor, calculated from attenuation."""
         return 10 ** (-self.attenuation / 20)
-    
-    def declare_vars(self): 
+
+    def declare_vars(self):
         self.last_val = declare(fixed)
         self.slope = declare(fixed)
         self.loop_current = declare(fixed)
         self.loop_past = declare(fixed)
-        
-    def apply(self, value: QuaVariableFloat) -> None: 
-        """ 
+
+    def apply(self, value: QuaVariableFloat) -> None:
+        """
         Apply command. Currently just updates the last voltage tracker
         """
-        assign(self.last_val, (value>>12)<<12)
+        assign(self.last_val, (value >> 12) << 12)
         return {}
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:

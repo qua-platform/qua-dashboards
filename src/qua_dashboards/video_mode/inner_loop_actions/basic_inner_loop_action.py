@@ -30,7 +30,7 @@ class BasicInnerLoopAction(InnerLoopAction):
     def __init__(
         self,
         gate_set: GateSet,
-        x_axis: BaseSweepAxis, 
+        x_axis: BaseSweepAxis,
         y_axis: BaseSweepAxis,
         pre_measurement_delay: int = 0,
         track_integrated_voltage: bool = False,
@@ -50,69 +50,77 @@ class BasicInnerLoopAction(InnerLoopAction):
         self.x_mode = "Voltage"
         self.y_mode = "Voltage"
 
-        
-
     def _pulse_for(self, ch):
         if ch.name not in self.readout_pulse_mapping.keys():
             raise ValueError("Channel not in registered readout pulses")
         else:
             return self.readout_pulse_mapping[ch.name]
-        
-    def _resolve_and_ramp(self, current_voltages, last_voltages): 
-        if not current_voltages: 
-            return 
-    
+
+    def _resolve_and_ramp(self, current_voltages, last_voltages):
+        if not current_voltages:
+            return
+
         last_resolved_voltages = self.gate_set.resolve_voltages(last_voltages)
         resolved_voltages = self.gate_set.resolve_voltages(current_voltages)
 
-        if self.x_axis.name in current_voltages: 
-            loop_current, loop_past, slope = self.x_axis.loop_current, self.x_axis.loop_past, self.x_axis.slope
-        elif self.y_axis.name in current_voltages: 
-            loop_current, loop_past, slope = self.y_axis.loop_current, self.y_axis.loop_past, self.y_axis.slope
+        if self.x_axis.name in current_voltages:
+            loop_current, loop_past, slope = (
+                self.x_axis.loop_current,
+                self.x_axis.loop_past,
+                self.x_axis.slope,
+            )
+        elif self.y_axis.name in current_voltages:
+            loop_current, loop_past, slope = (
+                self.y_axis.loop_current,
+                self.y_axis.loop_past,
+                self.y_axis.slope,
+            )
 
-        ramp_time = qua.fixed(1/self.ramp_duration/4)
+        ramp_time = qua.fixed(1 / self.ramp_duration / 4)
         for ch_string in self.gate_set.channels.keys():
-                qua.assign(loop_current, resolved_voltages[ch_string])
-                qua.assign(loop_current, (loop_current>>12)<<12)
-                qua.assign(loop_past, last_resolved_voltages[ch_string])
-                qua.assign(loop_past, (loop_past>>12)<<12)
-                applied_voltage = (
-                    loop_current - loop_past
-                )
-                qua.assign(slope, applied_voltage)
-                qua.assign(slope, (slope))
-                qua.assign(slope, slope * ramp_time)
-                qua.play(qua.ramp(slope), ch_string, duration=self.ramp_duration)
+            qua.assign(loop_current, resolved_voltages[ch_string])
+            qua.assign(loop_current, (loop_current >> 12) << 12)
+            qua.assign(loop_past, last_resolved_voltages[ch_string])
+            qua.assign(loop_past, (loop_past >> 12) << 12)
+            applied_voltage = loop_current - loop_past
+            qua.assign(slope, applied_voltage)
+            qua.assign(slope, (slope))
+            qua.assign(slope, slope * ramp_time)
+            qua.play(qua.ramp(slope), ch_string, duration=self.ramp_duration)
         return
 
-    
     def __call__(
         self, x: QuaVariableFloat, y: QuaVariableFloat
     ) -> List[QuaVariableFloat]:
-        
         # Solution until GateSet native VoltageSequence loop is validated
         x_voltage, y_voltage, x_last_v, y_last_v = {}, {}, {}, {}
-        if isinstance(self.x_axis, VoltageSweepAxis): 
-            x_voltage = {self.x_axis.name: (x>>12)<<12}
-            x_last_v = {self.x_axis.name: (self.x_axis.last_val >>12 ) <<12}
+        if isinstance(self.x_axis, VoltageSweepAxis):
+            x_voltage = {self.x_axis.name: (x >> 12) << 12}
+            x_last_v = {self.x_axis.name: (self.x_axis.last_val >> 12) << 12}
         if y is not None:
-            if isinstance(self.y_axis, VoltageSweepAxis): 
-                y_voltage = {self.y_axis.name: (y>>12)<<12}
-                y_last_v = {self.y_axis.name: (self.y_axis.last_val >>12 ) <<12}
-        voltages_now, voltages_last = {**x_voltage, **y_voltage}, {**x_last_v, **y_last_v}
+            if isinstance(self.y_axis, VoltageSweepAxis):
+                y_voltage = {self.y_axis.name: (y >> 12) << 12}
+                y_last_v = {self.y_axis.name: (self.y_axis.last_val >> 12) << 12}
+        voltages_now, voltages_last = (
+            {**x_voltage, **y_voltage},
+            {**x_last_v, **y_last_v},
+        )
 
         self._resolve_and_ramp(voltages_now, voltages_last)
 
         # Apply functions
-        # For FrequencySweepAxis, applies update_frequency and returns empty dict. 
+        # For FrequencySweepAxis, applies update_frequency and returns empty dict.
         # For VoltageSweepAxis, updates the axis.last_val (will be changed once VoltageSequence is validated) and returns empty dict.
-        # For AmplitudeSweepAxis, calculates amplitude scale and returns the scale as a dict component {element: scale}. 
+        # For AmplitudeSweepAxis, calculates amplitude scale and returns the scale as a dict component {element: scale}.
         # Add functionalities to existing BaseSweepAxis objects in their respective apply commands
-        # For new SweepAxis objects (e.g. QubitSweepAxis), simply have an apply command that returns an empty dict. 
+        # For new SweepAxis objects (e.g. QubitSweepAxis), simply have an apply command that returns an empty dict.
 
         x_apply = self.x_axis.apply(x)
         y_apply = self.y_axis.apply(y) if (self.y_axis and y is not None) else None
-        amplitude_scales = {**x_apply.get("amplitude_scales", {}), **(y_apply.get("amplitude_scales", {}) or {})}
+        amplitude_scales = {
+            **x_apply.get("amplitude_scales", {}),
+            **(y_apply.get("amplitude_scales", {}) or {}),
+        }
 
         qua.align()
         duration = max(
@@ -120,7 +128,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         )
         if self.pre_measurement_delay > 0:
             duration += self.pre_measurement_delay
-            qua.wait(duration//4)
+            qua.wait(duration // 4)
         qua.align()
         result = []
         for channel in self.selected_readout_channels:
@@ -128,7 +136,7 @@ class BasicInnerLoopAction(InnerLoopAction):
             scale = 1
             if elem in amplitude_scales:
                 scale = amplitude_scales.get(elem, 1)
-            I, Q = channel.measure(self._pulse_for(channel).id, amplitude_scale = scale)
+            I, Q = channel.measure(self._pulse_for(channel).id, amplitude_scale=scale)
             result.extend([I, Q])
         qua.align()
 
@@ -261,11 +269,13 @@ class BasicInnerLoopAction(InnerLoopAction):
                 flags |= ModifiedFlags.PARAMETERS_MODIFIED
                 flags |= ModifiedFlags.PROGRAM_MODIFIED
                 flags |= ModifiedFlags.CONFIG_MODIFIED
-            
+
             if dur not in (None, ""):
                 dur = int(dur)
                 if dur % 4 != 0:
-                    message = f"{name}: readout duration must be multiple of 4 (got {dur} ns)"
+                    message = (
+                        f"{name}: readout duration must be multiple of 4 (got {dur} ns)"
+                    )
                     raise ValueError(message)
                 if pulse.length != dur:
                     pulse.length = dur

@@ -35,6 +35,7 @@ class SharedViewerComponent(BaseComponent):
         self._current_figure: go.Figure = (
             self._get_default_figure()
         )  # Start with an empty dark figure
+        self._last_layout_update: Optional[Dict] = None
         logger.info(f"SharedViewerComponent '{self.component_id}' initialized.")
 
     def _get_default_figure(self) -> go.Figure:
@@ -175,10 +176,10 @@ class SharedViewerComponent(BaseComponent):
                         f"for key '{data_key}'. Displaying empty graph."
                     )
                 elif data_key == data_registry.LIVE_DATA_KEY:
-                    logger.debug(
-                        f"SharedViewer ({self.component_id}): Processing live data "
-                        f"for key '{data_key}'."
-                    )
+                    # logger.debug(
+                    #     f"SharedViewer ({self.component_id}): Processing live data "
+                    #     f"for key '{data_key}'."
+                    # )
                     fig_to_display = self._create_figure_from_live_data(data_object)
                 elif data_key == data_registry.STATIC_DATA_KEY:
                     logger.debug(
@@ -195,11 +196,13 @@ class SharedViewerComponent(BaseComponent):
 
             # Apply layout updates from the dedicated store
             if isinstance(layout_updates_input, dict):
-                logger.debug(
-                    f"SharedViewer ({self.component_id}): Applying layout updates: "
-                    f"{layout_updates_input}"
-                )
-                fig_to_display.update_layout(layout_updates_input)
+                if layout_updates_input != self._last_layout_update:
+                    logger.debug(
+                        f"SharedViewer ({self.component_id}): Applying layout updates: "
+                        f"{layout_updates_input}"
+                    )
+                    fig_to_display.update_layout(layout_updates_input)
+                    self._last_layout_update = layout_updates_input
 
             # Commented out because it causes annotation points to become barely visible
             # Preserve zoom/pan state (uirevision)

@@ -160,6 +160,7 @@ class AmplitudeSweepAxis(BaseSweepAxis):
                     pmin, pmax = unit.volts2dBm(vmin), unit.volts2dBm(vmax)
                     span_db = pmax - pmin
                     self.span = span_db
+                    self.units = "dBm"
                 else:
                     pmin, pmax = off - spn / 2, off + spn / 2
                     vmin, vmax = unit.dBm2volts(pmin), unit.dBm2volts(pmax)
@@ -167,6 +168,7 @@ class AmplitudeSweepAxis(BaseSweepAxis):
                     span_v = vmax - vmin
                     self.offset_parameter.amplitude = center_v
                     self.span = span_v
+                    self.units = "V"
 
             self.dbm = new_dbm
             flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED

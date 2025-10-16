@@ -268,7 +268,7 @@ class LiveViewTabController(BaseTabController):
             shared_viewer_store_ids: Dict[str, Any]
         ) -> None:
         @app.callback(
-            Output(shared_viewer_store_ids["layout_config_store"], "data"),
+            Output(shared_viewer_store_ids["layout_config_store"], "data", allow_duplicate = True),
             Input(self._get_id("center-marker-toggle"), "value"),
             Input(self._get_id("grid_opacity"), "value"),
             State(shared_viewer_store_ids["layout_config_store"], "data"),

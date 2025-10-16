@@ -67,7 +67,6 @@ from qua_dashboards.voltage_control import VoltageControlComponent
 
 def connect_to_qdac(address): 
     from qcodes_contrib_drivers.drivers.QDevil import QDAC2
-    from qcodes.parameters import DelegateParameter
     qdac = QDAC2.QDac2('QDAC', visalib='@py', address=f'TCPIP::{address}::5025::SOCKET')
     return qdac
 
@@ -139,6 +138,7 @@ def define_DC_params(machine: QuamRoot, gate_names: List[str]):
 
     Currently assumes VoltageGate objects, using 'offset_parameter" attribute.
     """
+    from qcodes.parameters import DelegateParameter
     voltage_parameters = []
     for ch_name in gate_names:
         ch = machine.channels[ch_name]
@@ -166,8 +166,8 @@ def main():
         qdac = connect_to_qdac(qdac_ip)
 
     # Define your readout pulses here. Each pulse should be uniquely mapped to your readout elements. 
-    readout_pulse_ch1 = pulses.SquareReadoutPulse(id="readout", length=1500, amplitude=0.1)
-    readout_pulse_ch2 = pulses.SquareReadoutPulse(id="readout", length=1500, amplitude=0.1)
+    readout_pulse_ch1 = pulses.SquareReadoutPulse(id="readout", length=100, amplitude=0.1)
+    readout_pulse_ch2 = pulses.SquareReadoutPulse(id="readout", length=100, amplitude=0.1)
 
     # Choose the FEM. For OPX+, keep fem = None. 
     fem = None
@@ -207,7 +207,8 @@ def main():
         y_axis_name="ch2",  # Must appear in gate_set.valid_channel_names; Virtual gate names also valid
         scan_modes=scan_mode_dict,
         result_type="I",  # "I", "Q", "amplitude", or "phase"
-        available_readout_pulses=[readout_pulse_ch1, readout_pulse_ch2] # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI. 
+        available_readout_pulses=[readout_pulse_ch1, readout_pulse_ch2], # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI. 
+        acquisition_interval_s=0.05
     )
 
     video_mode_component = VideoModeComponent(
@@ -221,6 +222,7 @@ def main():
     voltage_parameters = define_DC_params(machine, ["ch1", "ch2", "ch3"])
 
     if qdac is not None:
+        from qcodes.parameters import DelegateParameter
         # Currently no Quam channel to combine readout + DC control. Relevant QUAM components to come in the future
         voltage_parameters.extend([
             DelegateParameter(name = "ch1_readout", label = "ch1_readout", source = qdac.channel(4).dc_constant_V) if qdac else None, 

@@ -614,7 +614,7 @@ class VideoModeComponent(BaseComponent):
         def handle_tab_switch(new_active_tab_value: str) -> Tuple[Any, Any]:
             if not self.tab_controllers or not new_active_tab_value:
                 logger.warning("Tab switch triggered with no tabs or no new value.")
-                return no_update, no_update, no_update
+                return no_update, no_update, no_update, no_update
 
             # Only call deactivate if the tab actually changed from a known previous one
             if ctx.triggered_id and self._active_tab_value != new_active_tab_value:

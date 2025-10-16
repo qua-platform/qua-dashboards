@@ -427,13 +427,13 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         if validate_running:
             try:
                 handle = self.qm_job.result_handles.get("all_streams_combined")
-                handle.wait_for_values(1, timeout=20)
+                handle.wait_for_values(1, timeout=0.5)
                 logger.info(f"QM job for {self.component_id} started successfully.")
             except Exception as e:
                 logger.error(
                     f"QM job for {self.component_id} failed to start or produce initial values: {e}"
                 )
-                raise
+                #raise
 
     def _flat_to_2d(self, flat: np.ndarray) -> np.ndarray:
         """

@@ -7,7 +7,7 @@ import dash
 import dash_bootstrap_components as dbc
 import numpy as np
 import xarray as xr
-from dash import Dash, Input, Output, State, html, ctx, dcc, no_update
+from dash import Dash, Input, Output, State, html, ctx, dcc, no_update, ALL
 from dash.exceptions import PreventUpdate
 from plotly import graph_objects as go
 
@@ -22,6 +22,7 @@ from qua_dashboards.video_mode.utils.annotation_utils import (
     find_closest_line_id,
 )
 from qua_dashboards.video_mode.utils.data_utils import load_data
+from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import BaseDataAcquirer
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,7 @@ class AnnotationTabController(BaseTabController):
         self,
         component_id: str = "annotation-tab-controller",
         point_select_tolerance: float = 0.025,  # Relative
+        data_acquirer: BaseDataAcquirer = None,
         **kwargs: Any,
     ) -> None:
         """Initializes the AnnotationTabController.
@@ -109,8 +111,49 @@ class AnnotationTabController(BaseTabController):
             "clicked_point": None,
         }
         self._show_labels = ['points']
+        self._data_acquirer = data_acquirer
+        self._axis_modes = {"x_mode": None, "y_mode": None}
 
         logger.info(f"AnnotationTabController '{self.component_id}' initialized.")
+
+    @property
+    def _get_axis_modes(self) -> Dict[str, str]: 
+        if not self._data_acquirer: 
+            return {"x_mode": None, "y_mode": None}
+        
+        return {
+            "x_mode": (self._data_acquirer.x_mode or "").lower(),
+            "y_mode": (self._data_acquirer.y_mode or "").lower(),
+        }
+    
+    def _get_current_params(self, kind: str, axis: str) -> Optional[float]: 
+        if not self._data_acquirer:
+            return None
+        try:
+            if axis == "x":
+                axis_obj = self._data_acquirer.x_axis
+            elif axis == "y":
+                axis_obj = self._data_acquirer.y_axis
+            else:
+                return None
+            
+            if kind == "frequency":
+                if hasattr(axis_obj, 'offset_parameter') and axis_obj.offset_parameter:
+                    pulse = axis_obj.offset_parameter
+                    if hasattr(pulse, 'channel') and hasattr(pulse.channel, 'intermediate_frequency'):
+                        return float(pulse.channel.intermediate_frequency)
+            
+            elif kind == "amplitude":
+                if hasattr(axis_obj, 'offset_parameter') and axis_obj.offset_parameter:
+                    pulse = axis_obj.offset_parameter
+                    if hasattr(pulse, 'amplitude'):
+                        return float(pulse.amplitude)
+            
+            return None
+        
+        except Exception as e:
+            logger.warning(f"Error getting current param for {kind}/{axis}: {e}")
+            return None
 
     def _get_default_static_data_object(
         self, base_image: Optional[xr.DataArray] = None
@@ -156,6 +199,19 @@ class AnnotationTabController(BaseTabController):
         lid = f"l_{self._next_line_id_counter}"
         self._next_line_id_counter += 1
         return lid
+    
+    def _apply_dropdown_options(self): 
+        opts = []
+        axis_modes = self._get_axis_modes
+        xm, ym = axis_modes.get("x_mode"), axis_modes.get("y_mode")
+        if xm == "voltage" or ym == "voltage":
+            opts.append({"label": "Save points to VirtualGateSet", "value": "save_points_to_vgs"})
+        if xm == "frequency" or ym == "frequency":
+            opts.append({"label": "Frequency", "value": "frequency"})
+        if xm == "amplitude" or ym == "amplitude":
+            opts.append({"label": "Amplitude", "value": "amplitude"})
+        return opts
+
 
     def _reset_transient_state(self):
         """Resets transient UI state, typically when a new image is loaded."""
@@ -240,6 +296,33 @@ class AnnotationTabController(BaseTabController):
                     size="sm",
                     className="mb-3 me-2",
                 ),
+                html.Hr(), 
+                dbc.Row([
+                    dbc.Col(
+                        dcc.Dropdown(
+                            id=self._get_id("analysis-apply-action"),
+                            options=[],
+                            placeholder="Select action…",
+                            clearable=True,
+                            style={"color": "black"},
+                        ),
+                        width=8,
+                    ),
+                    dbc.Col(
+                        dbc.Button(
+                            "Apply to QUAM state",
+                            id=self._get_id("apply-analysis-button"),
+                            color="primary",
+                            className="w-100",
+                        ),
+                        width=4,
+                    ),
+                ], className="mb-2"),
+                html.Div(
+                    id=self._get_id("analysis-param-editor"),
+                    className="mt-2",
+                ),
+                html.Div(id=self._get_id("apply-analysis-status"), className="text-muted", style={"fontSize":"0.8em"}),
                 html.Hr(),
                 html.H6("Analysis"),
                 dbc.Button(
@@ -314,6 +397,17 @@ class AnnotationTabController(BaseTabController):
                 *other_components,
             ]
         )
+    
+    def _get_active_point(self, annotations: dict):
+        pts = (annotations or {}).get("points", []) or []
+        sel_id = None
+        if isinstance(self._selected_point_to_move, dict):
+            sel_id = self._selected_point_to_move.get("point_id")
+        if sel_id:
+            for p in pts:
+                if p.get("id") == sel_id:
+                    return p
+        return pts[-1] if pts else None
 
     def on_tab_activated(self) -> Dict[str, Any]:
         """Handles logic when the annotation tab becomes active."""
@@ -361,6 +455,8 @@ class AnnotationTabController(BaseTabController):
         }
         layout_config_payload = {"clickmode": "event+select"}
 
+        self._axis_modes = self._get_axis_modes
+
         return {
             VideoModeComponent.VIEWER_DATA_STORE_SUFFIX: viewer_data_store_payload,
             VideoModeComponent.VIEWER_UI_STATE_STORE_SUFFIX: viewer_ui_state_store_payload,
@@ -371,6 +467,10 @@ class AnnotationTabController(BaseTabController):
         """Handles logic when the annotation tab becomes inactive."""
         logger.info(f"{self.component_id} deactivated.")
         self._reset_transient_state()  # Clear selections when tab is left
+
+    def _is_1d_profile_mode(self) -> bool:
+        static = data_registry.get_data(data_registry.STATIC_DATA_KEY) or {}
+        return "profile_plot" in static
 
     def _is_subplot_mode(self) -> bool:
         """Check if current data has subplots (readout dimension)"""
@@ -396,6 +496,12 @@ class AnnotationTabController(BaseTabController):
             return
         
         if fig is None and isinstance(base_image_data, xr.DataArray):
+            if base_image_data.ndim == 1:
+                dim = base_image_data.dims[0]
+                coords = np.asarray(base_image_data.coords[dim].values, dtype=float)
+                span = float(coords.max() - coords.min()) if coords.size else 1.0
+                self._absolute_click_tolerance = span * self._relative_click_tolerance
+                return
             if base_image_data.ndim == 2 and "readout" not in base_image_data.dims:
                 try:
                     fig = xarray_to_plotly(base_image_data)
@@ -491,6 +597,276 @@ class AnnotationTabController(BaseTabController):
         self._register_reset_2d_callback(
             app, viewer_data_store_id
         )
+        self._register_param_editor_callback(app, viewer_data_store_id)
+        self._register_apply_options_callback(app, viewer_data_store_id)
+        self._register_apply_quam_callback(app, viewer_data_store_id)
+
+    def _register_apply_quam_callback(self, app: Dash, viewer_data_store_id: Dict[str, str]) -> None: 
+        @app.callback(
+            Output(self._get_id("apply-analysis-status"), "children"),
+            Input(self._get_id("apply-analysis-button"), "n_clicks"),
+            State(self._get_id("analysis-apply-action"), "value"),
+            State(viewer_data_store_id, "data"),
+            State({"comp": self.component_id, "kind": "save_points_to_vgs", "field": ALL}, "id"),
+            State({"comp": self.component_id, "kind": "save_points_to_vgs", "field": ALL}, "value"),
+            State({"axis": ALL, "comp": self.component_id, "kind": "frequency", "type": "param-input"}, "id"),
+            State({"axis": ALL, "comp": self.component_id, "kind": "frequency", "type": "param-input"}, "value"),
+            State({"axis": ALL, "comp": self.component_id, "kind": "amplitude", "type": "param-input"}, "id"),
+            State({"axis": ALL, "comp": self.component_id, "kind": "amplitude", "type": "param-input"}, "value"),
+
+            prevent_initial_call=True,
+        )
+        def _apply_to_quam(
+                n_clicks, 
+                action, 
+                viewer_ref,
+                spv_ids, 
+                spv_vals,
+                freq_ids,
+                freq_vals,
+                amp_ids,
+                amp_vals,
+            ):
+                if not n_clicks or not action:
+                    raise PreventUpdate
+                
+                name = selector = duration = None
+                for sid, val in zip(spv_ids or [], spv_vals or []):
+                    if sid.get("field") == "name": name = val
+                    elif sid.get("field") == "selector": selector = val
+                    elif sid.get("field") == "duration": duration = None if val in (None, "") else float(val)
+
+                if duration is not None:
+                    duration_int = int(duration)
+                    if duration_int % 4 != 0: 
+                        raise ValueError("Duration must be multiple of 4")
+                    duration = duration_int
+                                
+                freq_map = {}
+                for sid, val in zip(freq_ids or [], freq_vals or []):
+                    if isinstance(sid, dict) and sid.get("comp") == self.component_id:
+                        axis = sid.get("axis")
+                        if axis in ("x", "y"):
+                            freq_map[axis] = val
+
+                amp_map = {}
+                for sid, val in zip(amp_ids or [], amp_vals or []):
+                    if isinstance(sid, dict) and sid.get("comp") == self.component_id:
+                        axis = sid.get("axis")
+                        if axis in ("x", "y"):
+                            amp_map[axis] = val
+
+                freq_x, freq_y = freq_map.get("x"), freq_map.get("y")
+                amp_x,  amp_y  = amp_map.get("x"),  amp_map.get("y")
+                
+                if not viewer_ref or viewer_ref.get("key") != data_registry.STATIC_DATA_KEY:
+                    return dbc.Alert("No static data available", color="warning", dismissable=True)
+                
+                try:
+                    static_obj = data_registry.get_data(data_registry.STATIC_DATA_KEY) or {}
+                    annotations = static_obj.get("annotations", {}) or {}
+                    points = annotations.get("points", []) or []
+                    axis_modes = self._get_axis_modes
+
+                    if action == "save_points_to_vgs":
+                        if selector:
+                            point = next((p for p in points if p.get("id") == selector), None)
+                        else:
+                            point = points[-1] if points else None
+
+                        if not point:
+                            raise ValueError("No point selected")
+                        if not name:
+                            raise ValueError("No point name")
+
+                        voltages_dict = {}
+                        if axis_modes.get("x_mode") == "voltage":
+                            gate = self._data_acquirer.x_axis.name
+                            voltages_dict[gate] = float(point["x"])
+                        if axis_modes.get("y_mode") == "voltage":
+                            gate = self._data_acquirer.y_axis.name
+                            if gate != "dummy":
+                                voltages_dict[gate] = float(point["y"])
+
+                        if not voltages_dict:
+                            raise ValueError("No voltage axes found")
+
+                        vgs = self._data_acquirer.gate_set
+                        vgs.add_point(name, voltages_dict, duration=duration)
+
+                    elif action == "frequency":
+                
+                        if freq_x is not None and axis_modes.get("x_mode") == "frequency":
+                            pulse = self._data_acquirer.x_axis.offset_parameter
+                            pulse.channel.intermediate_frequency = float(freq_x)
+                        
+                        if freq_y is not None and axis_modes.get("y_mode") == "frequency":
+                            pulse = self._data_acquirer.y_axis.offset_parameter
+                            pulse.channel.intermediate_frequency = float(freq_y)
+
+                    elif action == "amplitude":
+                
+                        if amp_x is not None and axis_modes.get("x_mode") == "amplitude":
+                            pulse = self._data_acquirer.x_axis.offset_parameter
+                            pulse.amplitude = float(amp_x)
+                        
+                        if amp_y is not None and axis_modes.get("y_mode") == "amplitude":
+                            pulse = self._data_acquirer.y_axis.offset_parameter
+                            pulse.amplitude = float(amp_y)
+                    else:
+                        raise ValueError(f"Unknown action: {action}")
+                    
+                    return dbc.Alert("Update Applied", color = "success", dismissable = True, duration = 4000)
+                
+                except Exception as e:
+                    logger.error(f"Error applying to QUAM: {e}")
+                    return dbc.Alert(f"Error: {str(e)}", color="danger", dismissable=True)
+
+
+
+    def _register_param_editor_callback(self, app:Dash, viewer_data_store_id: Dict[str, str]) -> None: 
+        @app.callback(
+            Output(self._get_id("analysis-param-editor"), "children"), 
+            Input(self._get_id("analysis-apply-action"), "value"), 
+            Input(viewer_data_store_id, "data"), 
+            prevent_initial_call = True, 
+        )
+
+        def _render_param_rows(selected_kind, viewer_ref):
+            if not viewer_ref or viewer_ref.get("key") != data_registry.STATIC_DATA_KEY:
+                raise PreventUpdate
+
+            static_obj = data_registry.get_data(data_registry.STATIC_DATA_KEY) or {}
+            annotations = static_obj.get("annotations", {}) or {}
+            points = annotations.get("points", []) or []
+            active_pt = self._get_active_point(annotations)
+
+            if not selected_kind:
+                return []
+
+            selected_kind = str(selected_kind).lower()
+            logger.info(f"selected_kind: {selected_kind}")
+            logger.info(f"self._axis_modes: {self._axis_modes}")
+            if selected_kind == "save_points_to_vgs":
+                opts = [{"label": p.get("id", f"p?{i}"), "value": p.get("id", f"p?{i}")} for i, p in enumerate(points)]
+                default_val = active_pt.get("id") if active_pt else None
+                return [
+                    dbc.Row(
+                        [
+                            dbc.Col(html.Div("Point to save:"), width=4),
+                            dbc.Col(
+                                dcc.Dropdown(
+                                    id={"comp": self.component_id, "kind": "save_points_to_vgs", "field": "selector"},
+                                    options=opts,
+                                    value=default_val,
+                                    placeholder="Select a point (optional)",
+                                    clearable=True,
+                                    style={"color": "black"},
+                                ),
+                                width=8,
+                            ),
+                        ],
+                        className="g-2 mb-2",
+                    ),
+                    dbc.Row(
+                        [
+                            dbc.Col(html.Div("Point name:"), width=4),
+                            dbc.Col(
+                                dbc.Input(
+                                    id={"comp": self.component_id, "kind": "save_points_to_vgs", "field": "name"},
+                                    type="text",
+                                    value=None,
+                                    placeholder="Enter point name",
+                                ),
+                                width=8,
+                            ),
+                        ],
+                        className="g-2 mb-2",
+                    ),
+                    dbc.Row(
+                        [
+                            dbc.Col(html.Div("Point duration:"), width=4),
+                            dbc.Col(
+                                dbc.Input(
+                                    id={"comp": self.component_id, "kind": "save_points_to_vgs", "field": "duration"},
+                                    type="number",
+                                    value=None,
+                                    placeholder="Enter point duration",
+                                ),
+                                width=8,
+                            ),
+                        ],
+                        className="g-2 mb-2",
+                    ),
+                    html.Div("Press 'Apply to QUAM state' to save.", className="text-muted"),
+                ]
+
+            rows = []
+            for axis_key in ("x", "y"):
+                axis_mode = self._axis_modes.get(f"{axis_key}_mode")
+                logger.info(f"axis_key={axis_key}, axis_mode={axis_mode}, selected_kind={selected_kind}, match={axis_mode == selected_kind}")
+                if axis_mode != selected_kind:
+                    continue 
+                try:
+                    current_val = self._get_current_params(selected_kind, axis_key)
+                except Exception:
+                    current_val = None
+
+                new_val = None
+                if active_pt is not None:
+                    if axis_key == "x" and ("x" in active_pt):
+                        new_val = float(active_pt["x"])
+                    elif axis_key == "y" and ("y" in active_pt):
+                        yv = active_pt.get("y", None)
+                        if yv is not None:
+                            new_val = float(yv)
+
+                label = "IF" if selected_kind == "frequency" else "Amplitude"
+                axis_label = f"{axis_key.upper()}-axis"
+
+                rows.append(
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                html.Div(
+                                    f"Current {label}: {current_val if current_val is not None else '—'}  →  New {label}:",
+                                    className="mb-2",
+                                ),
+                                width=7,
+                            ),
+                            dbc.Col(
+                                dbc.Input(
+                                    id={"axis": axis_key, "comp": self.component_id, "kind": selected_kind, "type": "param-input"},
+                                    type="number",
+                                    value=new_val,
+                                    placeholder=f"Enter {label}",
+                                ),
+                                width=5,
+                            ),
+                        ],
+                        className="g-2 mb-2",
+                    )
+                )
+
+            if not rows:
+                label = "IF" if selected_kind == "frequency" else "Amplitude"
+                return [html.Div(f"No {label.lower()} axes active on tab activation.")]
+
+            return rows
+
+    def _register_apply_options_callback(self, app: Dash, viewer_data_store_id) -> None:
+        @app.callback(
+            Output(self._get_id("analysis-apply-action"), "options"),
+            Output(self._get_id("analysis-apply-action"), "value"),
+            Input(viewer_data_store_id, "data"),
+            State(self._get_id("analysis-apply-action"), "value"),
+            prevent_initial_call=False,
+        )
+        def _refresh_opts(_viewer_ref, current_value):
+            opts = self._apply_dropdown_options()
+            valid_values = {o["value"] for o in opts}
+            new_value = current_value if current_value in valid_values else None
+            return opts, new_value
 
     def _register_mode_change(
             self,
@@ -554,6 +930,7 @@ class AnnotationTabController(BaseTabController):
                 data_registry.STATIC_DATA_KEY, new_static_object
             )
             self._reset_transient_state()
+            self._axis_modes = self._get_axis_modes
             viewer_ui_state_store_payload = {
                 "selected_point_to_move": self._selected_point_to_move["point_id"],
                 "selected_point_for_line": self._selected_indices_for_line,

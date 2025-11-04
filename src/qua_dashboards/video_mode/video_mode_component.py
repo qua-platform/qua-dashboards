@@ -126,6 +126,7 @@ class VideoModeComponent(BaseComponent):
             )
             annotation_tab = AnnotationTabController(
                 component_id=f"{self.component_id}-annotation-tab",
+                data_acquirer = self.data_acquirer
             )
             settings_tab = SettingsTabController(
                 component_id = f"{self.component_id}-settings-tab",

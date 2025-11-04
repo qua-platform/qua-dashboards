@@ -337,7 +337,10 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         Generates the QUA program for the 2D scan.
         """
         x_qua_values = self.x_axis.qua_sweep_values
-        y_qua_values = self.y_axis.qua_sweep_values
+        if self._is_1d:
+            y_qua_values = None
+        else:
+            y_qua_values = self.y_axis.qua_sweep_values
 
         self.qua_inner_loop_action.selected_readout_channels = (
             self.selected_readout_channels
@@ -354,9 +357,9 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
                 for x_qua_var, y_qua_var in self.scan_mode.scan(
                     x_vals=x_qua_values,
-                    y_vals=y_qua_values,
+                    y_vals=(y_qua_values if not self._is_1d else None),
                     x_mode=self.x_mode,
-                    y_mode=self.y_mode,  # type: ignore
+                    y_mode=(self.y_mode if not self._is_1d else None),  # type: ignore
                 ):
                     measured_qua_values = self.qua_inner_loop_action(
                         x_qua_var, y_qua_var

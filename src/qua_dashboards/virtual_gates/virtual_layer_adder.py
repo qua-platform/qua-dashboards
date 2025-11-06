@@ -28,17 +28,18 @@ class VirtualLayerAdder:
         """
         K = len(source_gates)
         M = len(target_gates)
+        col_width = 12 // (K + 1)
 
-        header = [ dbc.Col(html.B("→ / ↓"), width = 2) ] + [
+        header = [ dbc.Col(html.B("→ / ↓"), width = col_width) ] + [
             dbc.Col(dcc.Input(
                 id = {"type":"vg-source-column", "index":self.component_id, "col": j}, 
-                value = source_gates[j], style = {"width":"100%", "textAlign":"center"}
-            ), width = 2) for j in range(K)
+                value = source_gates[j], style = {"width":"auto", "textAlign":"center"}
+            ), width = col_width) for j in range(K)
         ]
 
         rows = []
         for i, row_name in enumerate(target_gates):
-            cells = [dbc.Col(html.B(row_name), width = 2)] 
+            cells = [dbc.Col(html.B(row_name), width = col_width)] 
             for j in range(K):
                 default_value = 1.0 if (i==j) else 0.0
                 cells.append(
@@ -48,9 +49,9 @@ class VirtualLayerAdder:
                               "row":i,"col":j},
                               type = "number",
                               value = default_value, 
-                              style = {"width":"100%", "textAlign":"center"}
+                              style = {"width":"auto", "textAlign":"center"}
                               
-                    ), width = 2)
+                    ), width = col_width)
                 )
             rows.append(dbc.Row(cells, className="mb-1"))
         return [dbc.Row(header, className="mb-2"), *rows]

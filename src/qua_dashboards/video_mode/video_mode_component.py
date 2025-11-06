@@ -1,5 +1,8 @@
 import logging
 from typing import Any, Dict, List, Optional, Tuple
+import threading, time, requests
+from flask import url_for
+import time
 
 import dash_bootstrap_components as dbc
 
@@ -88,6 +91,7 @@ class VideoModeComponent(BaseComponent):
         data_polling_interval_s: float = 0.1,
         layout_columns: int = 12,
         layout_rows: int = 10,
+        shutdown_callback: Optional[callable] = None,
         **kwargs: Any,
     ):
         """Initializes the VideoModeComponent.
@@ -112,6 +116,7 @@ class VideoModeComponent(BaseComponent):
         self.shared_viewer: SharedViewerComponent = SharedViewerComponent(
             component_id=f"{self.component_id}-shared-viewer"
         )
+        self.shutdown_callback = shutdown_callback
 
         if tab_controllers is None:
             logger.info(
@@ -221,12 +226,22 @@ class VideoModeComponent(BaseComponent):
             # persistence_type="session",
         )
 
-        # --- Save Button Row (for future extensibility, use dbc.Row with one button for now) ---
+        shutdown_button = html.Div([
+            dbc.Button(
+                "CLOSE", 
+                id=self._get_id("shutdown-button"),
+                color="danger", 
+                size="sm", 
+                style={"position": "fixed", "top": "10px", "zIndex": 9999}
+            ), 
+            html.Div(id=self._get_id("shutdown-output"))
+        ])
+
         bottom_left_row = dbc.Row(
             [
                 dbc.Col(
                     dbc.Button(
-                        "Save",
+                        "Save Data",
                         id=self._get_id("save-button"),
                         color="success",
                         className="me-2",
@@ -301,8 +316,9 @@ class VideoModeComponent(BaseComponent):
                         dbc.Col(
                             [
                                 left_panel_controls,
-                                bottom_left_row,  # Insert buttons (save, ...)
+                                bottom_left_row,
                                 notes_row,
+                                shutdown_button,
                             ],
                             width=12,
                             lg=4,
@@ -393,6 +409,27 @@ class VideoModeComponent(BaseComponent):
         self._register_data_polling_interval_callback(app)
         self._register_tab_switching_callback(app)
         self._register_quam_save_button_callback(app)
+
+        @app.callback(
+            Output(self._get_id("shutdown-output"), "children"),
+            Input(self._get_id("shutdown-button"), "n_clicks"),
+            prevent_initial_call=True,
+        )
+        def shutdown_button_cb(n_clicks):
+            if not n_clicks:
+                raise PreventUpdate
+            
+            logger.info("Shutdown button clicked - calling shutdown callback")
+            
+            if self.shutdown_callback:
+                def delayed_shutdown():
+                    time.sleep(0.5) 
+                    self.shutdown_callback() 
+                
+                threading.Thread(target=delayed_shutdown, daemon=True).start()
+                return "Shutting down video mode..."
+            else:
+                return "Shutdown not available"
 
         # Register save button callback
         @app.callback(

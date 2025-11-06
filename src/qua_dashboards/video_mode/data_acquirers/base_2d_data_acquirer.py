@@ -34,6 +34,8 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         y_axis_name: str,
         component_id: str,
         acquisition_interval_s: float = 0.1,
+        x_mode: str = "Voltage", 
+        y_mode: str = "Voltage",
         **kwargs: Any,
     ) -> None:
         """
@@ -55,7 +57,7 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         # Store all axes and resolve selected X/Y by name
         self.sweep_axes = sweep_axes
 
-        if x_axis_name == y_axis_name:
+        if x_axis_name == y_axis_name and x_mode == y_mode:
             raise ValueError("x_axis_name and y_axis_name must be different")
         self.x_axis_name = x_axis_name
         self.y_axis_name = y_axis_name
@@ -83,8 +85,8 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         }
         self.selected_function = self.post_processing_functions["Raw_data"]
 
-        self.x_mode = "Voltage"
-        self.y_mode = "Voltage"
+        self.x_mode = x_mode
+        self.y_mode = y_mode
 
     @property
     def _is_1d(self) -> bool:

@@ -32,12 +32,13 @@ class VirtualLayerEditor(BaseComponent):
     def _render_matrix_editor(self, layer_idx):
         layer = self.gateset.layers[layer_idx]
         N = len(layer.source_gates)
-        header = [dbc.Col("", width=2)] + [
-            dbc.Col(html.B(name), width=2) for name in layer.source_gates
+        col_width = 12 // (N + 1)
+        header = [dbc.Col("", width=col_width)] + [
+            dbc.Col(html.B(name), width=col_width) for name in layer.source_gates
         ]
         rows = []
         for i, row_name in enumerate(layer.target_gates):
-            row = [dbc.Col(html.B(row_name), width=2)]
+            row = [dbc.Col(html.B(row_name), width=col_width)]
             for j in range(N):
                 row.append(
                     dbc.Col(
@@ -45,8 +46,9 @@ class VirtualLayerEditor(BaseComponent):
                             id={"type": "edit-matrix-cell", "layer": layer_idx, "row": i, "col": j},
                             type="number",
                             value=layer.matrix[i][j],
+                            style={"width": "auto"}
                         ),
-                        width=2,
+                        width=col_width,
                     )
                 )
             rows.append(dbc.Row(row, className="mb-1"))

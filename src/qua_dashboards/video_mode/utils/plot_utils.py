@@ -383,6 +383,9 @@ def apply_annotations(
     """
     if not isinstance(annotations, dict):
         return fig
+    
+    if da is None:
+        return fig
 
     is_multipane = da.ndim == 3 and "readout" in da.dims
     n_readouts = int(da.sizes["readout"]) if is_multipane else 1

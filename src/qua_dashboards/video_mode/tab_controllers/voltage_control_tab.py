@@ -1,22 +1,15 @@
 import logging
 import uuid
-from typing import Any, Dict, Union
-
+from typing import Any, Dict
 import dash_bootstrap_components as dbc
 import dash
-from dash import Dash, Input, Output, State, html, ctx, ALL, dcc
-
-from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import (
-    BaseDataAcquirer,
-    ModifiedFlags,
-)
-import numpy as np
+from dash import html
 from qua_dashboards.video_mode.tab_controllers.base_tab_controller import (
     BaseTabController,
 )
 from qua_dashboards.video_mode import data_registry
-
 from qua_dashboards.voltage_control.voltage_control_component import VoltageControlComponent
+
 logger = logging.getLogger(__name__)
 
 __all__ = ["VoltageControlTab"]

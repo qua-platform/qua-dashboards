@@ -21,7 +21,7 @@ class VoltageControlTabController(BaseTabController):
     This tab allows users to change the values of the 
     """
     
-    _TAB_LABEL = "Voltage Control View"
+    _TAB_LABEL = "Voltage Control"
     _TAB_VALUE = "voltage-control-tab"
 
 

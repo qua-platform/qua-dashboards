@@ -211,12 +211,6 @@ def main():
         acquisition_interval_s=0.05
     )
 
-    video_mode_component = VideoModeComponent(
-        data_acquirer=data_acquirer,
-        data_polling_interval_s=0.5,  # How often the dashboard polls for new data
-        save_path = r"C:\Users\..."
-    )
-
     virtual_gating_component = VirtualLayerEditor(gateset = virtual_gate_set, component_id = 'virtual-gates-ui')
 
     voltage_parameters = define_DC_params(machine, ["ch1", "ch2", "ch3"])
@@ -228,17 +222,24 @@ def main():
             DelegateParameter(name = "ch1_readout", label = "ch1_readout", source = qdac.channel(4).dc_constant_V) if qdac else None, 
             DelegateParameter(name = "ch2_readout", label = "ch2_readout", source = qdac.channel(5).dc_constant_V) if qdac else None
             ])
-
-    components = [video_mode_component, virtual_gating_component]
-
+    
+    voltage_control_tab = None
     if qdac is not None: 
-        components.append(
-            VoltageControlComponent(
-                component_id="Voltage_Control",
-                voltage_parameters=voltage_parameters,
-                update_interval_ms=1000,
-            )
+        voltage_control_component = VoltageControlComponent(
+            component_id="Voltage_Control",
+            voltage_parameters=voltage_parameters,
+            update_interval_ms=1000,
         )
+        from qua_dashboards.video_mode.tab_controllers import VoltageControlTabController
+        voltage_control_tab = VoltageControlTabController(voltage_control_component = voltage_control_component)
+
+    video_mode_component = VideoModeComponent(
+        data_acquirer=data_acquirer,
+        data_polling_interval_s=0.5,  # How often the dashboard polls for new data
+        voltage_control_tab = voltage_control_tab,
+        save_path = r"C:\Users\..."
+    )
+    components = [video_mode_component, virtual_gating_component]
 
     app = build_dashboard(
         components = components,

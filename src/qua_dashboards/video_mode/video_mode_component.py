@@ -29,6 +29,10 @@ from qua_dashboards.video_mode.tab_controllers.annotation_tab_controller import 
 from qua_dashboards.video_mode.tab_controllers.settings_tab_controller import (
     SettingsTabController,
 )
+from qua_dashboards.video_mode.tab_controllers.voltage_control_tab import (
+    VoltageControlTabController,
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +96,7 @@ class VideoModeComponent(BaseComponent):
         layout_columns: int = 12,
         layout_rows: int = 10,
         shutdown_callback: Optional[callable] = None,
+        voltage_control_tab: Optional[VoltageControlTabController] = None,
         **kwargs: Any,
     ):
         """Initializes the VideoModeComponent.
@@ -99,7 +104,7 @@ class VideoModeComponent(BaseComponent):
         Args:
             data_acquirer: The data acquirer instance.
             tab_controllers: Optional list of ITabController instances.
-                If None, default controllers (LiveView, Annotation) are used.
+                If None, default controllers (LiveView, Annotation, Settings) are used.
             default_tab_value: Value of the tab to be active by default.
             component_id: Unique ID for this component instance.
             data_polling_interval_s: Interval for polling data.
@@ -144,6 +149,9 @@ class VideoModeComponent(BaseComponent):
             ]
         else:
             self.tab_controllers = tab_controllers
+        
+        if voltage_control_tab is not None: 
+            self.tab_controllers.insert(1, voltage_control_tab)
 
         if not self.tab_controllers:
             logger.warning(
@@ -615,7 +623,7 @@ class VideoModeComponent(BaseComponent):
                 latest_processed_data_ref_for_store = data_reference
 
                 for tab_controller in self.tab_controllers:
-                    if not isinstance(tab_controller, LiveViewTabController):
+                    if not isinstance(tab_controller, (LiveViewTabController, VoltageControlTabController)):
                         continue
 
                     if tab_controller.get_tab_value() == active_tab_value:

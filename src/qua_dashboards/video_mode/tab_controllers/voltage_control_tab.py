@@ -18,7 +18,8 @@ class VoltageControlTabController(BaseTabController):
     """
     Controls the VoltageControl Tab Controller. 
 
-    This tab allows users to change the values of the 
+    This tab allows users to change the external voltage values via a UI, as a tab component of the VideoModeComponent. 
+    The inclusion of this tab is optional. It uses the VoltageControlComponent, which can be used externally of VideoModeComponent. 
     """
     
     _TAB_LABEL = "Voltage Control"

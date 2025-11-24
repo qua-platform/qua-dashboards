@@ -18,15 +18,20 @@ We will go through a simple example to demonstrate the video mode. Most of the c
 
 If you don't have access to an OPX but still want to try the video mode, see the `Simulated Video Mode`section in `Advanced Usage`
 
-First, we assume that a `QuantumMachinesManager` is already connected with variable `qmm`, with a corresponding `qua_config` dictionary.
+First, we assume that a `QuantumMachinesManager` is already connected with variable `qmm`.
 
 
 ### Scan mode
 
-Next we define the scan mode, which in this case is a raster scan.
+First we can define the dictionary of scan modes to pass to Video Mode, so that one can easily switch scan modes in the UI. For this, we can import the scan modes as follows. 
+
 ```python
 from qua_dashboards.video_mode import scan_modes
-scan_mode = scan_modes.RasterScan()
+scan_mode_dict = {
+    "Switch_Raster_Scan": scan_modes.SwitchRasterScan(), 
+    "Raster_Scan": scan_modes.RasterScan(), 
+    "Spiral_Scan": scan_modes.SpiralScan(),
+}
 ```
 
 This scan can be visualized by calling
@@ -39,70 +44,93 @@ where `x_points` and `y_points` are the number of sweep points along each axis.
 
 The user has full freedom in the definition of the most inner loop sequence performed by the OPX which is defined under the `__call__()` method of an `InnerLoopAction` subclass.
 
-For example, the `BasicInnerLoopAction` performs a reflectometry measurement after updating the offsets of the x and y elements and waiting for a pre-measurement delay:
+For example, the `BasicInnerLoopAction` performs a reflectometry measurement after applying the relevant SweepAxis changes; in the default case, changing the x and y voltage values:
 
 ```python
-def __call__(self, x: QuaVariableType, y: QuaVariableType) -> Tuple[QuaVariableType, QuaVariableType]:
-    outputs = {"I": declare(fixed), "Q": declare(fixed)}
+def __call__(
+        self, x: QuaVariableFloat, y: QuaVariableFloat
+    ) -> List[QuaVariableFloat]:
 
-    set_dc_offset(self.x_elem, "single", x)
-    set_dc_offset(self.y_elem, "single", y)
-    align()
-    pre_measurement_delay_cycles = int(self.pre_measurement_delay * 1e9 // 4)
-    if pre_measurement_delay_cycles >= 4:
-        wait(pre_measurement_delay_cycles)
-    measure(
-        self.readout_pulse,
-        self.readout_elem,
-        None,
-        demod.full("cos", outputs["I"]),
-        demod.full("sin", outputs["Q"]),
-    )
+        # Apply functions
+        # For FrequencySweepAxis, applies update_frequency and returns empty dict.
+        # For VoltageSweepAxis, updates the axis.last_val (will be changed once VoltageSequence is validated) and returns empty dict.
+        # For AmplitudeSweepAxis, calculates amplitude scale and returns the scale as a dict component {element: scale}.
+        # Add functionalities to existing BaseSweepAxis objects in their respective apply commands
+        # For new SweepAxis objects (e.g. QubitSweepAxis), simply have an apply command that returns an empty dict.
 
-    return outputs["I"], outputs["Q"]
+        x_apply = self.x_axis.apply(x)
+        y_apply = self.y_axis.apply(y) if (self.y_axis and y is not None) else None
+        amplitude_scales = {
+            **x_apply.get("amplitude_scales", {}),
+            **(y_apply.get("amplitude_scales", {}) or {}),
+        } if y_apply is not None else {**x_apply.get("amplitude_scales", {})}
+
+        qua.align()
+        duration = max(
+            self._pulse_for(op).length for op in self.selected_readout_channels
+        )
+        if self.pre_measurement_delay > 0:
+            duration += self.pre_measurement_delay
+            qua.wait(duration // 4)
+        qua.align()
+        result = []
+        for channel in self.selected_readout_channels:
+            elem = channel.name
+            scale = 1
+            if elem in amplitude_scales:
+                scale = amplitude_scales.get(elem, 1)
+            I, Q = channel.measure(self._pulse_for(channel).id, amplitude_scale=scale)
+            result.extend([I, Q])
+        qua.align()
+
+        for channel in self.selected_readout_channels:
+            qua.ramp_to_zero(channel.name, duration=self.ramp_duration)
+        qua.align()
+        qua.wait(2000)
+
+        return result
 ```
 
-For this tutorial we will instantiate the `BasicInnerLoopAction` class:
-
-```python
-# Define the inner loop action
-from qua_dashboards.video_mode.inner_loop_actions import InnerLoopAction
-inner_loop_action = BasicInnerLoopAction(
-    x_element="output_ch1",  # Must be a valid QUA element
-    y_element="output_ch2",  # Must be a valid QUA element
-    integration_time=10e-6,  # Integration time in seconds
-    readout_element="measure_ch",  # Must be a valid QUA element
-    readout_pulse="readout",  # Name of the readout pulse registered in the readout_element
-)
-```
-
-
-
+The `BasicInnerLoopAction` is instantiated automatically in the OPXDataAcquirer. If another inner loop action is preferred, instantiate it separately and hand it to the OPXDataAcquirer as an argument. 
 Note that this `BasicInnerLoopAction` assumes that the `readout_pulse` has two integration weights called `cos` and `sin`
 
-Next we define the sweep axes, which define the values that the 2D scan will take as coordinates.
+
+## GateSet
+
+ Next, we must instantiate the GateSet. The GateSet serves as an abstraction to the handling of OPX outputs, as a combined means of operating quantum dot devices. This is explored in great detail in the relevant README. Virtual gates are available through the use of VirtualGateSet, which will be instantiated in this example. 
 
 ```python
-from qualang_tools.control_panel.video_mode.sweep_axis import SweepAxis
-x_axis = SweepAxis(
-    name="voltage_gate1",  # Sweep axis name, used among others for plotting
-    span=0.03,  # Span of the sweep in volts
-    points=51,  # Number of points to sweep
+from quam_builder.architecture.quantum_dots.components import VirtualGateSet  # Requires quam-builder
+channels = {
+    "ch1": machine.channels["ch1"].get_reference(), # .get_reference() necessary to avoid reparenting the Quam component
+    "ch2": machine.channels["ch2"].get_reference(),
+    "ch1_readout": machine.channels["ch1_readout"].get_reference()
+}
+gate_set = VirtualGateSet(id = "Plungers", channels = channels)
+gate_set.add_layer(
+    source_gates = ["V1", "V2"], # Pick the virtual gate names here 
+    target_gates = ["ch1", "ch2"], # Must be a subset of gates in the gate_set
+    matrix = [[1, 0.2], [0.2, 1]] # Any example matrix
 )
-y_axis = SweepAxis(name="voltage_gate2", span=0.03, points=51)
+machine.gate_set = gate_set
 ```
-The `SweepAxis` contains additional attributes, such as attenuation and a voltage offset, the latter of which is described in `Advanced Usage`.
 
-Next we define the data acquirer, which is the object that will handle the data acquisition.
+## OPXDataAcquirer
+
+To use Video Mode, instantiate the OPXDataAcquirer. The OPXDataAcquirer takes the instantiated GateSet, as well as a series of readout_pulse objects to use for readout. Note that the frequency and pulse amplitudes of the channels associated with these readout pulses will be sweep-able. 
+
 ```python
 from qua_dashboards.video_mode.data_acquirer import OPXDataAcquirer
 data_acquirer = OPXDataAcquirer(
     qmm=qmm,
-    qua_config=qua_config,
-    qua_inner_loop_action=inner_loop_action,
-    scan_mode=scan_mode,
-    x_axis=x_axis,
-    y_axis=y_axis,
+    machine=machine,
+    gate_set=virtual_gate_set,  # Replace with your GateSet instance
+    x_axis_name="ch1",  # Must appear in gate_set.valid_channel_names; Virtual gate names also valid
+    y_axis_name="ch2",  # Must appear in gate_set.valid_channel_names; Virtual gate names also valid
+    scan_modes=scan_mode_dict,
+    result_type="I",  # "I", "Q", "amplitude", or "phase"
+    available_readout_pulses=[readout_pulse_ch1, readout_pulse_ch2], # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI. 
+    acquisition_interval_s=0.05
 )
 ```
 
@@ -114,14 +142,24 @@ results = data_acquirer.acquire_data()
 
 Finally, we can start the video mode.
 ```python
-from qua_dashboards.video_mode.video_mode import VideoModeApp
-video_mode = VideoModeApp(data_acquirer=data_acquirer)
-video_mode.run()
+from qua_dashboards.video_mode import VideoModeComponent
+video_mode_component = VideoModeComponent(
+    data_acquirer=data_acquirer,
+    data_polling_interval_s=0.5,  # How often the dashboard polls for new data
+    save_path = save_path
+)
+app = build_dashboard(
+    components=[video_mode_component],
+    title="OPX Video Mode Dashboard",  # Title for the web page
+)
+logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
+app.run(debug=True, host="0.0.0.0", port=8050, use_reloader=False)
 ```
 
-Note that if you want to run this code in an interactive environment such as a Jupyter notebook, you should use `video_mode.run(use_reloader=False)`.
 
 You can now access video mode from your browser at `http://localhost:8050/` (the port may be different, see the output logs for details).
+
+Note that one can add the VoltageControlTabController to VideoModeComponent for combined control of OPX voltages with external voltage sources. 
 
 
 ## Advanced Usage
@@ -137,7 +175,7 @@ x_offset()  # Returns the DC voltage, e.g. 0.62
 
 In this case, we can pass this parameter to the `SweepAxis` class to define the sweep offset.
 ```python
-x_axis = SweepAxis(name="gate", span=0.03, points=51, offset_parameter=x_offset)
+x_axis = VoltageSweepAxis(name="gate", span=0.03, points=51, offset_parameter=x_offset)
 ```
 The video mode plot should now correctly show the sweep axes with the correct offset.
 

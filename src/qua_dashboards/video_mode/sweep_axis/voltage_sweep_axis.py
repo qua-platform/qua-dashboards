@@ -72,17 +72,15 @@ class VoltageSweepAxis(BaseSweepAxis):
         return 10 ** (-self.attenuation / 20)
 
     def declare_vars(self):
-        self.last_val = declare(fixed)
-        self.slope = declare(fixed)
-        self.loop_current = declare(fixed)
-        self.loop_past = declare(fixed)
+        self.val = declare(fixed)
 
     def apply(self, value: QuaVariableFloat) -> None:
         """
         Apply command. Currently just updates the last voltage tracker
         """
-        assign(self.last_val, (value >> 12) << 12)
-        return {}
+        # assign(self.last_val, (value >> 12) << 12)
+        assign(self.val, value)
+        return {"voltage": {self.name: self.val}}
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
         """

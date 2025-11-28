@@ -47,9 +47,17 @@ class VoltageControlTabController(BaseTabController):
         )
     
 
-    def register_callbacks(self, app: dash.Dash, orchestrator_stores: str, shared_viewer_store_ids: str) -> None:
-        return self.voltage_control_component.register_callbacks(app)
-    
+    def register_callbacks(
+        self, 
+        app: dash.Dash, 
+        orchestrator_stores: Dict[str, Any],
+        shared_viewer_store_ids: Dict[str, Any],
+    ) -> None:
+        logger.info(
+            f"Registering callbacks for VoltageControlTabController '{self.component_id}'."
+        )
+        self.voltage_control_component.register_callbacks(app)
+        
 
     def on_tab_activated(self) -> Dict[str, Any]:
         """

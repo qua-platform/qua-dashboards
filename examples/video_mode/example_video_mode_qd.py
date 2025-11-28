@@ -56,6 +56,10 @@ logger = setup_logging(__name__)
 
 # %% Create QUAM Machine Configuration and Connect to Quantum Machines Manager (QMM)
 
+###########################################
+###### Instantiate physical channels ######
+###########################################
+
 # Initialize a basic QUAM machine object.
 # This object will be used to define the quantum hardware configuration (channels, pulses, etc.)
 # and generate the QUA configuration for the OPX.
@@ -147,10 +151,10 @@ machine.register_channel_elements(
 ###### Connect the physical channels to the external source ######
 ##################################################################
 
-qdac_connect = True
+qdac_connect = False
 voltage_control_tab = None
 if qdac_connect: 
-    qdac_ip = "172.16.33.101"
+    qdac_ip = "127.0.0.2"
     name = "QDAC"
     from qcodes import Instrument
     from qcodes_contrib_drivers.drivers.QDevil import QDAC2
@@ -184,7 +188,7 @@ if qdac_connect:
 # --- QMM Connection ---
 # Replace with your actual OPX host and cluster name
 # Example: qmm = QuantumMachinesManager(host="your_opx_ip", cluster_name="your_cluster")
-qmm = QuantumMachinesManager(host="172.16.33.115", cluster_name="CS_3")
+qmm = QuantumMachinesManager(host="127.0.0.1", cluster_name="CS_1")
 
 # Generate the QUA configuration from the QUAM machine object
 config = machine.generate_config()

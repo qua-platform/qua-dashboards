@@ -73,6 +73,11 @@ p2 = VoltageGate(
     opx_output=("con1", lf_fem, 2),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
 )
+b1 = VoltageGate(
+    id = "barrier_1",
+    opx_output=("con1", lf_fem, 3),  # OPX controller and port
+    sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
+)
 s1 = VoltageGate(
     id = "sensor_1",
     opx_output=("con1", lf_fem, 8),  # OPX controller and port
@@ -91,7 +96,7 @@ resonator = ReadoutResonatorSingle(
     operations = {"readout": readout_pulse}, 
     opx_output = ports.LFFEMAnalogOutputPort("con1", lf_fem, port_id = 1), 
     opx_input = ports.LFFEMAnalogInputPort("con1", lf_fem, port_id = 2),
-    sticky = StickyChannelAddon(duration = 16, digital = False), 
+    sticky=StickyChannelAddon(duration=1_000, digital=False)
 )
 
 readout_pulse2 = pulses.SquareReadoutPulse(length = 200, id = "readout", amplitude = 0.01)
@@ -101,7 +106,7 @@ resonator2 = ReadoutResonatorSingle(
     operations = {"readout": readout_pulse2}, 
     opx_output = ports.LFFEMAnalogOutputPort("con1", lf_fem, port_id = 1), 
     opx_input = ports.LFFEMAnalogInputPort("con1", lf_fem, port_id = 2),
-    sticky = StickyChannelAddon(duration = 16, digital = False), 
+    sticky=StickyChannelAddon(duration=1_000, digital=False)
 )
 
 # %%
@@ -118,6 +123,7 @@ machine.create_virtual_gate_set(
     virtual_channel_mapping = {
         "virtual_dot_1": p1,
         "virtual_dot_2": p2,
+        "virtual_barrier_1": b1,
         "virtual_sensor_1": s1,
         "virtual_sensor_2": s2,
     },
@@ -132,7 +138,7 @@ machine.create_virtual_gate_set(
 # Shortcut function to register QuantumDots, SensorDots, BarrierGates
 machine.register_channel_elements(
     plunger_channels = [p1, p2], 
-    barrier_channels = [],
+    barrier_channels = [b1],
     sensor_channels_resonators = [(s1, resonator), (s2, resonator2)], 
 )
 
@@ -155,6 +161,7 @@ if qdac_connect:
     external_voltage_mapping = {
         machine.quantum_dots["virtual_dot_1"].physical_channel: qdac.ch01.dc_constant_V, 
         machine.quantum_dots["virtual_dot_2"].physical_channel: qdac.ch02.dc_constant_V, 
+        machine.barrier_gates["virtual_barrier_1"].physical_channel: qdac.ch03.dc_constant_V, 
         machine.sensor_dots["virtual_sensor_1"].physical_channel: qdac.ch08.dc_constant_V, 
         machine.sensor_dots["virtual_sensor_2"].physical_channel: qdac.ch09.dc_constant_V
     }

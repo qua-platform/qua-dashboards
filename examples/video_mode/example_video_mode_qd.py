@@ -178,8 +178,9 @@ if qdac_connect:
         voltage_parameters.append(DelegateParameter(
             name = ch.id, label = ch.id, source = ch.offset_parameter
         ))
-    voltage_control_component = VoltageControlComponent(component_id="Voltage_Control",voltage_parameters=voltage_parameters,update_interval_ms=1000)
-    voltage_control_tab = VoltageControlTabController(voltage_control_component = voltage_control_component)
+    voltage_control_tab = VoltageControlTabController(
+        voltage_control_component = VoltageControlComponent(component_id="Voltage_Control",voltage_parameters=voltage_parameters,update_interval_ms=1000)
+        )
 
 
 

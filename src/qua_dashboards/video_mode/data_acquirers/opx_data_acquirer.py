@@ -77,6 +77,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         initial_delay_s: Optional[float] = None,
         stream_vars: Optional[List[str]] = None,
         inner_loop_kwargs: Optional[Dict[str, Any]] = None,
+        inner_functions_dict: Optional[Dict] = {},
         **kwargs: Any,
     ):
         """
@@ -150,7 +151,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self._configure_readout()
         self._rebuild_stream_vars()
         self._compiled_stream_vars: Optional[List[str]] = None
-
+        self.inner_functions_dict = inner_functions_dict
     @property
     def x_axis(self) -> BaseSweepAxis:
         inner_loop = getattr(self, "qua_inner_loop_action", None)

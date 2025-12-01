@@ -46,6 +46,7 @@ class SettingsTabController(BaseTabController):
             f"Data Acquirer '{self._data_acquirer_instance}'."
         )
         self._point_sequence = []
+        self._inner_loop_functions = self._data_acquirer_instance.inner_functions_dict
 
     def get_layout(self):
         ramp_duration_input = create_input_field(
@@ -93,7 +94,7 @@ class SettingsTabController(BaseTabController):
             className="mb-2 align-items-center",
         )
 
-        inner_loop_functions = ["Go to Point(s)"]
+        inner_loop_functions = ["Go to Point(s)"] + list(self._inner_loop_functions.keys())
         inner_function_selector = dbc.Row([            
             dbc.Label("Inner Loop Function", width = "auto", className = "col-form-label"), 
             dbc.Col(
@@ -306,7 +307,16 @@ class SettingsTabController(BaseTabController):
         def _toggle_point_section(fn_name): 
             if fn_name == "Go to Point(s)": 
                 return {"display": "block"}
-            return {"display": "none"}
+            elif fn_name in self._inner_loop_functions: 
+                user_function = self._inner_loop_functions[fn_name]
+                def loop_action(inner_loop_self): 
+                    user_function()
+                acq.qua_inner_loop_action.loop_action = loop_action
+                acq._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
+                return {"display": "none"}
+            
+            else: 
+                return {"display": "none"}
         
         @app.callback(
             Output(f"{self.component_id}-point-rows-container", "children"),

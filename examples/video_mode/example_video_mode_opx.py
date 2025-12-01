@@ -97,24 +97,24 @@ gate_set = None  # Placeholder. Replace with a real GateSet instance.
 
 
 # ## Example implementation of VirtualGateSet
-# from quam_builder.architecture.quantum_dots.components import VirtualGateSet  # Requires quam-builder
-# channels = {
-#     "ch1": machine.channels["ch1"].get_reference(), # .get_reference() necessary to avoid reparenting the Quam component
-#     "ch2": machine.channels["ch2"].get_reference(),
-#     "ch1_readout": machine.channels["ch1_readout"].get_reference()
-# }
-# gate_set = VirtualGateSet(id = "Plungers", channels = channels)
-# gate_set.add_layer(
-#     source_gates = ["V1", "V2"], # Pick the virtual gate names here 
-#     target_gates = ["ch1", "ch2"], # Must be a subset of gates in the gate_set
-#     matrix = [[1, 0.2], [0.2, 1]] # Any example matrix
-# )
-# machine.gate_set = gate_set
+from quam_builder.architecture.quantum_dots.components import VirtualGateSet  # Requires quam-builder
+channels = {
+    "ch1": machine.channels["ch1"].get_reference(), # .get_reference() necessary to avoid reparenting the Quam component
+    "ch2": machine.channels["ch2"].get_reference(),
+    "ch1_readout": machine.channels["ch1_readout"].get_reference()
+}
+gate_set = VirtualGateSet(id = "Plungers", channels = channels)
+gate_set.add_layer(
+    source_gates = ["V1", "V2"], # Pick the virtual gate names here 
+    target_gates = ["ch1", "ch2"], # Must be a subset of gates in the gate_set
+    matrix = [[1, 0.2], [0.2, 1]] # Any example matrix
+)
+machine.gate_set = gate_set
 
 # --- QMM Connection ---
 # Replace with your actual OPX host and cluster name
 # Example: qmm = QuantumMachinesManager(host="your_opx_ip", cluster_name="your_cluster")
-qmm = QuantumMachinesManager(host="127.0.0.1", cluster_name="CS_1")
+qmm = QuantumMachinesManager(host="172.16.33.115", cluster_name="CS_4")
 
 # Generate the QUA configuration from the QUAM machine object
 config = machine.generate_config()
@@ -134,6 +134,12 @@ scan_mode_dict = {
     "Spiral_Scan": scan_modes.SpiralScan(),
 }
 
+inner_functions = {}
+# Set up an inner loop function. Add as many functions as you like, and add them to the dict
+# def play_inner_loop_rf(): 
+#     machine.channels["ch1_readout"].play("readout")
+# inner_functions = {"Play RF Pulse": play_inner_loop_rf}
+
 # Instantiate the OPXDataAcquirer.
 # This component handles the QUA program generation, execution, and data fetching.
 data_acquirer = OPXDataAcquirer(
@@ -144,7 +150,8 @@ data_acquirer = OPXDataAcquirer(
     y_axis_name="ch2",  # Must appear in gate_set.valid_channel_names; Virtual gate names also valid
     scan_modes=scan_mode_dict,
     result_type="I",  # "I", "Q", "amplitude", or "phase"
-    available_readout_pulses=[readout_pulse] # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI. 
+    available_readout_pulses=[readout_pulse], # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI. 
+    inner_functions_dict = inner_functions
 )
 
 # ### Add post-processing functions as needed. Default post-processing functions are x- and y- derivative functions. 

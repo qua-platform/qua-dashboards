@@ -57,25 +57,26 @@ class BasicInnerLoopAction(InnerLoopAction):
             return self.readout_pulse_mapping[ch.name]
         
     @staticmethod
+    def pre_loop_action(inner_loop_self) -> None: 
+        """
+        Called before the X and Y axes have gone to the sweep coordinates, to perform a QUA snippet.
+        """
+        pass
+        
+    @staticmethod
     def loop_action(inner_loop_self) -> None: 
         """
-        Overwrite this function to add a mid-loop action. The order of operations goes as follows: 
-        - The X and Y coordinates are applied. This is applicable for Voltage and Frequency SweepAxes. 
-            (The readout amplitude SweepAxis is of course not applicable at this stage). 
-        - The loop_action() takes place.
-        - The measurement is performed. 
-
-        Example of a loop_action, in this case, stepping to an arbitrary point (0.1, 0.1). 
-        >>> def loop_action(inner_loop_self) -> None: 
-        >>>     inner_loop_self.voltage_sequence.step_to_voltages({inner_loop_self.x_axis_name: 0.1, inner_loop_self.y_axis_name: 0.1})
+        Called after the X and Y axes have gone to the sweep coordinates, to perform a QUA snippet.
         """
-
         pass
 
     def __call__(
         self, x: QuaVariableFloat, y: QuaVariableFloat
     ) -> List[QuaVariableFloat]:
-        
+    
+        # Initial action
+        self.pre_loop_action(self)
+
         # Apply functions
         # For FrequencySweepAxis, applies update_frequency and returns empty dict.
         # For VoltageSweepAxis, supplies a dict component to be fed into voltage_sequence
@@ -90,7 +91,7 @@ class BasicInnerLoopAction(InnerLoopAction):
             **x_apply.get("voltage", {}),
             **(y_apply.get("voltage", {}) or {}),
         } if y_apply is not None else {**x_apply.get("voltage", {})}
-        self.voltage_sequence.step_to_voltages(voltage_scales, duration = 16)
+        self.voltage_sequence.step_to_voltages(voltage_scales, duration = 1000)
 
         self.loop_action(self)
 

@@ -363,22 +363,32 @@ class SettingsTabController(BaseTabController):
             Output(dummy_out, "children", allow_duplicate=True), 
             Input({"type": "point-select", "index": ALL}, "value"),
             Input({"type": "point-duration", "index": ALL}, "value"), 
+            Input({"type": "point-timing", "index": ALL}, "value"),
             prevent_initial_call = True,
         )
-        def _update_point_sequence(point_names, durations): 
-            self._point_sequence = list(zip(point_names, durations))
+        def _update_point_sequence(point_names, durations, timings): 
+            pre_points = []
+            post_points = []
 
+            for point, duration, is_pre in list(zip(point_names, durations, timings)): 
+                if point and duration: 
+                    if is_pre: 
+                        pre_points.append((point, int(duration)))
+                    else: 
+                        post_points.append((point, int(duration)))
+
+            def pre_loop_action(inner_loop_self): 
+                for point, duration in pre_points: 
+                    inner_loop_self.voltage_sequence.step_to_point(point, duration = duration)
             def loop_action(inner_loop_self): 
-                for point,duration in self._point_sequence: 
-                    if point and duration: 
-                        inner_loop_self.voltage_sequence.step_to_point(point, duration = int(duration))
-            
+                for point, duration in post_points: 
+                    inner_loop_self.voltage_sequence.step_to_point(point, duration = duration)
+
             acq.qua_inner_loop_action.loop_action = loop_action
-            logger.info(f"Point sequence updated: {point_names}")
+            acq.qua_inner_loop_action.pre_loop_action = pre_loop_action
+            logger.info(f"Point sequence updated - Pre: {pre_points}, Post: {post_points}")
             acq._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
             return no_update
-
-                
 
     def _build_point_sequence_section(self): 
         """
@@ -398,6 +408,15 @@ class SettingsTabController(BaseTabController):
         row = dbc.Row(
             [
                 dbc.Col(
+                    dbc.Switch(
+                        id={"type": "point-timing", "index": index},
+                        label="Before/After",
+                        value=True,
+                        className="mt-1",
+                    ),
+                    width=3,
+                ),
+                dbc.Col(
                     dcc.Dropdown(
                         id = {"type": "point-select", "index": index}, 
                         options = available_points, 
@@ -405,7 +424,7 @@ class SettingsTabController(BaseTabController):
                         clearable = True, 
                         style = {"color": "black"}
                     ), 
-                    width = 6,
+                    width = 4,
                 ), 
                 dbc.Col(
                     dcc.Input(
@@ -415,12 +434,13 @@ class SettingsTabController(BaseTabController):
                         min = 16, 
                         step = 4, 
                         placeholder = "ns",
+                        style={"width": "80px"},
                     ), 
-                    width = 4,
+                    width = 2,
                 ), 
                 dbc.Col(
-                dbc.Button("×", id={"type": "remove-point-btn", "index": index}, color="danger", size="sm"),
-                width=2,
+                dbc.Button("X", id={"type": "remove-point-btn", "index": index}, color="danger", size="sm"),
+                width=1,
             ),
             ], 
             className = "mb-2"

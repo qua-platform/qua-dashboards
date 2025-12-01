@@ -55,6 +55,22 @@ class BasicInnerLoopAction(InnerLoopAction):
             raise ValueError("Channel not in registered readout pulses")
         else:
             return self.readout_pulse_mapping[ch.name]
+        
+    @staticmethod
+    def loop_action(inner_loop_self) -> None: 
+        """
+        Overwrite this function to add a mid-loop action. The order of operations goes as follows: 
+        - The X and Y coordinates are applied. This is applicable for Voltage and Frequency SweepAxes. 
+            (The readout amplitude SweepAxis is of course not applicable at this stage). 
+        - The loop_action() takes place.
+        - The measurement is performed. 
+
+        Example of a loop_action, in this case, stepping to an arbitrary point (0.1, 0.1). 
+        >>> def loop_action(inner_loop_self) -> None: 
+        >>>     inner_loop_self.voltage_sequence.step_to_voltages({inner_loop_self.x_axis_name: 0.1, inner_loop_self.y_axis_name: 0.1})
+        """
+
+        pass
 
     def __call__(
         self, x: QuaVariableFloat, y: QuaVariableFloat
@@ -76,7 +92,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         } if y_apply is not None else {**x_apply.get("voltage", {})}
         self.voltage_sequence.step_to_voltages(voltage_scales, duration = 16)
 
-        # If any inner-loop action is needed, add here
+        self.loop_action(self)
 
         amplitude_scales = {
             **x_apply.get("amplitude_scales", {}),

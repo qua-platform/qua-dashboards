@@ -35,6 +35,7 @@ from quam.components import (
     InOutSingleChannel,
     pulses,
     StickyChannelAddon,
+    ports
 )
 
 from qua_dashboards.core import build_dashboard
@@ -57,13 +58,13 @@ machine = BasicQuam()
 
 # Define the first DC voltage output channel (e.g., for X-axis sweep)
 machine.channels["ch1"] = SingleChannel(
-    opx_output=("con1", 1),  # OPX controller and port
+    opx_output=ports.LFFEMAnalogOutputPort("con1", 5, 1),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
     operations={"half_max_square": pulses.SquarePulse(amplitude=0.25, length=1000)}, #Ensure operation "half_max_square" exists in the channel object
 )
 # Define the second DC voltage output channel (e.g., for Y-axis sweep)
 machine.channels["ch2"] = SingleChannel(
-    opx_output=("con1", 2),  # OPX controller and port
+    opx_output=ports.LFFEMAnalogOutputPort("con1", 5, 1),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
     operations={"half_max_square": pulses.SquarePulse(amplitude=0.25, length=1000)},
 )
@@ -71,8 +72,8 @@ machine.channels["ch2"] = SingleChannel(
 # Define the readout pulse and the channel used for measurement
 readout_pulse = pulses.SquareReadoutPulse(id="readout", length=1500, amplitude=0.1)
 machine.channels["ch1_readout"] = InOutSingleChannel(
-    opx_output=("con1", 3),  # Output for the readout pulse
-    opx_input=("con1", 1),  # Input for acquiring the measurement signal
+    opx_output=ports.LFFEMAnalogOutputPort("con1", 5, 1),  # Output for the readout pulse
+    opx_input=ports.LFFEMAnalogInputPort("con1", 5, 1),  # Input for acquiring the measurement signal
     intermediate_frequency=0,  # Set IF for the readout channel
     operations={"readout": readout_pulse},  # Assign the readout pulse to this channel
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets

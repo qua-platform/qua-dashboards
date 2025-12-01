@@ -33,8 +33,9 @@ class BasicInnerLoopAction(InnerLoopAction):
         x_axis: BaseSweepAxis,
         y_axis: BaseSweepAxis,
         pre_measurement_delay: int = 0,
-        track_integrated_voltage: bool = False,
+        track_integrated_voltage: bool = True,
         use_dBm=False,
+        apply_compensation: bool = True
     ):
         super().__init__()
         self.gate_set = gate_set
@@ -49,6 +50,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         self.readout_pulse_mapping = {}
         self.x_mode = "Voltage"
         self.y_mode = "Voltage"
+        self.apply_compensation = apply_compensation
 
     def _pulse_for(self, ch):
         if ch.name not in self.readout_pulse_mapping.keys():
@@ -87,11 +89,11 @@ class BasicInnerLoopAction(InnerLoopAction):
         x_apply = self.x_axis.apply(x)
         y_apply = self.y_axis.apply(y) if (self.y_axis and y is not None) else None
 
-        voltage_scales = {
+        voltage_coordinates = {
             **x_apply.get("voltage", {}),
             **(y_apply.get("voltage", {}) or {}),
         } if y_apply is not None else {**x_apply.get("voltage", {})}
-        self.voltage_sequence.step_to_voltages(voltage_scales, duration = 1000)
+        self.voltage_sequence.step_to_voltages(voltage_coordinates, duration = 1000)
 
         self.loop_action(self)
 
@@ -137,8 +139,13 @@ class BasicInnerLoopAction(InnerLoopAction):
         self.voltage_sequence.ramp_to_zero()
 
     def final_action(self):
-        # Use GateSet's built-in ramp to zero
+        # Apply conditional compensation pulse
+        if self.apply_compensation: 
+            self.voltage_sequence.apply_compensation_pulse()
+
+        # Use GateSet's built-in ramp to zero, in-case it is not handled by the compensation pulse
         self.voltage_sequence.ramp_to_zero()
+        
 
     def build_readout_controls(self, channels=None):
         """

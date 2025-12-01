@@ -78,6 +78,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         stream_vars: Optional[List[str]] = None,
         inner_loop_kwargs: Optional[Dict[str, Any]] = None,
         inner_functions_dict: Optional[Dict] = {},
+        apply_compensation_pulse: bool = True, 
         **kwargs: Any,
     ):
         """
@@ -129,6 +130,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 gate_set=gate_set,
                 x_axis=self.x_axis,
                 y_axis=self.y_axis,
+                apply_compensation=apply_compensation_pulse,
                 **inner_loop_kwargs,
             )
         else:

@@ -97,24 +97,24 @@ gate_set = None  # Placeholder. Replace with a real GateSet instance.
 
 
 # ## Example implementation of VirtualGateSet
-from quam_builder.architecture.quantum_dots.components import VirtualGateSet  # Requires quam-builder
-channels = {
-    "ch1": machine.channels["ch1"].get_reference(), # .get_reference() necessary to avoid reparenting the Quam component
-    "ch2": machine.channels["ch2"].get_reference(),
-    "ch1_readout": machine.channels["ch1_readout"].get_reference()
-}
-gate_set = VirtualGateSet(id = "Plungers", channels = channels)
-gate_set.add_layer(
-    source_gates = ["V1", "V2"], # Pick the virtual gate names here 
-    target_gates = ["ch1", "ch2"], # Must be a subset of gates in the gate_set
-    matrix = [[1, 0.2], [0.2, 1]] # Any example matrix
-)
-machine.gate_set = gate_set
+# from quam_builder.architecture.quantum_dots.components import VirtualGateSet  # Requires quam-builder
+# channels = {
+#     "ch1": machine.channels["ch1"].get_reference(), # .get_reference() necessary to avoid reparenting the Quam component
+#     "ch2": machine.channels["ch2"].get_reference(),
+#     "ch1_readout": machine.channels["ch1_readout"].get_reference()
+# }
+# gate_set = VirtualGateSet(id = "Plungers", channels = channels)
+# gate_set.add_layer(
+#     source_gates = ["V1", "V2"], # Pick the virtual gate names here 
+#     target_gates = ["ch1", "ch2"], # Must be a subset of gates in the gate_set
+#     matrix = [[1, 0.2], [0.2, 1]] # Any example matrix
+# )
+# machine.gate_set = gate_set
 
 # --- QMM Connection ---
 # Replace with your actual OPX host and cluster name
 # Example: qmm = QuantumMachinesManager(host="your_opx_ip", cluster_name="your_cluster")
-qmm = QuantumMachinesManager(host="172.16.33.115", cluster_name="CS_4")
+qmm = QuantumMachinesManager(host="127.0.0.1", cluster_name="CS_1")
 
 # Generate the QUA configuration from the QUAM machine object
 config = machine.generate_config()

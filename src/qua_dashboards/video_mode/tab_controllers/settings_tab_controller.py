@@ -2,7 +2,7 @@ import logging
 from typing import Any
 from qua_dashboards.utils.dash_utils import create_input_field
 import dash_bootstrap_components as dbc
-from dash import html, ALL, no_update, Dash, Input, Output, State, dcc, callback_context
+from dash import html, ALL, no_update, Dash, Input, Output, State, dcc, callback_context, MATCH
 from qua_dashboards.core.base_updatable_component import ModifiedFlags
 
 
@@ -316,6 +316,13 @@ class SettingsTabController(BaseTabController):
                 return {"display": "none"}
             
             else: 
+                def loop_action(inner_loop_self): 
+                    pass
+                def pre_loop_action(inner_loop_self): 
+                    pass
+                acq.qua_inner_loop_action.loop_action = loop_action
+                acq.qua_inner_loop_action.pre_loop_action = pre_loop_action
+                acq._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
                 return {"display": "none"}
         
         @app.callback(
@@ -360,6 +367,20 @@ class SettingsTabController(BaseTabController):
             return no_update, no_update
         
         @app.callback(
+            Output({"type": "point-duration", "index": MATCH}, "value"),
+            Input({"type": "point-select", "index": MATCH}, "value"),
+            prevent_initial_call=True,
+        )
+        def _update_duration_from_point(point_name):
+            if not point_name:
+                return no_update
+            
+            macros = acq.gate_set.get_macros()
+            if point_name in macros:
+                return macros[point_name].duration
+            return no_update
+                
+        @app.callback(
             Output(dummy_out, "children", allow_duplicate=True), 
             Input({"type": "point-select", "index": ALL}, "value"),
             Input({"type": "point-duration", "index": ALL}, "value"), 
@@ -370,9 +391,9 @@ class SettingsTabController(BaseTabController):
             pre_points = []
             post_points = []
 
-            for point, duration, is_pre in list(zip(point_names, durations, timings)): 
+            for point, duration, timing in list(zip(point_names, durations, timings)): 
                 if point and duration: 
-                    if is_pre: 
+                    if timing == "pre": 
                         pre_points.append((point, int(duration)))
                     else: 
                         post_points.append((point, int(duration)))
@@ -405,14 +426,25 @@ class SettingsTabController(BaseTabController):
         )
 
     def _build_point_row(self, index: int, available_points: list) -> None: 
+        macros = self._data_acquirer_instance.gate_set.get_macros()
+        default_point = available_points[0]["value"] if available_points else None
+        default_duration = 1000 
+        if default_point and default_point in macros:
+            macro = macros[default_point]
+            default_duration = macro.duration
+
         row = dbc.Row(
             [
                 dbc.Col(
-                    dbc.Switch(
+                    dbc.Select(
                         id={"type": "point-timing", "index": index},
-                        label="Before/After",
-                        value=True,
-                        className="mt-1",
+                        options=[
+                            {"label": "Before (x,y)", "value": "pre"},
+                            {"label": "After (x,y)", "value": "post"},
+                        ],
+                        value="pre",
+                        size="sm",
+                        style={"width": "150px"},
                     ),
                     width=3,
                 ),
@@ -420,7 +452,7 @@ class SettingsTabController(BaseTabController):
                     dcc.Dropdown(
                         id = {"type": "point-select", "index": index}, 
                         options = available_points, 
-                        value = available_points[0]["value"] if available_points else None,
+                        value = default_point,
                         clearable = True, 
                         style = {"color": "black"}
                     ), 
@@ -430,7 +462,7 @@ class SettingsTabController(BaseTabController):
                     dcc.Input(
                         id = {"type": "point-duration", "index": index}, 
                         type = "number",
-                        value = 1000,
+                        value = default_duration,
                         min = 16, 
                         step = 4, 
                         placeholder = "ns",

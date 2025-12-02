@@ -45,7 +45,6 @@ class SettingsTabController(BaseTabController):
             f"Settings Tab '{self.component_id}' initialized with "
             f"Data Acquirer '{self._data_acquirer_instance}'."
         )
-        self._point_sequence = []
         self._inner_loop_functions = self._data_acquirer_instance.inner_functions_dict
 
     def get_layout(self):

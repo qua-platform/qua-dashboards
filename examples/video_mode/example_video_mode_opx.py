@@ -195,7 +195,7 @@ logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
 # Run the Dash server.
 # `host="0.0.0.0"` makes it accessible on your network.
 # `use_reloader=False` is often recommended for stability with background threads.
-app.run(debug=True, host="0.0.0.0", port=8070, use_reloader=False)
+app.run(debug=True, host="0.0.0.0", port=8050, use_reloader=False)
 
 
 # %% --- Debugging Sections (Optional) ---

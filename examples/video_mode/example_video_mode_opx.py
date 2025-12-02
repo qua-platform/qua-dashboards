@@ -35,7 +35,6 @@ from quam.components import (
     InOutSingleChannel,
     pulses,
     StickyChannelAddon,
-    ports
 )
 
 from qua_dashboards.core import build_dashboard
@@ -58,13 +57,13 @@ machine = BasicQuam()
 
 # Define the first DC voltage output channel (e.g., for X-axis sweep)
 machine.channels["ch1"] = SingleChannel(
-    opx_output=ports.LFFEMAnalogOutputPort("con1", 5, 1),  # OPX controller and port
+    opx_output=("con1", 1),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
     operations={"half_max_square": pulses.SquarePulse(amplitude=0.25, length=1000)}, #Ensure operation "half_max_square" exists in the channel object
 )
 # Define the second DC voltage output channel (e.g., for Y-axis sweep)
 machine.channels["ch2"] = SingleChannel(
-    opx_output=ports.LFFEMAnalogOutputPort("con1", 5, 1),  # OPX controller and port
+    opx_output=("con1", 2),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
     operations={"half_max_square": pulses.SquarePulse(amplitude=0.25, length=1000)},
 )
@@ -72,8 +71,8 @@ machine.channels["ch2"] = SingleChannel(
 # Define the readout pulse and the channel used for measurement
 readout_pulse = pulses.SquareReadoutPulse(id="readout", length=1500, amplitude=0.1)
 machine.channels["ch1_readout"] = InOutSingleChannel(
-    opx_output=ports.LFFEMAnalogOutputPort("con1", 5, 1),  # Output for the readout pulse
-    opx_input=ports.LFFEMAnalogInputPort("con1", 5, 1),  # Input for acquiring the measurement signal
+    opx_output=("con1", 3),  # Output for the readout pulse
+    opx_input=("con1", 1),  # Input for acquiring the measurement signal
     intermediate_frequency=0,  # Set IF for the readout channel
     operations={"readout": readout_pulse},  # Assign the readout pulse to this channel
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
@@ -98,24 +97,24 @@ gate_set = None  # Placeholder. Replace with a real GateSet instance.
 
 
 # ## Example implementation of VirtualGateSet
-# from quam_builder.architecture.quantum_dots.components import VirtualGateSet  # Requires quam-builder
-# channels = {
-#     "ch1": machine.channels["ch1"].get_reference(), # .get_reference() necessary to avoid reparenting the Quam component
-#     "ch2": machine.channels["ch2"].get_reference(),
-#     "ch1_readout": machine.channels["ch1_readout"].get_reference()
-# }
-# gate_set = VirtualGateSet(id = "Plungers", channels = channels)
-# gate_set.add_layer(
-#     source_gates = ["V1", "V2"], # Pick the virtual gate names here 
-#     target_gates = ["ch1", "ch2"], # Must be a subset of gates in the gate_set
-#     matrix = [[1, 0.2], [0.2, 1]] # Any example matrix
-# )
-# machine.gate_set = gate_set
+from quam_builder.architecture.quantum_dots.components import VirtualGateSet  # Requires quam-builder
+channels = {
+    "ch1": machine.channels["ch1"].get_reference(), # .get_reference() necessary to avoid reparenting the Quam component
+    "ch2": machine.channels["ch2"].get_reference(),
+    "ch1_readout": machine.channels["ch1_readout"].get_reference()
+}
+gate_set = VirtualGateSet(id = "Plungers", channels = channels)
+gate_set.add_layer(
+    source_gates = ["V1", "V2"], # Pick the virtual gate names here 
+    target_gates = ["ch1", "ch2"], # Must be a subset of gates in the gate_set
+    matrix = [[1, 0.2], [0.2, 1]] # Any example matrix
+)
+machine.gate_set = gate_set
 
 # --- QMM Connection ---
 # Replace with your actual OPX host and cluster name
 # Example: qmm = QuantumMachinesManager(host="your_opx_ip", cluster_name="your_cluster")
-qmm = QuantumMachinesManager(host="127.0.0.1", cluster_name="CS_1")
+qmm = QuantumMachinesManager(host="172.16.33.101", cluster_name="CS_1")
 
 # Generate the QUA configuration from the QUAM machine object
 config = machine.generate_config()
@@ -196,7 +195,7 @@ logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
 # Run the Dash server.
 # `host="0.0.0.0"` makes it accessible on your network.
 # `use_reloader=False` is often recommended for stability with background threads.
-app.run(debug=True, host="0.0.0.0", port=8050, use_reloader=False)
+app.run(debug=True, host="0.0.0.0", port=8070, use_reloader=False)
 
 
 # %% --- Debugging Sections (Optional) ---

@@ -33,8 +33,9 @@ class BasicInnerLoopAction(InnerLoopAction):
         x_axis: BaseSweepAxis,
         y_axis: BaseSweepAxis,
         pre_measurement_delay: int = 0,
-        track_integrated_voltage: bool = False,
+        track_integrated_voltage: bool = True,
         use_dBm=False,
+        apply_compensation: bool = True
     ):
         super().__init__()
         self.gate_set = gate_set
@@ -49,74 +50,53 @@ class BasicInnerLoopAction(InnerLoopAction):
         self.readout_pulse_mapping = {}
         self.x_mode = "Voltage"
         self.y_mode = "Voltage"
+        self.apply_compensation = apply_compensation
 
     def _pulse_for(self, ch):
         if ch.name not in self.readout_pulse_mapping.keys():
             raise ValueError("Channel not in registered readout pulses")
         else:
             return self.readout_pulse_mapping[ch.name]
-
-    def _resolve_and_ramp(self, current_voltages, last_voltages):
-        if not current_voltages:
-            return
-
-        last_resolved_voltages = self.gate_set.resolve_voltages(last_voltages)
-        resolved_voltages = self.gate_set.resolve_voltages(current_voltages)
-
-        if self.x_axis.name in current_voltages:
-            loop_current, loop_past, slope = (
-                self.x_axis.loop_current,
-                self.x_axis.loop_past,
-                self.x_axis.slope,
-            )
-        elif self.y_axis.name in current_voltages:
-            loop_current, loop_past, slope = (
-                self.y_axis.loop_current,
-                self.y_axis.loop_past,
-                self.y_axis.slope,
-            )
-
-        ramp_time = qua.fixed(1 / self.ramp_duration / 4)
-        for ch_string in self.gate_set.channels.keys():
-            qua.assign(loop_current, resolved_voltages[ch_string])
-            qua.assign(loop_current, (loop_current >> 12) << 12)
-            qua.assign(loop_past, last_resolved_voltages[ch_string])
-            qua.assign(loop_past, (loop_past >> 12) << 12)
-            applied_voltage = loop_current - loop_past
-            qua.assign(slope, applied_voltage)
-            qua.assign(slope, (slope))
-            qua.assign(slope, slope * ramp_time)
-            qua.play(qua.ramp(slope), ch_string, duration=self.ramp_duration)
-        return
+        
+    @staticmethod
+    def pre_loop_action(inner_loop_self) -> None: 
+        """
+        Called before the X and Y axes have gone to the sweep coordinates, to perform a QUA snippet.
+        """
+        pass
+        
+    @staticmethod
+    def loop_action(inner_loop_self) -> None: 
+        """
+        Called after the X and Y axes have gone to the sweep coordinates, to perform a QUA snippet.
+        """
+        pass
 
     def __call__(
         self, x: QuaVariableFloat, y: QuaVariableFloat
     ) -> List[QuaVariableFloat]:
-        # Solution until GateSet native VoltageSequence loop is validated
-        x_voltage, y_voltage, x_last_v, y_last_v = {}, {}, {}, {}
-        if isinstance(self.x_axis, VoltageSweepAxis):
-            x_voltage = {self.x_axis.name: (x >> 12) << 12}
-            x_last_v = {self.x_axis.name: (self.x_axis.last_val >> 12) << 12}
-        if y is not None:
-            if isinstance(self.y_axis, VoltageSweepAxis):
-                y_voltage = {self.y_axis.name: (y >> 12) << 12}
-                y_last_v = {self.y_axis.name: (self.y_axis.last_val >> 12) << 12}
-        voltages_now, voltages_last = (
-            {**x_voltage, **y_voltage},
-            {**x_last_v, **y_last_v},
-        )
-
-        self._resolve_and_ramp(voltages_now, voltages_last)
+    
+        # Initial action
+        self.pre_loop_action(self)
 
         # Apply functions
         # For FrequencySweepAxis, applies update_frequency and returns empty dict.
-        # For VoltageSweepAxis, updates the axis.last_val (will be changed once VoltageSequence is validated) and returns empty dict.
+        # For VoltageSweepAxis, supplies a dict component to be fed into voltage_sequence
         # For AmplitudeSweepAxis, calculates amplitude scale and returns the scale as a dict component {element: scale}.
         # Add functionalities to existing BaseSweepAxis objects in their respective apply commands
         # For new SweepAxis objects (e.g. QubitSweepAxis), simply have an apply command that returns an empty dict.
 
         x_apply = self.x_axis.apply(x)
         y_apply = self.y_axis.apply(y) if (self.y_axis and y is not None) else None
+
+        voltage_coordinates = {
+            **x_apply.get("voltage", {}),
+            **(y_apply.get("voltage", {}) or {}),
+        } if y_apply is not None else {**x_apply.get("voltage", {})}
+        self.voltage_sequence.step_to_voltages(voltage_coordinates, duration = 1000)
+
+        self.loop_action(self)
+
         amplitude_scales = {
             **x_apply.get("amplitude_scales", {}),
             **(y_apply.get("amplitude_scales", {}) or {}),
@@ -150,7 +130,7 @@ class BasicInnerLoopAction(InnerLoopAction):
     def initial_action(self):
         # Create VoltageSequence within QUA program context
         self.voltage_sequence = self.gate_set.new_sequence(
-            track_integrated_voltage=self.track_integrated_voltage
+            track_integrated_voltage=self.track_integrated_voltage, enforce_qua_calcs=True
         )
         self.x_axis.declare_vars()
         self.y_axis.declare_vars()
@@ -159,8 +139,13 @@ class BasicInnerLoopAction(InnerLoopAction):
         self.voltage_sequence.ramp_to_zero()
 
     def final_action(self):
-        # Use GateSet's built-in ramp to zero
+        # Apply conditional compensation pulse
+        if self.apply_compensation: 
+            self.voltage_sequence.apply_compensation_pulse()
+
+        # Use GateSet's built-in ramp to zero, in-case it is not handled by the compensation pulse
         self.voltage_sequence.ramp_to_zero()
+        
 
     def build_readout_controls(self, channels=None):
         """

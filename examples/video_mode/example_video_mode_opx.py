@@ -134,6 +134,12 @@ scan_mode_dict = {
     "Spiral_Scan": scan_modes.SpiralScan(),
 }
 
+inner_functions = {}
+# Set up an inner loop function. Add as many functions as you like, and add them to the dict
+# def play_inner_loop_rf(): 
+#     machine.channels["ch1_readout"].play("readout")
+# inner_functions = {"Play RF Pulse": play_inner_loop_rf}
+
 # Instantiate the OPXDataAcquirer.
 # This component handles the QUA program generation, execution, and data fetching.
 data_acquirer = OPXDataAcquirer(
@@ -144,7 +150,8 @@ data_acquirer = OPXDataAcquirer(
     y_axis_name="ch2",  # Must appear in gate_set.valid_channel_names; Virtual gate names also valid
     scan_modes=scan_mode_dict,
     result_type="I",  # "I", "Q", "amplitude", or "phase"
-    available_readout_pulses=[readout_pulse] # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI. 
+    available_readout_pulses=[readout_pulse], # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI. 
+    inner_functions_dict = inner_functions
 )
 
 # ### Add post-processing functions as needed. Default post-processing functions are x- and y- derivative functions. 

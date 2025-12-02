@@ -51,6 +51,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         self.x_mode = "Voltage"
         self.y_mode = "Voltage"
         self.apply_compensation = apply_compensation
+        self.point_duration = 1000
 
     def _pulse_for(self, ch):
         if ch.name not in self.readout_pulse_mapping.keys():
@@ -93,7 +94,7 @@ class BasicInnerLoopAction(InnerLoopAction):
             **x_apply.get("voltage", {}),
             **(y_apply.get("voltage", {}) or {}),
         } if y_apply is not None else {**x_apply.get("voltage", {})}
-        self.voltage_sequence.step_to_voltages(voltage_coordinates, duration = 1000)
+        self.voltage_sequence.ramp_to_voltages(voltage_coordinates, duration = self.point_duration, ramp_duration = self.ramp_duration)
 
         self.loop_action(self)
 

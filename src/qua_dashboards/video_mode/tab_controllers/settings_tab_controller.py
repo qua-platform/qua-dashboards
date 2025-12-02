@@ -58,6 +58,17 @@ class SettingsTabController(BaseTabController):
             units="ns",
             step=4,
         )
+        point_duration_input = create_input_field(
+            id={
+                "type": "point_duration",
+                "index": f"{self._data_acquirer_instance.component_id}::point_duration",
+            },
+            label="Point Duration",
+            value=getattr(self._data_acquirer_instance.qua_inner_loop_action, "point_duration", 1000),
+            units="ns",
+            step=4,
+        )
+
         inner_controls = []
         try:
             inner_controls = (
@@ -195,6 +206,7 @@ class SettingsTabController(BaseTabController):
                     post_processing_fn_selector,
                     scan_mode_selector,
                     ramp_duration_input,
+                    point_duration_input,
                     inner_loop_section,
                     *inner_controls,
                     html.Div(
@@ -238,10 +250,12 @@ class SettingsTabController(BaseTabController):
             State({"type": "select", "index": ALL}, "id"),
             Input({"type": "ramp_duration", "index": ALL}, "value"),
             State({"type": "ramp_duration", "index": ALL}, "id"),
+            Input({"type": "point_duration", "index": ALL}, "value"),
+            State({"type": "point_duration", "index": ALL}, "id"),
             prevent_initial_call=True,
         )
         def _apply_settings(
-            inner_vals, inner_ids, select_vals, select_ids, ramp_vals, ramp_ids
+            inner_vals, inner_ids, select_vals, select_ids, ramp_vals, ramp_ids, point_vals, point_ids,
         ):
             """
             Collect changes from the Settings tab and forward them to the acquirer.
@@ -268,6 +282,10 @@ class SettingsTabController(BaseTabController):
                 idx = ramp_ids[0].get("index")
                 comp_id, param = idx.split("::", 1)
                 params_to_update.setdefault(comp_id, {})[param] = ramp_vals[0]
+            if point_vals and point_ids:
+                idx = point_ids[0].get("index")
+                comp_id, param = idx.split("::", 1)
+                params_to_update.setdefault(comp_id, {})[param] = point_vals[0]
 
             if not params_to_update:
                 return no_update, no_update
@@ -399,10 +417,10 @@ class SettingsTabController(BaseTabController):
 
             def pre_loop_action(inner_loop_self): 
                 for point, duration in pre_points: 
-                    inner_loop_self.voltage_sequence.step_to_point(point, duration = duration)
+                    inner_loop_self.voltage_sequence.ramp_to_point(point, duration = duration, ramp_duration = inner_loop_self.ramp_duration)
             def loop_action(inner_loop_self): 
                 for point, duration in post_points: 
-                    inner_loop_self.voltage_sequence.step_to_point(point, duration = duration)
+                    inner_loop_self.voltage_sequence.ramp_to_point(point, duration = duration, ramp_duration = inner_loop_self.ramp_duration)
 
             acq.qua_inner_loop_action.loop_action = loop_action
             acq.qua_inner_loop_action.pre_loop_action = pre_loop_action

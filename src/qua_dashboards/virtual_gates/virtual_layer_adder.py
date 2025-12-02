@@ -135,7 +135,7 @@ class VirtualLayerAdder:
                 return no_update, no_update, no_update
 
             coord_vals = { (cid["row"], cid["col"]): v for cid, v in zip(cell_ids, flat_cells) }
-            mat = [[ float(coord_vals.get((i, j), 0.0)) for j in range(K)] for i in range(M)]
+            mat = [[ float(coord_vals.get((j, i), 0.0)) for i in range(M)] for j in range(K)]
             try:
                 self.gateset.add_layer(
                     source_gates=source_names,

@@ -663,6 +663,14 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                     ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
                 )
             if (
+                "point_duration" in params
+                and self.qua_inner_loop_action.point_duration != params["point_duration"]
+            ):
+                self.qua_inner_loop_action.point_duration = params["point_duration"]
+                flags |= (
+                    ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
+                )
+            if (
                 "gate-select-x" in params
                 and params["gate-select-x"] != self.x_axis_name
             ):

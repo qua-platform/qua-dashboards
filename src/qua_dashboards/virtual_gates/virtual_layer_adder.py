@@ -127,7 +127,7 @@ class VirtualLayerAdder:
         def _apply(nc, target_list, source_names, flat_cells, refresh, glob_ref, layer_name, cell_ids):
             if nc is None or not target_list:
                 raise PreventUpdate
-            new_idx = len(self.gateset.layers)-1
+            new_idx = len(self.gateset.layers)
             layer_name = layer_name if layer_name else f"Layer {new_idx + 1}"
 
             M = len(target_list)

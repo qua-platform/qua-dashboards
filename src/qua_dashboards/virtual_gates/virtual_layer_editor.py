@@ -33,14 +33,14 @@ class VirtualLayerEditor(BaseComponent):
         layer = self.gateset.layers[layer_idx]
         num_sources = len(layer.source_gates)
         num_targets = len(layer.target_gates)
-        col_width = 12 // (num_targets + 1)
+        col_width = 12 // (num_sources + 1)
         header = [dbc.Col("", width=col_width)] + [
-            dbc.Col(html.B(name), width=col_width) for name in layer.target_gates
+            dbc.Col(html.B(name), width=col_width) for name in layer.source_gates
         ]
         rows = []
-        for i, row_name in enumerate(layer.source_gates):
+        for i, row_name in enumerate(layer.target_gates):
             row = [dbc.Col(html.B(row_name), width=col_width)]
-            for j in range(num_targets):
+            for j in range(num_sources):
                 row.append(
                     dbc.Col(
                         dcc.Input(

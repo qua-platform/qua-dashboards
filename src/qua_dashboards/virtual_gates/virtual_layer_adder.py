@@ -127,6 +127,8 @@ class VirtualLayerAdder:
         def _apply(nc, target_list, source_names, flat_cells, refresh, glob_ref, layer_name, cell_ids):
             if nc is None or not target_list:
                 raise PreventUpdate
+            new_idx = len(self.gateset.layers)-1
+            layer_name = layer_name if layer_name else f"Layer {new_idx + 1}"
 
             M = len(target_list)
             K = len(source_names)
@@ -135,19 +137,21 @@ class VirtualLayerAdder:
                 return no_update, no_update, no_update
 
             coord_vals = { (cid["row"], cid["col"]): v for cid, v in zip(cell_ids, flat_cells) }
-            mat = [[ float(coord_vals.get((j, i), 0.0)) for i in range(M)] for j in range(K)]
+            mat = [[ float(coord_vals.get((i, j), 0.0)) for j in range(K)] for i in range(M)]
             try:
                 self.gateset.add_layer(
                     source_gates=source_names,
                     target_gates=target_list,
-                    matrix=mat
+                    matrix=mat, 
+                    layer_id = layer_name,
                 )
                 app.logger.info(f"Added layer {source_names} -> {target_list}")
             except Exception as e:
                 app.logger.error(f"add_layer failed: {e}")
-                return f"Error: {e}", no_update, no_update
-            new_idx = len(self.gateset.layers)-1
-            self.layer_names.append({"label": layer_name if layer_name else f"Layer {new_idx + 1}", "value": new_idx})
+                return f"Error: {e}", no_update, no_update, no_update
+            
+            
+            self.layer_names.append({"label": layer_name, "value": new_idx})
             return "Layer Added!", (refresh or 0)+1, (glob_ref or 0)+1, ""
         
         @app.callback(

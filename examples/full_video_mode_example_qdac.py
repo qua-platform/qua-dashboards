@@ -127,7 +127,6 @@ def setup_readout_channel(machine: QuamRoot, name: str, readout_pulse: pulses.Re
         opx_input=opx_input,  # Input for acquiring the measurement signal
         intermediate_frequency=IF,  # Set IF for the readout channel
         operations={"readout": readout_pulse},  # Assign the readout pulse to this channel
-        sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
         time_of_flight = 28
     )
     return machine.channels[name].get_reference()
@@ -172,12 +171,16 @@ def main():
     # Choose the FEM. For OPX+, keep fem = None. 
     fem = None
 
+    # Set up the readout channels
+    setup_readout_channel(machine, name = "ch1_readout", readout_pulse=readout_pulse_ch1, opx_output_port = 6, opx_input_port = 1, IF = 150e6, fem = fem)
+    setup_readout_channel(machine, name = "ch2_readout", readout_pulse=readout_pulse_ch2, opx_output_port = 6, opx_input_port = 1, IF = 250e6, fem = fem)
+
     channel_mapping = {
         "ch1": setup_DC_channel(machine, name = "ch1", opx_output_port = 1, qdac_port = 1, qdac = qdac, fem = fem), 
         "ch2": setup_DC_channel(machine, name = "ch2", opx_output_port = 2, qdac_port = 2, qdac = qdac, fem = fem), 
         "ch3": setup_DC_channel(machine, name = "ch3", opx_output_port = 3, qdac_port = 3, qdac = qdac, fem = fem), 
-        "ch1_readout": setup_readout_channel(machine, name = "ch1_readout", readout_pulse = readout_pulse_ch1, opx_output_port = 6, opx_input_port = 1, IF = 1.7e8, fem = fem), 
-        "ch2_readout": setup_readout_channel(machine, name = "ch2_readout", readout_pulse = readout_pulse_ch2, opx_output_port = 4, opx_input_port = 1, IF = 2.3e8, fem = fem), 
+        "ch1_readout_DC": setup_DC_channel(machine, name = "ch1_readout_DC", opx_output_port = 4, qdac_port = 3, qdac = qdac, fem = fem), 
+        "ch2_readout_DC": setup_DC_channel(machine, name = "ch2_readout_DC", opx_output_port = 5, qdac_port = 3, qdac = qdac, fem = fem), 
     }
 
     # Adjust or add your virtual gates here. This example assumes a single virtual gating layer, add more if necessary. 
@@ -212,16 +215,7 @@ def main():
     )
 
     virtual_gating_component = VirtualLayerEditor(gateset = virtual_gate_set, component_id = 'virtual-gates-ui')
-
-    voltage_parameters = define_DC_params(machine, ["ch1", "ch2", "ch3"])
-
-    if qdac is not None:
-        from qcodes.parameters import DelegateParameter
-        # Currently no Quam channel to combine readout + DC control. Relevant QUAM components to come in the future
-        voltage_parameters.extend([
-            DelegateParameter(name = "ch1_readout", label = "ch1_readout", source = qdac.channel(4).dc_constant_V) if qdac else None, 
-            DelegateParameter(name = "ch2_readout", label = "ch2_readout", source = qdac.channel(5).dc_constant_V) if qdac else None
-            ])
+    voltage_parameters = define_DC_params(machine, ["ch1", "ch2", "ch3", "ch1_readout_DC", "ch2_readout_DC"])
     
     voltage_control_tab = None
     if qdac is not None: 

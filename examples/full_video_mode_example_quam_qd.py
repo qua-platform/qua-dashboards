@@ -68,6 +68,8 @@ from quam_builder.architecture.quantum_dots.qpu import BaseQuamQD
 from qua_dashboards.virtual_gates import VirtualLayerEditor, ui_update
 from qua_dashboards.voltage_control import VoltageControlComponent
 
+from qua_dashboards.voltage_control import VirtualizedVoltageManager
+
 
 def setup_DC_channel(name: str, opx_output_port: int, qdac_port: int, con = "con1", fem: int = None): 
     """
@@ -175,11 +177,11 @@ def main():
 
     # Adjust the IP and cluster name here
     qm_ip = "172.16.33.115"
-    cluster_name = "CS_1"
+    cluster_name = "CS_3"
 
     # If connecting to qdac, set qdac_connect = True, and the qdac_ip. 
     qdac_ip = "172.16.33.101"
-    qdac_connect = False
+    qdac_connect = True
 
     qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
     machine = BaseQuamQD()
@@ -225,7 +227,6 @@ def main():
         sensor_channels_resonators = [(s1, sensor_readout_channel_1), (s2, sensor_readout_channel_2)], 
     )
 
-
     # Update Cross Capacitance matrix values
     machine.update_cross_compensation_submatrix(
         virtual_names = ["virtual_barrier_1", "virtual_barrier_2"], 
@@ -252,6 +253,13 @@ def main():
         "Spiral_Scan": scan_modes.SpiralScan(),
     }
 
+    virtual_gating_component = VirtualLayerEditor(gateset = machine.virtual_gate_sets["main_qpu"], component_id = 'virtual-gates-ui')
+    voltage_parameters = define_DC_params(machine, ["plunger_1", "plunger_2", "plunger_3", "barrier_1", "barrier_2", "sensor_1", "sensor_2"])
+    external_virtual_voltage_manager = VirtualizedVoltageManager(
+        physical_parameters = voltage_parameters, 
+        virtual_names = ["virtual_dot_1", "virtual_dot_2", "virtual_dot_3", "virtual_barrier_1", "virtual_barrier_2", "virtual_sensor_1", "virtual_sensor_2"], 
+        gate_set = machine.virtual_gate_sets["main_qpu"])
+
     # Instantiate the OPXDataAcquirer.
     # This component handles the QUA program generation, execution, and data fetching.
     data_acquirer = OPXDataAcquirer(
@@ -263,17 +271,15 @@ def main():
         scan_modes=scan_mode_dict,
         result_type="I",  # "I", "Q", "amplitude", or "phase"
         available_readout_pulses=[readout_pulse_ch1, readout_pulse_ch2], # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI. 
-        acquisition_interval_s=0.05
+        acquisition_interval_s=0.05, 
+        virtual_voltages_manager=external_virtual_voltage_manager,
     )
-
-    virtual_gating_component = VirtualLayerEditor(gateset = machine.virtual_gate_sets["main_qpu"], component_id = 'virtual-gates-ui')
-    voltage_parameters = define_DC_params(machine, ["plunger_1", "plunger_2", "plunger_3", "barrier_1", "barrier_2", "sensor_1", "sensor_2"])
 
     voltage_control_tab = None
     if qdac_connect: 
         voltage_control_component = VoltageControlComponent(
             component_id="Voltage_Control",
-            voltage_parameters=voltage_parameters,
+            voltage_parameters=external_virtual_voltage_manager._virtual_parameters,
             update_interval_ms=1000,
         )
         from qua_dashboards.video_mode.tab_controllers import VoltageControlTabController

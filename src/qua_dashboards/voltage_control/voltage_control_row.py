@@ -69,6 +69,7 @@ class VoltageControlRow:
         self.param = param
         self.current_input_text = format_voltage(param.get_latest())
         self.input_id = {"type": self.input_id_type, "index": self.param.name}
+        self.last_committed_text = self.current_input_text
 
         # ID for the dummy div that triggers the blur action
         self.blur_trigger_id = {
@@ -148,6 +149,7 @@ class VoltageControlRow:
                 float_value = float(submitted_text_value)
                 self.param.set(float_value)
                 self.current_input_text = format_voltage(float_value)
+                self.last_committed_text = self.current_input_text
                 # Return formatted value and trigger for blur
                 return self.current_input_text, _n_submit
             except ValueError:
@@ -171,6 +173,7 @@ class VoltageControlRow:
             if not _n_blur:
                 raise PreventUpdate
             self.current_input_text = format_voltage(self.param.get_latest())
+            self.last_committed_text = self.current_input_text
             return self.current_input_text
 
         # # Clientside callback to blur the input

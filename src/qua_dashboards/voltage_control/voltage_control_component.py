@@ -109,40 +109,34 @@ class VoltageControlComponent(BaseComponent):
         @app.callback(
             output_list_for_periodic_update,
             Input(self._get_id("update-interval"), "n_intervals"),
-            prevent_initial_call="initial_duplicate",
+            prevent_initial_call=True,
         )
         def periodic_update(_n_intervals: int):
             outputs_tuple_elements = []
-            first_load = not self._initial_values_loaded
 
             for param in self.voltage_parameters:
                 param_name = param.name
                 control_row = self._row_components[param_name]
-                current_input_field_value = control_row.current_input_text
 
                 try:
                     live_value = param.get_latest()
-                    text_to_display = format_voltage(live_value)
+                    live_text = format_voltage(live_value)
                 except Exception as e:
                     logger.error(f"Err get_latest for {param_name}: {e}", exc_info=True)
-                    text_to_display = format_voltage(live_value)
-
-                if not first_load and current_input_field_value is not None:
-                    # User has typed something, don't overwrite from periodic update immediately
-                    # Let blur/submit handle it. But ensure formatting is eventually correct.
-                    # The row's blur callback will restore to last_known_value (formatted).
-                    # The row's submit callback will set to submitted_value (formatted).
+                    live_text = control_row.current_input_text
+                if control_row.current_input_text != control_row.last_committed_text:
                     outputs_tuple_elements.append(dash.no_update)
                 else:
-                    outputs_tuple_elements.append(text_to_display)
+                    if live_text != control_row.current_input_text:
+                        control_row.current_input_text = live_text
+                        control_row.last_committed_text = live_text
+                        outputs_tuple_elements.append(live_text)
+                    else:
+                        outputs_tuple_elements.append(dash.no_update)
+                outputs_tuple_elements.append(DEFAULT_INPUT_CLASS_NAME)
 
-                outputs_tuple_elements.append(
-                    DEFAULT_INPUT_CLASS_NAME
-                )  # Always default class
-
-            if first_load and self.voltage_parameters:
-                self._initial_values_loaded = True
             return tuple(outputs_tuple_elements)
+
 
         for row_component in self._row_components.values():
             row_component.register_callbacks(app)
@@ -208,7 +202,7 @@ class VoltageControlComponent(BaseComponent):
                     var isInInput = (tagName === 'input' || tagName === 'textarea');
                     var isInVoltageInput = isInInput && isVoltageInputElement(activeEl);
 
-                    // QWERTY hotkeys: q–p, a–l, z–m
+                    // QWERTY hotkeys: q-p, a-l, z-m
                     var shortcuts = [
                         'q','w','e','r','t','y','u','i','o','p',
                         'a','s','d','f','g','h','j','k','l',
@@ -241,7 +235,7 @@ class VoltageControlComponent(BaseComponent):
                             currentVal = 0;
                         }
 
-                        var delta = (e.key === 'ArrowDown') ? stepSize : -stepSize;
+                        var delta = (e.key === 'ArrowUp') ? stepSize : -stepSize;
                         if (e.shiftKey) delta *= 10;
                         if (e.ctrlKey)  delta *= 100;
 

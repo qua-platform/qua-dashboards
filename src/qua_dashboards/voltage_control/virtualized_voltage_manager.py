@@ -97,6 +97,25 @@ class VirtualizedVoltageManager:
 
     def get_virtual_parameters(self) -> List["VirtualizedVoltageParameter"]: 
         return self._virtual_parameters
+    
+    def set_virtual_voltage_from_opx(self, index: int, clicked_value: float) -> None: 
+        current_virtual_ext = self.get_all_virtual_voltages()
+        opx_delta = clicked_value - current_virtual_ext[index]
+        if abs(opx_delta) < 1e-6:
+            return
+        d_virtual = np.zeros(len(self._virtual_names), dtype=float)
+        d_virtual[index] = opx_delta
+        physical_opx_delta = self.matrix @ d_virtual
+        current_physical_ext = self.get_physical_voltages()
+
+        for param, base_ext, d_opx in zip(
+            self._physical_parameters, current_physical_ext, physical_opx_delta
+        ):
+            gate = self.gate_set.channels.get(param.name)
+            ratio = getattr(gate, "opx_external_ratio", 1.0) if gate is not None else 1.0
+
+            new_ext = base_ext + d_opx * ratio
+            param.set(float(new_ext))
         
 
 class VirtualizedVoltageParameter: 

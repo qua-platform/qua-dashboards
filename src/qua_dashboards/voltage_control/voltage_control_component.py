@@ -150,13 +150,14 @@ class VoltageControlComponent(BaseComponent):
         app.clientside_callback(
             r"""
             function(config) {
+                // If nothing configured yet, don't do anything
                 if (!config || !config.input_ids) {
-                    return window.dash_clientside.no_update;
+                    return null;
                 }
 
-                // Only attach once
+                // Only attach once per page load
                 if (window._voltageKeyboardListenerAttached) {
-                    return window.dash_clientside.no_update;
+                    return null;
                 }
                 window._voltageKeyboardListenerAttached = true;
 
@@ -179,7 +180,7 @@ class VoltageControlComponent(BaseComponent):
                                 return el;
                             }
                         } catch (e) {
-                            // ignore non-JSON ids
+                            // Ignore non-JSON ids
                         }
                     }
                     return null;
@@ -207,17 +208,16 @@ class VoltageControlComponent(BaseComponent):
                     var isInInput = (tagName === 'input' || tagName === 'textarea');
                     var isInVoltageInput = isInInput && isVoltageInputElement(activeEl);
 
-                    // q-p, a-l, z-m: jump focus to nth voltage input
-                    // British QWERTY layout ordering:
-                    // q w e r t y u i o p  a s d f g h j k l  z x c v b n m
+                    // QWERTY hotkeys: q–p, a–l, z–m
                     var shortcuts = [
                         'q','w','e','r','t','y','u','i','o','p',
                         'a','s','d','f','g','h','j','k','l',
                         'z','x','c','v','b','n','m'
                     ];
-                    var key = e.key.toLowerCase();
+                    var key = (e.key || '').toLowerCase();
                     var idx = shortcuts.indexOf(key);
 
+                    // Focus nth voltage input
                     if (idx !== -1 && (!isInInput || isInVoltageInput)) {
                         var targetEl = findVoltageInput(idx);
                         if (targetEl) {
@@ -248,7 +248,6 @@ class VoltageControlComponent(BaseComponent):
                         var newVal = currentVal + delta;
                         var newValStr = newVal.toFixed(9).replace(/\.?0+$/, '');
 
-                        // Use native setter if possible, otherwise fallback
                         try {
                             var desc = Object.getOwnPropertyDescriptor(
                                 window.HTMLInputElement.prototype,
@@ -263,15 +262,14 @@ class VoltageControlComponent(BaseComponent):
                             activeEl.value = newValStr;
                         }
 
-                        // Tell React/Dash that the value changed
                         activeEl.dispatchEvent(new Event('input', { bubbles: true }));
                     }
 
-                    // IMPORTANT: do NOT intercept Enter.
-                    // Dash will handle Enter → bump n_submit → Python callback → param.set(...) → QDAC.
+                    // Do not intercept Enter – Dash needs it for n_submit
                 });
 
-                return window.dash_clientside.no_update;
+                // We don't actually use the store value; null is fine
+                return null;
             }
             """,
             Output(self._get_id("keyboard-dummy"), "data"),

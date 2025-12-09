@@ -92,7 +92,8 @@ class VirtualizedVoltageManager:
         new_physical = self.matrix @ current_virtual
 
         for param, physical_value in zip(self._physical_parameters, new_physical): 
-            param.set(float(physical_value))
+            pv = float(physical_value)
+            param.set(pv)
 
     def get_virtual_parameters(self) -> List["VirtualizedVoltageParameter"]: 
         return self._virtual_parameters

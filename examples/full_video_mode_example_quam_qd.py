@@ -82,11 +82,9 @@ def setup_DC_channel(
     Set up a DC Channel
 
     Args:
-        machine: Your Quam machine instance.
         name: The channel name in your Quam.
         opx_ouput_port: The integer output port of your OPX.
         qdac_port: Integer Qdac output port.
-        qdac: your QCodes Qdac instance. Replace with external source object (with its typing) if desired.
         con: QM cluster controller, defaults to "con1".
         fem: If using an OPX1000, add integer FEM number. Defaults to None for OPX+.
     """
@@ -127,7 +125,6 @@ def setup_readout_channel(
     Set up a Readout Channel
 
     Args:
-        machine: Your Quam machine instance.
         name: The channel name in your Quam.
         readout_pulse: The Readout Pulse object to be passed to the OPXDataAcquirer.
         opx_ouput_port: The integer output port of your OPX.
@@ -193,192 +190,203 @@ def define_DC_params(machine: QuamRoot, gate_names: List[str]):
     return voltage_parameters
 
 
-def main():
-    logger = setup_logging(__name__)
+# def main():
+logger = setup_logging(__name__)
 
-    # Adjust the IP and cluster name here
-    qm_ip = "172.16.33.115"
-    cluster_name = "CS_3"
+# Adjust the IP and cluster name here
+qm_ip = "172.16.33.115"
+cluster_name = "CS_3"
 
-    # If connecting to qdac, set qdac_connect = True, and the qdac_ip.
-    qdac_ip = "172.16.33.101"
-    qdac_connect = True
+# If connecting to qdac, set qdac_connect = True, and the qdac_ip.
+qdac_ip = "172.16.33.101"
+qdac_connect = True
 
-    qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
-    machine = BaseQuamQD()
+qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
+machine = BaseQuamQD()
 
-    # Define your readout pulses here. Each pulse should be uniquely mapped to your readout elements.
-    readout_pulse_ch1 = pulses.SquareReadoutPulse(
-        id="readout", length=100, amplitude=0.1
+# Define your readout pulses here. Each pulse should be uniquely mapped to your readout elements.
+readout_pulse_ch1 = pulses.SquareReadoutPulse(
+    id="readout", length=100, amplitude=0.1
+)
+readout_pulse_ch2 = pulses.SquareReadoutPulse(
+    id="readout", length=100, amplitude=0.1
+)
+
+# Choose the FEM. For OPX+, keep fem = None.
+fem = 5
+
+# Set up the DC channels
+p1 = setup_DC_channel(name="plunger_1", opx_output_port=1, qdac_port=1, fem=fem)
+p2 = setup_DC_channel(name="plunger_2", opx_output_port=2, qdac_port=2, fem=fem)
+p3 = setup_DC_channel(name="plunger_3", opx_output_port=3, qdac_port=3, fem=fem)
+s1 = setup_DC_channel(name="sensor_1", opx_output_port=4, qdac_port=4, fem=fem)
+s2 = setup_DC_channel(name="sensor_2", opx_output_port=5, qdac_port=5, fem=fem)
+b1 = setup_DC_channel(name="barrier_1", opx_output_port=6, qdac_port=6, fem=fem)
+b2 = setup_DC_channel(name="barrier_2", opx_output_port=7, qdac_port=7, fem=fem)
+
+# Set up the readout channels
+sensor_readout_channel_1 = setup_readout_channel(
+    name="readout_resonator_1",
+    readout_pulse=readout_pulse_ch1,
+    opx_output_port=6,
+    opx_input_port=1,
+    IF=150e6,
+    fem=fem,
+)
+sensor_readout_channel_2 = setup_readout_channel(
+    name="readout_resonator_2",
+    readout_pulse=readout_pulse_ch2,
+    opx_output_port=6,
+    opx_input_port=1,
+    IF=250e6,
+    fem=fem,
+)
+
+# Adjust or add your virtual gates here. This example assumes a single virtual gating layer, add more if necessary.
+logger.info("Creating VirtualGateSet")
+machine.create_virtual_gate_set(
+    gate_set_id="main_qpu",
+    virtual_channel_mapping={
+        "virtual_dot_1": p1,
+        "virtual_dot_2": p2,
+        "virtual_dot_3": p3,
+        "virtual_barrier_1": b1,
+        "virtual_barrier_2": b2,
+        "virtual_sensor_1": s1,
+        "virtual_sensor_2": s2,
+    },
+)
+
+machine.register_channel_elements(
+    plunger_channels=[p1, p2, p3],
+    barrier_channels=[b1, b2],
+    sensor_channels_resonators=[
+        (s1, sensor_readout_channel_1),
+        (s2, sensor_readout_channel_2),
+    ],
+)
+
+# Update Cross Capacitance matrix values
+machine.update_cross_compensation_submatrix(
+    virtual_names=["virtual_barrier_1", "virtual_barrier_2"],
+    channels=[p3],
+    matrix=[[0.1, 0.5]],
+)
+
+machine.update_cross_compensation_submatrix(
+    virtual_names=["virtual_dot_1", "virtual_dot_2", "virtual_dot_3"],
+    channels=[p1, p2, p3],
+    matrix=[
+        [1, 0.1, 0.1],
+        [0.2, 1, 0.6],
+        [0.1, 0.3, 1],
+    ],
+)
+
+machine.update_cross_compensation_submatrix(
+    virtual_names=["virtual_dot_1", "virtual_dot_2", "virtual_dot_3"],
+    channels=[b1, b2, s1, s2],
+    matrix=[
+        [0.15, 0.4, 0.1 ],
+        [0.1 , 0.2, 0.2 ],
+        [0.2 , 0.2, 0.1 ],
+        [0.2 , 0.3, 0.25],
+    ],
+)
+
+if qdac_connect:
+    logger.info("Connecting to QDAC")
+    machine.network.update({"qdac_ip": qdac_ip})
+    machine.connect_to_external_source(external_qdac=True)
+
+scan_mode_dict = {
+    "Switch_Raster_Scan": scan_modes.SwitchRasterScan(),
+    "Raster_Scan": scan_modes.RasterScan(),
+    "Spiral_Scan": scan_modes.SpiralScan(),
+}
+
+virtual_gating_component = VirtualLayerEditor(
+    gateset=machine.virtual_gate_sets["main_qpu"], component_id="virtual-gates-ui"
+)
+voltage_parameters = define_DC_params(
+    machine,
+    [
+        "plunger_1",
+        "plunger_2",
+        "plunger_3",
+        "barrier_1",
+        "barrier_2",
+        "sensor_1",
+        "sensor_2",
+    ],
+)
+external_virtual_voltage_manager = VirtualizedVoltageManager(
+    physical_parameters=voltage_parameters,
+    virtual_names=[
+        "virtual_dot_1",
+        "virtual_dot_2",
+        "virtual_dot_3",
+        "virtual_barrier_1",
+        "virtual_barrier_2",
+        "virtual_sensor_1",
+        "virtual_sensor_2",
+    ],
+    gate_set=machine.virtual_gate_sets["main_qpu"],
+)
+
+# Instantiate the OPXDataAcquirer.
+# This component handles the QUA program generation, execution, and data fetching.
+data_acquirer = OPXDataAcquirer(
+    qmm=qmm,
+    machine=machine,
+    gate_set=machine.virtual_gate_sets[
+        "main_qpu"
+    ],  # Replace with your GateSet instance
+    x_axis_name="virtual_dot_1",  # Must appear in gate_set.valid_channel_names; Virtual gate names also valid
+    y_axis_name="virtual_dot_2",  # Must appear in gate_set.valid_channel_names; Virtual gate names also valid
+    scan_modes=scan_mode_dict,
+    result_type="I",  # "I", "Q", "amplitude", or "phase"
+    available_readout_pulses=[
+        readout_pulse_ch1,
+        readout_pulse_ch2,
+    ],  # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI.
+    acquisition_interval_s=0.05,
+    virtual_voltages_manager=external_virtual_voltage_manager,
+)
+
+voltage_control_tab = None
+if qdac_connect:
+    voltage_control_component = VoltageControlComponent(
+        component_id="Voltage_Control",
+        voltage_parameters=external_virtual_voltage_manager._virtual_parameters,
+        update_interval_ms=1000,
     )
-    readout_pulse_ch2 = pulses.SquareReadoutPulse(
-        id="readout", length=100, amplitude=0.1
+    from qua_dashboards.video_mode.tab_controllers import (
+        VoltageControlTabController,
     )
 
-    # Choose the FEM. For OPX+, keep fem = None.
-    fem = 5
-
-    # Set up the DC channels
-    p1 = setup_DC_channel(name="plunger_1", opx_output_port=1, qdac_port=1, fem=fem)
-    p2 = setup_DC_channel(name="plunger_2", opx_output_port=2, qdac_port=2, fem=fem)
-    p3 = setup_DC_channel(name="plunger_3", opx_output_port=3, qdac_port=3, fem=fem)
-    s1 = setup_DC_channel(name="sensor_1", opx_output_port=4, qdac_port=4, fem=fem)
-    s2 = setup_DC_channel(name="sensor_2", opx_output_port=5, qdac_port=5, fem=fem)
-    b1 = setup_DC_channel(name="barrier_1", opx_output_port=6, qdac_port=6, fem=fem)
-    b2 = setup_DC_channel(name="barrier_2", opx_output_port=7, qdac_port=7, fem=fem)
-
-    # Set up the readout channels
-    sensor_readout_channel_1 = setup_readout_channel(
-        name="readout_resonator_1",
-        readout_pulse=readout_pulse_ch1,
-        opx_output_port=6,
-        opx_input_port=1,
-        IF=150e6,
-        fem=fem,
-    )
-    sensor_readout_channel_2 = setup_readout_channel(
-        name="readout_resonator_2",
-        readout_pulse=readout_pulse_ch2,
-        opx_output_port=6,
-        opx_input_port=1,
-        IF=250e6,
-        fem=fem,
+    voltage_control_tab = VoltageControlTabController(
+        voltage_control_component=voltage_control_component
     )
 
-    # Adjust or add your virtual gates here. This example assumes a single virtual gating layer, add more if necessary.
-    logger.info("Creating VirtualGateSet")
-    machine.create_virtual_gate_set(
-        gate_set_id="main_qpu",
-        virtual_channel_mapping={
-            "virtual_dot_1": p1,
-            "virtual_dot_2": p2,
-            "virtual_dot_3": p3,
-            "virtual_barrier_1": b1,
-            "virtual_barrier_2": b2,
-            "virtual_sensor_1": s1,
-            "virtual_sensor_2": s2,
-        },
-    )
+video_mode_component = VideoModeComponent(
+    data_acquirer=data_acquirer,
+    data_polling_interval_s=0.5,  # How often the dashboard polls for new data
+    voltage_control_tab=voltage_control_tab,
+    save_path=r"C:\Users\...",
+)
+components = [video_mode_component, virtual_gating_component]
 
-    machine.register_channel_elements(
-        plunger_channels=[p1, p2, p3],
-        barrier_channels=[b1, b2],
-        sensor_channels_resonators=[
-            (s1, sensor_readout_channel_1),
-            (s2, sensor_readout_channel_2),
-        ],
-    )
+app = build_dashboard(
+    components=components,
+    title="OPX Video Mode Dashboard",  # Title for the web page
+)
+# Helper function to keep UI updated with Virtual Layer changes
+ui_update(app, video_mode_component)
 
-    # Update Cross Capacitance matrix values
-    machine.update_cross_compensation_submatrix(
-        virtual_names=["virtual_barrier_1", "virtual_barrier_2"],
-        channels=[p3],
-        matrix=[[0.1, 0.5]],
-    )
-
-    machine.update_cross_compensation_submatrix(
-        virtual_names=["virtual_dot_1", "virtual_dot_2", "virtual_dot_3"],
-        channels=[p1, p2, p3],
-        matrix=[
-            [1, 0.1, 0.1],
-            [0.2, 1, 0.6],
-            [0.1, 0.3, 1],
-        ],
-    )
-
-    if qdac_connect:
-        logger.info("Connecting to QDAC")
-        machine.network.update({"qdac_ip": qdac_ip})
-        machine.connect_to_external_source(external_qdac=True)
-
-    scan_mode_dict = {
-        "Switch_Raster_Scan": scan_modes.SwitchRasterScan(),
-        "Raster_Scan": scan_modes.RasterScan(),
-        "Spiral_Scan": scan_modes.SpiralScan(),
-    }
-
-    virtual_gating_component = VirtualLayerEditor(
-        gateset=machine.virtual_gate_sets["main_qpu"], component_id="virtual-gates-ui"
-    )
-    voltage_parameters = define_DC_params(
-        machine,
-        [
-            "plunger_1",
-            "plunger_2",
-            "plunger_3",
-            "barrier_1",
-            "barrier_2",
-            "sensor_1",
-            "sensor_2",
-        ],
-    )
-    external_virtual_voltage_manager = VirtualizedVoltageManager(
-        physical_parameters=voltage_parameters,
-        virtual_names=[
-            "virtual_dot_1",
-            "virtual_dot_2",
-            "virtual_dot_3",
-            "virtual_barrier_1",
-            "virtual_barrier_2",
-            "virtual_sensor_1",
-            "virtual_sensor_2",
-        ],
-        gate_set=machine.virtual_gate_sets["main_qpu"],
-    )
-
-    # Instantiate the OPXDataAcquirer.
-    # This component handles the QUA program generation, execution, and data fetching.
-    data_acquirer = OPXDataAcquirer(
-        qmm=qmm,
-        machine=machine,
-        gate_set=machine.virtual_gate_sets[
-            "main_qpu"
-        ],  # Replace with your GateSet instance
-        x_axis_name="virtual_dot_1",  # Must appear in gate_set.valid_channel_names; Virtual gate names also valid
-        y_axis_name="virtual_dot_2",  # Must appear in gate_set.valid_channel_names; Virtual gate names also valid
-        scan_modes=scan_mode_dict,
-        result_type="I",  # "I", "Q", "amplitude", or "phase"
-        available_readout_pulses=[
-            readout_pulse_ch1,
-            readout_pulse_ch2,
-        ],  # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI.
-        acquisition_interval_s=0.05,
-        virtual_voltages_manager=external_virtual_voltage_manager,
-    )
-
-    voltage_control_tab = None
-    if qdac_connect:
-        voltage_control_component = VoltageControlComponent(
-            component_id="Voltage_Control",
-            voltage_parameters=external_virtual_voltage_manager._virtual_parameters,
-            update_interval_ms=1000,
-        )
-        from qua_dashboards.video_mode.tab_controllers import (
-            VoltageControlTabController,
-        )
-
-        voltage_control_tab = VoltageControlTabController(
-            voltage_control_component=voltage_control_component
-        )
-
-    video_mode_component = VideoModeComponent(
-        data_acquirer=data_acquirer,
-        data_polling_interval_s=0.5,  # How often the dashboard polls for new data
-        voltage_control_tab=voltage_control_tab,
-        save_path=r"C:\Users\...",
-    )
-    components = [video_mode_component, virtual_gating_component]
-
-    app = build_dashboard(
-        components=components,
-        title="OPX Video Mode Dashboard",  # Title for the web page
-    )
-    # Helper function to keep UI updated with Virtual Layer changes
-    ui_update(app, video_mode_component)
-
-    logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
-    app.run(debug=True, host="0.0.0.0", port=8050, use_reloader=False)
+logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
+app.run(debug=True, host="0.0.0.0", port=8050, use_reloader=False)
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

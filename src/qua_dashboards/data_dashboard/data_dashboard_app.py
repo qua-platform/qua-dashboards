@@ -21,7 +21,7 @@ from qua_dashboards.data_dashboard.data_components import (
 class DataDashboardApp:
     def __init__(
         self,
-        update_interval: int = 500,
+        update_interval: int = 1000,
         title: str = "Data Dashboard",
         include_title: bool = False,
         update_button: bool = False,

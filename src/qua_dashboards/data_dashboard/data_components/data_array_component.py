@@ -62,28 +62,24 @@ class DataArrayComponent(BaseDataComponent):
 
             # Check if we can do a data-only update (preserve state)
             old_array = cls._data_nd.get(label)
-            logger.info(f"[{label}] old_array in cache: {old_array is not None}, ndim: {value.ndim}")
-
-            if old_array is not None:
-                structure_compatible = cls._structure_compatible(old_array, value)
-                logger.info(
-                    f"[{label}] Structure check: old shape={old_array.shape}, "
-                    f"new shape={value.shape}, compatible={structure_compatible}"
-                )
 
             if (
                 old_array is not None
                 and value.ndim > 2
                 and cls._structure_compatible(old_array, value)
             ):
-                logger.info(f"DATA-ONLY UPDATE: {label} (preserving zoom/scroll state)")
-                cls._update_nd_ui_data_only(label, value, collapse_comp.children)
+                # Attempt data-only update with fallback to full rebuild
+                try:
+                    logger.debug(f"Attempting data-only update for {label}")
+                    cls._update_nd_ui_data_only(label, value, collapse_comp.children)
+                except Exception as e:
+                    logger.warning(
+                        f"Data-only update failed for {label}, falling back to full rebuild: {e}"
+                    )
+                    collapse_comp.children = cls._build_ui_for_data_array(label, value)
             else:
                 # Structure changed or first time: full rebuild
-                if old_array is not None:
-                    logger.info(f"FULL REBUILD: {label} (structure changed)")
-                else:
-                    logger.info(f"FULL REBUILD: {label} (no old_array in cache)")
+                logger.debug(f"Full rebuild for {label}")
                 collapse_comp.children = cls._build_ui_for_data_array(label, value)
 
         if value.ndim > 2:
@@ -228,10 +224,10 @@ class DataArrayComponent(BaseDataComponent):
             if dim in old_array.coords and dim in new_array.coords:
                 old_coords = old_array.coords[dim].values
                 new_coords = new_array.coords[dim].values
-                if not (
-                    len(old_coords) == len(new_coords)
-                    and np.array_equal(old_coords, new_coords)
-                ):
+                if len(old_coords) != len(new_coords):
+                    return False
+                # Use allclose for float comparison with tolerance
+                if not np.allclose(old_coords, new_coords, rtol=1e-9, atol=1e-12):
                     return False
             elif (dim in old_array.coords) != (dim in new_array.coords):
                 # One has the coordinate and the other doesn't
@@ -252,30 +248,25 @@ class DataArrayComponent(BaseDataComponent):
         """
         # Find the graph component in children
         graph = None
-        logger.info(f"[{label}] Looking for Graph in {len(children)} children")
-        for i, child in enumerate(children):
+        for child in children:
             if isinstance(child, dcc.Graph):
-                logger.info(f"[{label}] Found Graph at index {i}")
                 if (
                     hasattr(child, "id")
                     and isinstance(child.id, dict)
                     and child.id.get("type") == "data-array-graph"
                 ):
-                    logger.info(f"[{label}] Graph ID matches")
                     graph = child
                     break
 
         if graph is None:
-            logger.warning(f"[{label}] Could not find graph component")
-            return
+            logger.warning(f"Could not find graph component for {label}")
+            raise ValueError(f"Graph component not found for {label}")
 
         # Get current figure state (preserves zoom, pan, camera angles)
         curr_fig = graph.figure
         if curr_fig is None:
-            logger.warning(f"[{label}] No figure state found")
-            return
-
-        logger.info(f"[{label}] Updating figure data with preserved layout")
+            logger.warning(f"No figure state found for {label}")
+            raise ValueError(f"No figure state for {label}")
 
         # Get slice dict - we update at the first slice (outer dims = 0)
         # The slider callback will handle slicing for user interactions
@@ -289,7 +280,6 @@ class DataArrayComponent(BaseDataComponent):
 
         # Update the graph figure in place
         graph.figure = fig
-        logger.info(f"[{label}] Graph figure updated")
 
     @classmethod
     def register_callbacks(cls, app):

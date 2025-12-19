@@ -13,6 +13,7 @@ from qm.qua import (
     save,
     stream_processing,
     wait,
+    ramp_to_zero
 )
 from quam.components.pulses import ReadoutPulse
 import xarray as xr
@@ -878,6 +879,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
     def stop_acquisition(self) -> None:
         logger.info(f"OPXDataAcquirer ({self.component_id}) attempting to halt QM job.")
+        super().stop_acquisition()
         if self.qm_job and self.qm_job.status == "running":
             try:
                 self.qm_job.halt()
@@ -885,7 +887,6 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 logger.info(f"QM job for {self.component_id} halted.")
             except Exception as e:
                 logger.warning(f"Error halting QM job for {self.component_id}: {e}")
-        super().stop_acquisition()
 
     def mark_virtual_layer_changed(self, *, affects_config: bool = False):
         """Call this when a virtual-gate matrix was edited."""

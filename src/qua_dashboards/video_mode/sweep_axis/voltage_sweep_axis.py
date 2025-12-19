@@ -48,7 +48,7 @@ class VoltageSweepAxis(BaseSweepAxis):
     @property
     def sweep_values_unattenuated(self):
         """Returns axis sweep values without attenuation."""
-        return self.sweep_values * 10 ** (self.attenuation / 20)
+        return self.sweep_values
 
     @property
     def sweep_values_with_offset(self):
@@ -79,7 +79,7 @@ class VoltageSweepAxis(BaseSweepAxis):
         Apply command. Currently just updates the last voltage tracker
         """
         # assign(self.last_val, (value >> 12) << 12)
-        assign(self.val, value)
+        assign(self.val, (value >> 12) << 12)
         return {"voltage": {self.name: self.val}}
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:

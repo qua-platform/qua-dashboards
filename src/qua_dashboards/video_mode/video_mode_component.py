@@ -430,11 +430,18 @@ class VideoModeComponent(BaseComponent):
             logger.info("Shutdown button clicked - calling shutdown callback")
             
             if self.shutdown_callback:
-                def delayed_shutdown():
-                    time.sleep(0.5) 
-                    self.shutdown_callback() 
+                def full_shutdown():
+                    time.sleep(0.3)
+                    
+                    if hasattr(self.data_acquirer, 'shutdown'):
+                        self.data_acquirer.shutdown()
+                    else:
+                        self.data_acquirer.stop_acquisition()
+                    
+                    if self.shutdown_callback:
+                        self.shutdown_callback()
                 
-                threading.Thread(target=delayed_shutdown, daemon=True).start()
+                threading.Thread(target=full_shutdown, daemon=True).start()
                 return "Shutting down video mode..."
             else:
                 return "Shutdown not available"

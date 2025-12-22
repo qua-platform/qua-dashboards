@@ -220,6 +220,25 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
             "status": self._acquisition_status,
         }
 
+    def reset(self) -> None: 
+        """Reset the acquirer from the error state, allowing the user to continue with correct params"""
+        logger.info(f"Resetting {self.component_id} from error state")
+
+        if self._acquisition_thread is not None and self._acquisition_thread.is_alive(): 
+            self._stop_event.set()
+            self._acquisition_thread.join(timeout = 0.2)
+        self._stop_event.clear()
+        self._acquisition_thread = None
+        self._acquisition_status = "stopped"
+        while not self._error_queue.empty():
+            try:
+                self._error_queue.get_nowait()
+            except queue.Empty:
+                break
+        with self._data_lock:
+            self._data_history_raw.clear()
+            self._latest_processed_data = None
+
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
         flags = super().update_parameters(parameters)  # From BaseUpdatableComponent
 

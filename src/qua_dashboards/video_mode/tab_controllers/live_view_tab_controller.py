@@ -502,6 +502,8 @@ class LiveViewTabController(BaseTabController):
                         f"Attempting to start acquisition for "
                         f"'{self._data_acquirer_instance.component_id}'"
                     )
+                    if current_status == "ERROR":
+                        self._data_acquirer_instance.reset()
                     self._data_acquirer_instance.start_acquisition()
                     button_text, button_color = "Stop Acquisition", "danger"
                     status_text, status_color = "RUNNING", "success"

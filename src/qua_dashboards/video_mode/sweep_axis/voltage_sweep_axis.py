@@ -48,7 +48,7 @@ class VoltageSweepAxis(BaseSweepAxis):
     @property
     def sweep_values_unattenuated(self):
         """Returns axis sweep values without attenuation."""
-        return self.sweep_values * 10 ** (self.attenuation / 20)
+        return self.sweep_values
 
     @property
     def sweep_values_with_offset(self):

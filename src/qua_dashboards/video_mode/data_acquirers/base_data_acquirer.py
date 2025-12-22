@@ -50,6 +50,7 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
 
         self.num_software_averages: int = max(1, num_software_averages)
         self.acquisition_interval_s: float = acquisition_interval_s
+        self._latest_seq: int = 0
 
         self._data_history_raw: List[
             Any
@@ -130,6 +131,7 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
                         self._latest_processed_data = self._perform_averaging(
                             self._data_history_raw
                         )
+                        self._latest_seq = self._latest_seq + 1
 
                 try:  # Clear any previous error from the queue if successful this cycle
                     while not self._error_queue.empty():
@@ -218,6 +220,7 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
             "data": data_to_return,
             "error": error_from_queue,
             "status": self._acquisition_status,
+            "seq": self._latest_seq,
         }
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:

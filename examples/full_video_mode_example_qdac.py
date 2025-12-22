@@ -50,6 +50,7 @@ from quam.components import (
     StickyChannelAddon,
 )
 from quam.core import QuamRoot
+from quam.components.ports import LFFEMAnalogOutputPort, LFFEMAnalogInputPort, OPXPlusAnalogOutputPort, OPXPlusAnalogInputPort
 from typing import List, Optional
 from qua_dashboards.core import build_dashboard
 from qua_dashboards.utils import setup_logging
@@ -83,10 +84,18 @@ def setup_DC_channel(machine: QuamRoot, name: str, opx_output_port: int, qdac_po
         con: QM cluster controller, defaults to "con1". 
         fem: If using an OPX1000, add integer FEM number. Defaults to None for OPX+. 
     """
-    if fem is None: 
-        opx_output = (con, opx_output_port)
-    else: 
-        opx_output = (con, fem, opx_output_port)
+    if fem is None:
+        opx_output = OPXPlusAnalogOutputPort(
+            controller_id=con,
+            port_id=opx_output_port,
+        )
+    else:
+        opx_output = LFFEMAnalogOutputPort(
+            controller_id=con,
+            fem_id=fem,
+            port_id=opx_output_port,
+            upsampling_mode="pulse",
+        )
 
     machine.channels[name] = VoltageGate(
         opx_output = opx_output, # Output for channel
@@ -115,12 +124,27 @@ def setup_readout_channel(machine: QuamRoot, name: str, readout_pulse: pulses.Re
         fem: If using an OPX1000, add integer FEM number. Defaults to None for OPX+. Assumed same FEM for output and input channels.
     """
     
-    if fem is None: 
-        opx_output = (con, opx_output_port)
-        opx_input = (con, opx_input_port)
-    else: 
-        opx_output = (con, fem, opx_output_port)
-        opx_input = con, fem, opx_input_port
+    if fem is None:
+        opx_output = OPXPlusAnalogOutputPort(
+            controller_id=con,
+            port_id=opx_output_port,
+        )
+        opx_input = OPXPlusAnalogInputPort(
+            controller_id=con,
+            port_id=opx_input_port,
+        )
+    else:
+        opx_output = LFFEMAnalogOutputPort(
+            controller_id=con,
+            fem_id=fem,
+            port_id=opx_output_port,
+            upsampling_mode="mw",
+        )
+        opx_input = LFFEMAnalogInputPort(
+            controller_id=con,
+            fem_id=fem,
+            port_id=opx_input_port,
+        )
     
     machine.channels[name] = InOutSingleChannel(
         opx_output=opx_output,  # Output for the readout pulse
@@ -152,7 +176,7 @@ def main():
     logger = setup_logging(__name__)
 
     # Adjust the IP and cluster name here
-    qm_ip = "127.0.0.1"
+    qm_ip = "172.16.33.101"
     cluster_name = "CS_1"
     qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
     machine = BasicQuam()

@@ -78,7 +78,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         initial_delay_s: Optional[float] = None,
         stream_vars: Optional[List[str]] = None,
         inner_loop_kwargs: Optional[Dict[str, Any]] = None,
-        inner_functions_dict: Optional[Dict] = {},
+        inner_functions_dict: Optional[Dict] = None,
         apply_compensation_pulse: bool = True, 
         virtual_voltages_manager: VirtualizedVoltageManager = None,
         **kwargs: Any,
@@ -141,6 +141,9 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self.scan_modes = scan_modes
         self.scan_2d: ScanMode = next(iter(self.scan_modes.values()))
         self.scan_1d: ScanMode = LineScan()
+        self._compiled_xy = None
+        # Caching the scan mode indices for faster python side operation
+        self._scan_idx_cache: Optional[Tuple[Tuple[int,int,int], np.ndarray, np.ndarray]] = None
 
         self.initial_delay_s: Optional[float] = initial_delay_s
         self.qua_program: Optional[Program] = None
@@ -156,7 +159,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self._configure_readout()
         self._rebuild_stream_vars()
         self._compiled_stream_vars: Optional[List[str]] = None
-        self.inner_functions_dict = inner_functions_dict
+        self.inner_functions_dict = inner_functions_dict or {}
     @property
     def x_axis(self) -> BaseSweepAxis:
         inner_loop = getattr(self, "qua_inner_loop_action", None)
@@ -270,8 +273,23 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         if self.scan_2d is self.scan_modes[name]:
             return
         self.scan_2d = self.scan_modes[name]
+        self._scan_idx_cache = None
         self._halt_acquisition()
         self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
+
+    def get_scan_indices(self, x_pts:int, y_pts:int) -> Tuple[np.ndarray, np.ndarray]: 
+        """
+        Cache the scan mode indices, so that during run-time, it does not keep querying the scan mode classes. 
+        """
+        key = (x_pts, y_pts, id(self.scan_mode))
+        if self._scan_idx_cache is None or self._scan_idx_cache[0] != key: 
+            x_idx, y_idx = self.scan_mode.get_idxs(x_points=x_pts, y_points=y_pts)
+            self._scan_idx_cache = (
+                key,
+                np.asarray(x_idx, dtype=np.intp),
+                np.asarray(y_idx, dtype=np.intp),
+            )
+        return self._scan_idx_cache[1], self._scan_idx_cache[2]
 
     @property
     def scan_mode(self) -> ScanMode:
@@ -349,6 +367,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             y_qua_values = None
         else:
             y_qua_values = self.y_axis.qua_sweep_values
+        self._compiled_xy = (int(self.x_axis.points), (1 if self._is_1d else int(self.y_axis.points)), self._is_1d)
 
         self.qua_inner_loop_action.selected_readout_channels = (
             self.selected_readout_channels
@@ -425,7 +444,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         if self.qm is None:
             self.qm = self.qmm.open_qm(self.qua_config)  # type: ignore
 
-    def execute_program(self, validate_running: bool = True):
+    def execute_program(self, validate_running: bool = False, startup_timeout_s: float = 0.1):
         if self.qua_program is None:
             logger.info(f"Generating QUA program for {self.component_id}.")
             self.generate_qua_program()
@@ -435,11 +454,11 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             self.initialize_qm()
         self.qm_job = self.qm.execute(self.qua_program)  # type: ignore
 
-        if validate_running:
+        if validate_running and startup_timeout_s > 0:
             try:
                 handle = self.qm_job.result_handles.get("all_streams_combined")
-                handle.wait_for_values(1, timeout=0.5)
-                logger.info(f"QM job for {self.component_id} started successfully.")
+                handle.wait_for_values(1, timeout=startup_timeout_s)
+                logger.info(f"QM job for {self.component_id} successfully produced initial values.")
             except Exception as e:
                 logger.error(
                     f"QM job for {self.component_id} failed to start or produce initial values: {e}"
@@ -447,16 +466,16 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 #raise
 
     def _flat_to_2d(self, flat: np.ndarray) -> np.ndarray:
-        """
-        Takes a flat numpy array of data, and build a 2D plot based on the appropriate shape and scan mode indices.
-        """
-        shape = (self.y_axis.points, self.x_axis.points)
-        output_data_2d = np.zeros(shape, dtype=flat.dtype)
-        x_indices, y_indices = self.scan_mode.get_idxs(
-            x_points=self.x_axis.points, y_points=self.y_axis.points
+        flat = np.asarray(flat).ravel()
+        y_pts, x_pts = int(self.y_axis.points), int(self.x_axis.points)
+        output_data_2d = np.full((y_pts, x_pts), np.nan, dtype=flat.dtype)
+
+        x_indices, y_indices = self.get_scan_indices(
+            x_pts=x_pts, y_pts=y_pts,
         )
-        for i, (y, x) in enumerate(zip(y_indices, x_indices)):
-            output_data_2d[y, x] = flat[i]
+        n = min(flat.size, len(x_indices))
+        if n:
+            output_data_2d[y_indices[:n], x_indices[:n]] = flat[:n]
         return output_data_2d
 
     def _process_fetched_results(self, fetched_qua_results: Tuple) -> np.ndarray:
@@ -464,6 +483,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         Processes the raw tuple from QUA's fetch_all into a dictionary of named arrays,
         then derives the final 2D array based on self.result_type.
         """
+        if fetched_qua_results is None:
+            return np.full((self.y_axis.points, self.x_axis.points), np.nan)
         compiled = self._compiled_stream_vars or self.stream_vars
         is_multi_readout = len(compiled) > 2
 
@@ -486,6 +507,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             - If fewer samples are available than a full frame, returns a 2D array filled with NaNs
             - Otherwise, reshape samples into the appropriate dimensions
             """
+            flat = np.asarray(flat).ravel()
             # keep last full frame if concatenated
             if flat.size > expected_points:
                 flat = np.asarray(flat)[-expected_points:]
@@ -581,6 +603,12 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             return np.stack(output_layers, axis=0)
 
     def perform_actual_acquisition(self) -> np.ndarray:
+        cur = (int(self.x_axis.points), 1 if self._is_1d else int(self.y_axis.points), self._is_1d)
+        if self._compiled_xy is not None and cur != self._compiled_xy:
+            logger.info(f"Scan shape changed {self._compiled_xy} -> {cur}. Forcing recompile.")
+            self._halt_acquisition()
+            self._compiled_stream_vars = None
+            self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
         if self._compiled_stream_vars is not None:
             if len(self.selected_readout_channels) <= 1:
                 expected_vars = self.stream_vars_default.copy()
@@ -730,6 +758,9 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self._compilation_flags |= flags & (
             ModifiedFlags.PROGRAM_MODIFIED | ModifiedFlags.CONFIG_MODIFIED
         )
+        if flags & (ModifiedFlags.PROGRAM_MODIFIED | ModifiedFlags.CONFIG_MODIFIED):
+            with self._data_lock:
+                self._data_history_raw.clear()
         return flags
 
     def get_dash_components(

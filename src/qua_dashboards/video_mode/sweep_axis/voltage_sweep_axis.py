@@ -79,7 +79,7 @@ class VoltageSweepAxis(BaseSweepAxis):
         Apply command. Currently just updates the last voltage tracker
         """
         # assign(self.last_val, (value >> 12) << 12)
-        assign(self.val, (value >> 12) << 12)
+        assign(self.val, value)
         return {"voltage": {self.name: self.val}}
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:

@@ -68,6 +68,16 @@ class SettingsTabController(BaseTabController):
             units="ns",
             step=4,
         )
+        pre_measurement_delay_input = create_input_field(
+            id={
+                "type": "pre_measurement_delay",
+                "index": f"{self._data_acquirer_instance.component_id}::pre_measurement_delay",
+            },
+            label="Pre-Measurement Delay",
+            value=getattr(self._data_acquirer_instance.qua_inner_loop_action, "pre_measurement_delay", 0),
+            units="ns",
+            step=4,
+        )
 
         inner_controls = []
         try:
@@ -207,6 +217,7 @@ class SettingsTabController(BaseTabController):
                     scan_mode_selector,
                     ramp_duration_input,
                     point_duration_input,
+                    pre_measurement_delay_input,
                     inner_loop_section,
                     *inner_controls,
                     html.Div(
@@ -252,10 +263,12 @@ class SettingsTabController(BaseTabController):
             State({"type": "ramp_duration", "index": ALL}, "id"),
             Input({"type": "point_duration", "index": ALL}, "value"),
             State({"type": "point_duration", "index": ALL}, "id"),
+            Input({"type": "pre_measurement_delay", "index": ALL}, "value"),
+            State({"type": "pre_measurement_delay", "index": ALL}, "id"),
             prevent_initial_call=True,
         )
         def _apply_settings(
-            inner_vals, inner_ids, select_vals, select_ids, ramp_vals, ramp_ids, point_vals, point_ids,
+            inner_vals, inner_ids, select_vals, select_ids, ramp_vals, ramp_ids, point_vals, point_ids, pre_meas_delay_vals, pre_meas_delay_ids
         ):
             """
             Collect changes from the Settings tab and forward them to the acquirer.
@@ -286,6 +299,10 @@ class SettingsTabController(BaseTabController):
                 idx = point_ids[0].get("index")
                 comp_id, param = idx.split("::", 1)
                 params_to_update.setdefault(comp_id, {})[param] = point_vals[0]
+            if pre_meas_delay_vals and pre_meas_delay_ids:
+                idx = pre_meas_delay_ids[0].get("index")
+                comp_id, param = idx.split("::", 1)
+                params_to_update.setdefault(comp_id, {})[param] = pre_meas_delay_vals[0]
 
             if not params_to_update:
                 return no_update, no_update

@@ -71,6 +71,7 @@ class VoltageControlComponent(BaseComponent):
             raise ValueError("Please provide either a sequence of VoltageParameter objects, or a VirtualDCSet.")
         if voltage_parameters is None: 
             self.dc_set = dc_set
+            _ = self.dc_set.all_current_voltages
             voltage_parameters = []
             for ch in self.dc_set.valid_channel_names: 
                 virtual_param = VirtualGateParameter(name = ch, label = ch, dc_set = self.dc_set)

@@ -308,10 +308,10 @@ def main():
     }
 
     virtual_gating_component = VirtualLayerEditor(
-        gateset=machine.virtual_gate_sets["main_qpu"], component_id="virtual-gates-ui"
+        gateset=machine.virtual_gate_sets["main_qpu"], component_id="virtual-gates-ui", dc_set = machine.virtual_dc_sets["main_qpu"]
     )
 
-    voltage_control_tab = None
+    voltage_control_tab, voltage_control_component = None, None
     if qdac_connect:
         voltage_control_component = VoltageControlComponent(
             component_id="Voltage_Control",
@@ -360,7 +360,7 @@ def main():
         title="OPX Video Mode Dashboard",  # Title for the web page
     )
     # Helper function to keep UI updated with Virtual Layer changes
-    ui_update(app, video_mode_component)
+    ui_update(app, video_mode_component, voltage_control_component)
 
     logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
     app.run(debug=True, host="0.0.0.0", port=8050, use_reloader=False)

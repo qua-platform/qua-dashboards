@@ -113,7 +113,7 @@ class VoltageControlComponent(BaseComponent):
             [
                 dcc.Dropdown(
                     id = self._get_id("dc-gate-selector"), 
-                    options = [{"label": p.name, "value": p.name} for p in self.voltage_parameters], 
+                    options = [{"label": p, "value": p} for p in self.dc_set.valid_channel_names], 
                     value = [], 
                     multi = True, 
                     placeholder = "Select gates to display", 
@@ -142,6 +142,7 @@ class VoltageControlComponent(BaseComponent):
         )
     
     def register_callbacks(self, app: dash.Dash) -> None:
+        self._app = app
         if not self.voltage_parameters:
             return
 
@@ -194,6 +195,13 @@ class VoltageControlComponent(BaseComponent):
         def update_displayed_rows(selected_names): 
             if not selected_names: 
                 return [], {"input_ids": [], "step_size": self.step_size}
+            for name in selected_names:
+                if name not in self._row_components:
+                    param = VirtualGateParameter(name=name, label=name, dc_set=self.dc_set)
+                    self.voltage_parameters.append(param)
+                    row = VoltageControlRow(input_id_type=self._get_id_type_str("input"), param=param)
+                    self._row_components[name] = row
+                    row.register_callbacks(self._app)
             self.gates_to_display = [p for p in self.voltage_parameters if p.name in selected_names]
             rows = [self._row_components[name].get_layout() for name in selected_names]
             input_ids = [{"type": self._get_id_type_str("input"), "index": name} for name in selected_names]

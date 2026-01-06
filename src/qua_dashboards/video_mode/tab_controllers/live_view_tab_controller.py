@@ -293,21 +293,27 @@ class LiveViewTabController(BaseTabController):
                 return dash.no_update
             
             da = self._data_acquirer_instance
-            manager = getattr(da, "external_virtual_voltages_manager", None)
+            voltage_control = getattr(da, "voltage_control_component", None)
 
-            if manager is None: 
+            if voltage_control is None or voltage_control.dc_set is None: 
                 return dash.no_update
 
-            if x_val is not None and da.x_axis_name in manager._virtual_names: 
-                idx_x = manager._virtual_names.index(da.x_axis_name)
-                manager.set_virtual_voltage_from_opx(idx_x, float(x_val))
+            dc_set = voltage_control.dc_set
+            voltages_to_set = {}
+
+
+            if x_val is not None and da.x_axis_name in dc_set.valid_channel_names: 
+                voltages_to_set[da.x_axis_name] = float(x_val)
             if (
                 y_val is not None
                 and da.y_axis_name is not None
-                and da.y_axis_name in manager._virtual_names
+                and da.y_axis_name in dc_set.valid_channel_names
             ):
-                idx_y = manager._virtual_names.index(da.y_axis_name)
-                manager.set_virtual_voltage_from_opx(idx_y, float(y_val))
+                voltages_to_set[da.y_axis_name] = float(y_val)
+
+            if voltages_to_set: 
+                dc_set.set_voltages(voltages_to_set)
+                
             return ""
             
     def _register_gridlines_callback(

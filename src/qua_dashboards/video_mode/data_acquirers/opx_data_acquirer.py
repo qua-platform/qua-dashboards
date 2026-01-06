@@ -30,7 +30,7 @@ from qua_dashboards.video_mode.sweep_axis import (
     FrequencySweepAxis,
 )
 from qua_dashboards.video_mode.scan_modes import ScanMode
-from qua_dashboards.voltage_control import VirtualizedVoltageManager
+from qua_dashboards.voltage_control import VoltageControlComponent
 from qua_dashboards.video_mode.inner_loop_actions.inner_loop_action import (
     InnerLoopAction,
 )
@@ -79,7 +79,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         inner_loop_kwargs: Optional[Dict[str, Any]] = None,
         inner_functions_dict: Optional[Dict] = {},
         apply_compensation_pulse: bool = True, 
-        virtual_voltages_manager: VirtualizedVoltageManager = None,
+        voltage_control_component: Optional["VoltageControlComponent"] = None,
         **kwargs: Any,
     ):
         """
@@ -105,7 +105,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             inner_loop_kwargs: Additional arguments for BasicInnerLoopAction creation.
             **kwargs: Additional arguments for Base2DDataAcquirer.
         """
-        self.external_virtual_voltages_manager = virtual_voltages_manager
+        self.voltage_control_component = voltage_control_component
         sweep_axes = self._generate_sweep_axes(
             gate_set, available_pulses=available_readout_pulses
         )
@@ -303,8 +303,10 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             else:
                 # Virtual gate -> no channel -> no attenuation or offset
                 attenuation = 0
-                if self.external_virtual_voltages_manager is not None:
-                    offset_parameter = self.external_virtual_voltages_manager.get_virtual_offset_parameter(channel_name)
+                if self.voltage_control_component is not None: 
+                    params_by_name = self.voltage_control_component.voltage_parameters_by_name
+                    if channel_name in params_by_name:
+                        offset_parameter = params_by_name[channel_name]
                 else:
                     offset_parameter = None
             voltage_axes.append(

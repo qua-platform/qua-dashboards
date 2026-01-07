@@ -12,6 +12,7 @@ from dash import (
     Input,
     Output,
     ALL, 
+    MATCH,
     State
 )
 
@@ -97,6 +98,14 @@ class VoltageControlComponent(BaseComponent):
     
     @property
     def voltage_parameters_by_name(self) -> Dict[str, "VirtualGateParameter"]:
+        # Initial lazy create the param, which is then REused by the update_displayed_rows
+        if self.dc_set is not None: 
+            existing_names = {p.name for p in self.voltage_parameters}
+            for name in self.dc_set.valid_channel_names: 
+                if name not in existing_names: 
+                    param = VirtualGateParameter(name = name, label = name, dc_set = self.dc_set)
+                    self.voltage_parameters.append(param)
+
         return {p.name: p for p in self.voltage_parameters}
 
     def get_layout(self) -> html.Div:
@@ -195,22 +204,72 @@ class VoltageControlComponent(BaseComponent):
         def update_displayed_rows(selected_names): 
             if not selected_names: 
                 return [], {"input_ids": [], "step_size": self.step_size}
+            params_by_name = self.voltage_parameters_by_name
             for name in selected_names:
                 if name not in self._row_components:
-                    param = VirtualGateParameter(name=name, label=name, dc_set=self.dc_set)
-                    self.voltage_parameters.append(param)
+                    param = params_by_name[name]
+                    # param = VirtualGateParameter(name=name, label=name, dc_set=self.dc_set)
+                    # self.voltage_parameters.append(param)
                     row = VoltageControlRow(input_id_type=self._get_id_type_str("input"), param=param)
                     self._row_components[name] = row
-                    row.register_callbacks(self._app)
             self.gates_to_display = [p for p in self.voltage_parameters if p.name in selected_names]
             rows = [self._row_components[name].get_layout() for name in selected_names]
             input_ids = [{"type": self._get_id_type_str("input"), "index": name} for name in selected_names]
 
             return rows, {"input_ids": input_ids, "step_size": self.step_size}
+        
+        @app.callback(
+            Output({"type": input_id_type_str, "index": MATCH}, "value", allow_duplicate=True), 
+            Input({"type": input_id_type_str, "index": MATCH}, "n_submit"), 
+            State({"type": input_id_type_str, "index": MATCH}, "value"), 
+            State({"type": input_id_type_str, "index": MATCH}, "id"),
+            prevent_initial_call = True, 
+        )
 
+        def handle_input_submit(_n_submit, submitted_text_value, input_id): 
+            if not _n_submit or submitted_text_value is None:
+                raise dash.exceptions.PreventUpdate
+            
+            param_name = input_id["index"]
+            control_row = self._row_components.get(param_name)
+            param = next((p for p in self.voltage_parameters if p.name == param_name), None)
+            
+            if control_row is None or param is None:
+                raise dash.exceptions.PreventUpdate
+            
+            try:
+                float_value = float(submitted_text_value)
+                param.set(float_value)
+                control_row.current_input_text = format_voltage(float_value)
+                control_row.last_committed_text = control_row.current_input_text
+                return control_row.current_input_text
+            except ValueError:
+                logger.warning(f"Invalid float: '{submitted_text_value}' for {param_name}")
+                return dash.no_update
+            except Exception as e:
+                logger.error(f"Error during set for {param_name}: {e}", exc_info=True)
+                return dash.no_update
 
-        for row_component in self._row_components.values():
-            row_component.register_callbacks(app)
+        @app.callback(
+            Output({"type": input_id_type_str, "index": MATCH}, "value", allow_duplicate=True),
+            Input({"type": input_id_type_str, "index": MATCH}, "n_blur"),
+            State({"type": input_id_type_str, "index": MATCH}, "id"),
+            prevent_initial_call=True,
+        )
+        def handle_input_blur(_n_blur, input_id):
+            if not _n_blur:
+                raise dash.exceptions.PreventUpdate
+            
+            param_name = input_id["index"]
+            control_row = self._row_components.get(param_name)
+            param = next((p for p in self.voltage_parameters if p.name == param_name), None)
+            
+            if control_row is None or param is None:
+                raise dash.exceptions.PreventUpdate
+            
+            control_row.current_input_text = format_voltage(param.get_latest())
+            control_row.last_committed_text = control_row.current_input_text
+            return control_row.current_input_text
 
         app.clientside_callback(
             r"""

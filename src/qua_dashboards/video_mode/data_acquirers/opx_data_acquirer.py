@@ -284,7 +284,12 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         have = {axis.name for ax in self.sweep_axes.values() for axis in ax}
         for nm in gs.valid_channel_names:
             if nm not in have:
-                self.sweep_axes["Voltage"].append(VoltageSweepAxis(name=nm))
+                offset_parameter = None
+                if self.voltage_control_component is not None: 
+                    params = self.voltage_control_component.voltage_parameters_by_name
+                    if nm in params: 
+                        offset_parameter = params[nm]
+                self.sweep_axes["Voltage"].append(VoltageSweepAxis(name=nm, offset_parameter=offset_parameter))
 
     def _generate_sweep_axes(
         self, gate_set, available_pulses

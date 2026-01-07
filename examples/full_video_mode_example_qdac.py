@@ -202,7 +202,7 @@ def main():
 
 
     # Set up the DC controller
-    voltage_control_tab = None
+    voltage_control_tab, voltage_control_component, dc_gate_set = None, None, None
     if qdac is not None: 
         dc_gate_set = VirtualDCSet(
             id = "Plungers", 
@@ -237,7 +237,7 @@ def main():
         voltage_control_component=voltage_control_component
     )
 
-    virtual_gating_component = VirtualLayerEditor(gateset = virtual_gate_set, component_id = 'virtual-gates-ui')
+    virtual_gating_component = VirtualLayerEditor(gateset = virtual_gate_set, component_id = 'virtual-gates-ui', dc_set = dc_gate_set)
 
     video_mode_component = VideoModeComponent(
         data_acquirer=data_acquirer,
@@ -252,7 +252,7 @@ def main():
         title = "OPX Video Mode Dashboard",  # Title for the web page
     )
     # Helper function to keep UI updated with Virtual Layer changes
-    ui_update(app, video_mode_component)
+    ui_update(app, video_mode_component, voltage_control_component)
 
     logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
     app.run(debug=True, host="0.0.0.0", port=8050, use_reloader=False)

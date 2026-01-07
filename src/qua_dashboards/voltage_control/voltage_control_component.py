@@ -95,6 +95,26 @@ class VoltageControlComponent(BaseComponent):
 
     def _get_id_type_str(self, element_name: str) -> str:
         return f"comp-{self.component_id}-{element_name}"
+        
+    def _build_dropdown_options(self) -> list:
+        """Build dropdown options with physical/virtual grouping."""
+        options = []
+        physical_names = set(self.dc_set.channels.keys()) if self.dc_set else set()
+        virtual_names = [n for n in self.dc_set.valid_channel_names if n not in physical_names]
+        
+        # Physical gates section
+        if physical_names:
+            options.append({"label": "── Physical Gates ──", "value": "__physical_header__", "disabled": True})
+            for name in sorted(physical_names):
+                options.append({"label": name, "value": name})
+        
+        # Virtual gates section  
+        if virtual_names:
+            options.append({"label": "── Virtual Gates ──", "value": "__virtual_header__", "disabled": True})
+            for name in virtual_names:
+                options.append({"label": name, "value": name})
+        
+        return options
     
     @property
     def voltage_parameters_by_name(self) -> Dict[str, "VirtualGateParameter"]:
@@ -122,7 +142,7 @@ class VoltageControlComponent(BaseComponent):
             [
                 dcc.Dropdown(
                     id = self._get_id("dc-gate-selector"), 
-                    options = [{"label": p, "value": p} for p in self.dc_set.valid_channel_names], 
+                    options = self._build_dropdown_options(),
                     value = [], 
                     multi = True, 
                     placeholder = "Select gates to display", 

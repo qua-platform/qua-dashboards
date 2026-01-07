@@ -25,7 +25,4 @@ def ui_update(app, video_mode_component, voltage_control_component = None):
             prevent_initial_call = True
         )
         def _refresh_voltage_dropdown(_n): 
-            return [
-                {"label": name, "value": name} 
-                for name in voltage_control_component.dc_set.valid_channel_names
-            ]
+            return voltage_control_component._build_dropdown_options()

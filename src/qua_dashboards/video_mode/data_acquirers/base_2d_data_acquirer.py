@@ -159,6 +159,16 @@ class Base2DDataAcquirer(BaseDataAcquirer):
 
         self.post_processing_functions[name] = wrapped
         return name
+    
+    def _build_dropdown_options(self, _display_sweep_axis):
+        options = [
+            {"label": gate_name, "value": gate_name}
+            for gate_name in [
+                axis.name
+                for axis in _display_sweep_axis
+            ]
+        ] 
+        return options
 
     def get_dash_components(self, include_subcomponents: bool = True) -> List[Any]:
         """
@@ -221,13 +231,7 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                                     html.H6("Select X Axis"),
                                     dcc.Dropdown(
                                         id=self._get_id("gate-select-x"),
-                                        options=[
-                                            {"label": gate_name, "value": gate_name}
-                                            for gate_name in [
-                                                axis.name
-                                                for axis in self._display_x_sweep_axes
-                                            ]
-                                        ],
+                                        options=self._build_dropdown_options(self._display_x_sweep_axes),
                                         value=self.x_axis_name,
                                         style={"color": "black"},
                                         className="mb-2",
@@ -240,13 +244,7 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                                     html.H6("Select Y Axis"),
                                     dcc.Dropdown(
                                         id=self._get_id("gate-select-y"),
-                                        options=[
-                                            {"label": gate_name, "value": gate_name}
-                                            for gate_name in [
-                                                axis.name
-                                                for axis in self._display_y_sweep_axes
-                                            ]
-                                        ],
+                                        options=self._build_dropdown_options(self._display_y_sweep_axes),
                                         value=self.y_axis_name,
                                         style={"color": "black"},
                                         className="mb-2",

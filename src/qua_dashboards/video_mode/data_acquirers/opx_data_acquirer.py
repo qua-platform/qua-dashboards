@@ -438,6 +438,14 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             except Exception as e:
                 logger.warning(f"Error halting previous QM job: {e}")
 
+        if self.qm is not None: 
+            try: 
+                self.qm.close()
+                self.qm = None
+                logger.info(f"Closed QM for {self.component_id}")
+            except Exception as e: 
+                logger.warning(f"Error closing QM: {e}")
+
         if self.qua_config is None:
             self.qua_config = self.machine.generate_config()
 
@@ -603,6 +611,8 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             return np.stack(output_layers, axis=0)
 
     def perform_actual_acquisition(self) -> np.ndarray:
+        if self._acquisition_status == "stopped":
+            return np.full((self.y_axis.points, self.x_axis.points), np.nan)
         cur = (int(self.x_axis.points), 1 if self._is_1d else int(self.y_axis.points), self._is_1d)
         if self._compiled_xy is not None and cur != self._compiled_xy:
             logger.info(f"Scan shape changed {self._compiled_xy} -> {cur}. Forcing recompile.")
@@ -630,15 +640,18 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             self._compilation_flags = ModifiedFlags.NONE
 
         if self.qm_job is None or self.qm_job.status != "running":
-            logger.warning(
-                f"QM job for {self.component_id} is not running or None. Attempting to re-initialize."
-            )
-            self.initialize_qm()
-            self.execute_program()
-            if self.qm_job is None:
-                raise RuntimeError(
-                    f"Failed to initialize QM job for {self.component_id}."
+            if self._acquisition_status != "stopped":
+                logger.warning(
+                    f"QM job for {self.component_id} is not running or None. Attempting to re-initialize."
                 )
+                self.initialize_qm()
+                self.execute_program()
+                if self.qm_job is None:
+                    raise RuntimeError(
+                        f"Failed to initialize QM job for {self.component_id}."
+                    )
+            else:
+                return np.full((self.y_axis.points, self.x_axis.points), np.nan)
 
         start_time = time.perf_counter()
         try:

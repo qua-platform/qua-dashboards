@@ -61,6 +61,7 @@ from qua_dashboards.video_mode import (
 )
 from quam_builder.architecture.quantum_dots.components import VoltageGate
 from quam_builder.architecture.quantum_dots.components import VirtualGateSet
+from quam_builder.architecture.quantum_dots.components import VirtualDCSet
 from qua_dashboards.virtual_gates import VirtualLayerEditor, ui_update
 from qua_dashboards.voltage_control import VoltageControlComponent
 
@@ -181,10 +182,10 @@ def main():
     qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
     machine = BasicQuam()
 
-    qdac_connect = False
+    qdac_connect = True
     qdac = None
     if qdac_connect:
-        qdac_ip = "127.0.0.2"
+        qdac_ip = "172.16.33.101"
         logger.info("Connecting to QDAC")
         qdac = connect_to_qdac(qdac_ip)
 
@@ -193,7 +194,7 @@ def main():
     readout_pulse_ch2 = pulses.SquareReadoutPulse(id="readout", length=100, amplitude=0.1)
 
     # Choose the FEM. For OPX+, keep fem = None. 
-    fem = None
+    fem = 5
 
     # Set up the readout channels
     setup_readout_channel(machine, name = "ch1_readout", readout_pulse=readout_pulse_ch1, opx_output_port = 6, opx_input_port = 1, IF = 150e6, fem = fem)
@@ -224,6 +225,27 @@ def main():
     }
 
 
+    # Set up the DC controller
+    voltage_control_tab, voltage_control_component, dc_gate_set = None, None, None
+    if qdac is not None: 
+        dc_gate_set = VirtualDCSet(
+            id = "Plungers", 
+            channels = channel_mapping
+        )
+        dc_gate_set.add_layer(
+            source_gates = ["V1", "V2"], 
+            target_gates = ["ch1", "ch2"],
+            matrix = [[1, 0.2], [0.2, 1]]
+        )
+        voltage_control_component = VoltageControlComponent(
+            component_id="DC_Voltage_Control",
+            dc_set = dc_gate_set,
+            # voltage_parameters=voltage_parameters,
+            update_interval_ms=1000,
+        )
+        from qua_dashboards.video_mode.tab_controllers import VoltageControlTabController
+        voltage_control_tab = VoltageControlTabController(voltage_control_component = voltage_control_component)
+
     # Instantiate the OPXDataAcquirer.
     # This component handles the QUA program generation, execution, and data fetching.
     data_acquirer = OPXDataAcquirer(
@@ -235,21 +257,11 @@ def main():
         scan_modes=scan_mode_dict,
         result_type="I",  # "I", "Q", "amplitude", or "phase"
         available_readout_pulses=[readout_pulse_ch1, readout_pulse_ch2], # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI. 
-        acquisition_interval_s=0.05
+        acquisition_interval_s=0.05, 
+        voltage_control_component=voltage_control_component
     )
 
-    virtual_gating_component = VirtualLayerEditor(gateset = virtual_gate_set, component_id = 'virtual-gates-ui')
-    voltage_parameters = define_DC_params(machine, ["ch1", "ch2", "ch3", "ch1_readout_DC", "ch2_readout_DC"])
-    
-    voltage_control_tab = None
-    if qdac is not None: 
-        voltage_control_component = VoltageControlComponent(
-            component_id="Voltage_Control",
-            voltage_parameters=voltage_parameters,
-            update_interval_ms=1000,
-        )
-        from qua_dashboards.video_mode.tab_controllers import VoltageControlTabController
-        voltage_control_tab = VoltageControlTabController(voltage_control_component = voltage_control_component)
+    virtual_gating_component = VirtualLayerEditor(gateset = virtual_gate_set, component_id = 'virtual-gates-ui', dc_set = dc_gate_set)
 
     video_mode_component = VideoModeComponent(
         data_acquirer=data_acquirer,
@@ -264,7 +276,7 @@ def main():
         title = "OPX Video Mode Dashboard",  # Title for the web page
     )
     # Helper function to keep UI updated with Virtual Layer changes
-    ui_update(app, video_mode_component)
+    ui_update(app, video_mode_component, voltage_control_component)
 
     logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
     app.run(debug=True, host="0.0.0.0", port=8050, use_reloader=False)

@@ -31,7 +31,7 @@ from qua_dashboards.video_mode.sweep_axis import (
     FrequencySweepAxis,
 )
 from qua_dashboards.video_mode.scan_modes import ScanMode
-from qua_dashboards.voltage_control import VirtualizedVoltageManager
+from qua_dashboards.voltage_control import VoltageControlComponent
 from qua_dashboards.video_mode.inner_loop_actions.inner_loop_action import (
     InnerLoopAction,
 )
@@ -80,7 +80,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         inner_loop_kwargs: Optional[Dict[str, Any]] = None,
         inner_functions_dict: Optional[Dict] = None,
         apply_compensation_pulse: bool = True, 
-        virtual_voltages_manager: VirtualizedVoltageManager = None,
+        voltage_control_component: Optional["VoltageControlComponent"] = None,
         **kwargs: Any,
     ):
         """
@@ -106,7 +106,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             inner_loop_kwargs: Additional arguments for BasicInnerLoopAction creation.
             **kwargs: Additional arguments for Base2DDataAcquirer.
         """
-        self.external_virtual_voltages_manager = virtual_voltages_manager
+        self.voltage_control_component = voltage_control_component
         sweep_axes = self._generate_sweep_axes(
             gate_set, available_pulses=available_readout_pulses
         )
@@ -262,6 +262,26 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 svars = svars + [f"I:{channel.name}", f"Q:{channel.name}"]
             self.stream_vars = svars
 
+    def _build_dropdown_options(self, _display_sweep_axis):
+        """Build dropdown options with physical/virtual grouping."""
+        options = []
+        available_names = [axis.name for axis in _display_sweep_axis]
+        physical_names = set(self.gate_set.channels.keys())
+        virtual_names = [n for n in available_names if n not in physical_names]
+        
+        # Physical gates section
+        if physical_names:
+            options.append({"label": "── Physical Gates ──", "value": "__physical_header__", "disabled": True})
+            for name in sorted(physical_names):
+                options.append({"label": name, "value": name})
+        
+        # Virtual gates section  
+        if virtual_names:
+            options.append({"label": "── Virtual Gates ──", "value": "__virtual_header__", "disabled": True})
+            for name in virtual_names:
+                options.append({"label": name, "value": name})
+        return options
+
     @property
     def current_scan_mode(self) -> str:
         for name, mode in self.scan_modes.items():
@@ -303,7 +323,12 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         have = {axis.name for ax in self.sweep_axes.values() for axis in ax}
         for nm in gs.valid_channel_names:
             if nm not in have:
-                self.sweep_axes["Voltage"].append(VoltageSweepAxis(name=nm))
+                offset_parameter = None
+                if self.voltage_control_component is not None: 
+                    params = self.voltage_control_component.voltage_parameters_by_name
+                    if nm in params: 
+                        offset_parameter = params[nm]
+                self.sweep_axes["Voltage"].append(VoltageSweepAxis(name=nm, offset_parameter=offset_parameter))
 
     def _generate_sweep_axes(
         self, gate_set, available_pulses
@@ -322,8 +347,10 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             else:
                 # Virtual gate -> no channel -> no attenuation or offset
                 attenuation = 0
-                if self.external_virtual_voltages_manager is not None:
-                    offset_parameter = self.external_virtual_voltages_manager.get_virtual_offset_parameter(channel_name)
+                if self.voltage_control_component is not None: 
+                    params_by_name = self.voltage_control_component.voltage_parameters_by_name
+                    if channel_name in params_by_name:
+                        offset_parameter = params_by_name[channel_name]
                 else:
                     offset_parameter = None
             voltage_axes.append(

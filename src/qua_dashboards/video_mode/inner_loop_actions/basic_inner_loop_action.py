@@ -166,6 +166,7 @@ class BasicInnerLoopAction(InnerLoopAction):
                     label="Duration",
                     value=pulse.length,
                     units="ns",
+                    input_style={"width": "150px"},
                     step=1,
                 ),
             ]
@@ -175,6 +176,7 @@ class BasicInnerLoopAction(InnerLoopAction):
                         id=self._get_id(f"{name}-readout_power"),
                         label="Power",
                         value=unit.volts2dBm(pulse.amplitude),
+                        input_style={"width": "100px"},
                         units="dBm",
                     ),
                 )
@@ -184,6 +186,7 @@ class BasicInnerLoopAction(InnerLoopAction):
                         id=self._get_id(f"{name}-readout_amplitude"),
                         label="Amplitude",
                         value=pulse.amplitude,
+                        input_style={"width": "100px"},
                         units="V",
                     ),
                 )

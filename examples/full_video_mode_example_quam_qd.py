@@ -72,8 +72,6 @@ from quam_builder.architecture.quantum_dots.qpu import BaseQuamQD
 from qua_dashboards.virtual_gates import VirtualLayerEditor, ui_update
 from qua_dashboards.voltage_control import VoltageControlComponent
 
-from qua_dashboards.voltage_control import VirtualizedVoltageManager
-
 
 def setup_DC_channel(
     name: str, opx_output_port: int, qdac_port: int, con="con1", fem: int = None
@@ -266,11 +264,18 @@ def main():
         ],
     )
 
+    if qdac_connect:
+        logger.info("Connecting to QDAC")
+        machine.network.update({"qdac_ip": qdac_ip})
+        machine.connect_to_external_source(external_qdac=True)
+        machine.create_virtual_dc_set("main_qpu")
+
     # Update Cross Capacitance matrix values
     machine.update_cross_compensation_submatrix(
         virtual_names=["virtual_barrier_1", "virtual_barrier_2"],
         channels=[p3],
         matrix=[[0.1, 0.5]],
+        target = "both"
     )
 
     machine.update_cross_compensation_submatrix(
@@ -281,6 +286,7 @@ def main():
             [0.2, 1, 0.6],
             [0.1, 0.3, 1],
         ],
+        target = "both"
     )
 
     machine.update_cross_compensation_submatrix(
@@ -292,12 +298,8 @@ def main():
             [0.2 , 0.2, 0.1 ],
             [0.2 , 0.3, 0.25],
         ],
+        target = "both"
     )
-
-    if qdac_connect:
-        logger.info("Connecting to QDAC")
-        machine.network.update({"qdac_ip": qdac_ip})
-        machine.connect_to_external_source(external_qdac=True)
 
     scan_mode_dict = {
         "Switch_Raster_Scan": scan_modes.SwitchRasterScan(),
@@ -306,33 +308,24 @@ def main():
     }
 
     virtual_gating_component = VirtualLayerEditor(
-        gateset=machine.virtual_gate_sets["main_qpu"], component_id="virtual-gates-ui"
+        gateset=machine.virtual_gate_sets["main_qpu"], component_id="virtual-gates-ui", dc_set = machine.virtual_dc_sets["main_qpu"]
     )
-    voltage_parameters = define_DC_params(
-        machine,
-        [
-            "plunger_1",
-            "plunger_2",
-            "plunger_3",
-            "barrier_1",
-            "barrier_2",
-            "sensor_1",
-            "sensor_2",
-        ],
-    )
-    external_virtual_voltage_manager = VirtualizedVoltageManager(
-        physical_parameters=voltage_parameters,
-        virtual_names=[
-            "virtual_dot_1",
-            "virtual_dot_2",
-            "virtual_dot_3",
-            "virtual_barrier_1",
-            "virtual_barrier_2",
-            "virtual_sensor_1",
-            "virtual_sensor_2",
-        ],
-        gate_set=machine.virtual_gate_sets["main_qpu"],
-    )
+
+    voltage_control_tab, voltage_control_component = None, None
+    if qdac_connect:
+        voltage_control_component = VoltageControlComponent(
+            component_id="Voltage_Control",
+            dc_set = machine.virtual_dc_sets["main_qpu"],
+            update_interval_ms=1000,
+        )
+        from qua_dashboards.video_mode.tab_controllers import (
+            VoltageControlTabController,
+        )
+
+        voltage_control_tab = VoltageControlTabController(
+            voltage_control_component=voltage_control_component
+        )
+
 
     # Instantiate the OPXDataAcquirer.
     # This component handles the QUA program generation, execution, and data fetching.
@@ -351,23 +344,8 @@ def main():
             readout_pulse_ch2,
         ],  # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI.
         acquisition_interval_s=0.05,
-        virtual_voltages_manager=external_virtual_voltage_manager,
+        voltage_control_component=voltage_control_component,
     )
-
-    voltage_control_tab = None
-    if qdac_connect:
-        voltage_control_component = VoltageControlComponent(
-            component_id="Voltage_Control",
-            voltage_parameters=external_virtual_voltage_manager._virtual_parameters,
-            update_interval_ms=1000,
-        )
-        from qua_dashboards.video_mode.tab_controllers import (
-            VoltageControlTabController,
-        )
-
-        voltage_control_tab = VoltageControlTabController(
-            voltage_control_component=voltage_control_component
-        )
 
     video_mode_component = VideoModeComponent(
         data_acquirer=data_acquirer,
@@ -382,7 +360,7 @@ def main():
         title="OPX Video Mode Dashboard",  # Title for the web page
     )
     # Helper function to keep UI updated with Virtual Layer changes
-    ui_update(app, video_mode_component)
+    ui_update(app, video_mode_component, voltage_control_component)
 
     logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
     app.run(debug=True, host="0.0.0.0", port=8050, use_reloader=False)

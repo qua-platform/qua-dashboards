@@ -119,10 +119,6 @@ class BasicInnerLoopAction(InnerLoopAction):
             I, Q = channel.measure(self._pulse_for(channel).id, amplitude_scale=scale)
             result.extend([I, Q])
         qua.align()
-        wait_time = self.point_duration - self.pre_measurement_delay - readout_duration
-        if wait_time > 0:
-            qua.wait(wait_time // 4)
-        qua.align()
 
         return result
 

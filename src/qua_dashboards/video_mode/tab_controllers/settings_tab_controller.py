@@ -126,7 +126,7 @@ class SettingsTabController(BaseTabController):
         point_sequence_section = self._build_point_sequence_section()
         inner_loop_section = html.Div(
             [
-                html.Small("Inner Loop Action", className="text-muted mb-2", style={"display": "block"}),
+                html.Small("Inner Loop Action", className="text-light mb-2", style={"display": "block"}),
                 inner_function_selector,
                 point_sequence_section,
             ],

@@ -258,6 +258,26 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 svars = svars + [f"I:{channel.name}", f"Q:{channel.name}"]
             self.stream_vars = svars
 
+    def _build_dropdown_options(self, _display_sweep_axis):
+        """Build dropdown options with physical/virtual grouping."""
+        options = []
+        available_names = [axis.name for axis in _display_sweep_axis]
+        physical_names = set(self.gate_set.channels.keys())
+        virtual_names = [n for n in available_names if n not in physical_names]
+        
+        # Physical gates section
+        if physical_names:
+            options.append({"label": "── Physical Gates ──", "value": "__physical_header__", "disabled": True})
+            for name in sorted(physical_names):
+                options.append({"label": name, "value": name})
+        
+        # Virtual gates section  
+        if virtual_names:
+            options.append({"label": "── Virtual Gates ──", "value": "__virtual_header__", "disabled": True})
+            for name in virtual_names:
+                options.append({"label": name, "value": name})
+        return options
+
     @property
     def current_scan_mode(self) -> str:
         for name, mode in self.scan_modes.items():

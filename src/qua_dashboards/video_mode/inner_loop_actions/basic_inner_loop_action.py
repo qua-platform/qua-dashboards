@@ -94,7 +94,7 @@ class BasicInnerLoopAction(InnerLoopAction):
             **x_apply.get("voltage", {}),
             **(y_apply.get("voltage", {}) or {}),
         } if y_apply is not None else {**x_apply.get("voltage", {})}
-        self.voltage_sequence.ramp_to_voltages(voltage_coordinates, duration = 0, ramp_duration = self.ramp_duration)
+        self.voltage_sequence.ramp_to_voltages(voltage_coordinates, duration = self.point_duration, ramp_duration = self.ramp_duration)
 
         self.loop_action(self)
 
@@ -118,10 +118,6 @@ class BasicInnerLoopAction(InnerLoopAction):
                 scale = amplitude_scales.get(elem, 1)
             I, Q = channel.measure(self._pulse_for(channel).id, amplitude_scale=scale)
             result.extend([I, Q])
-        qua.align()
-        wait_time = self.point_duration - self.pre_measurement_delay - readout_duration
-        if wait_time > 0:
-            qua.wait(wait_time // 4)
         qua.align()
 
         return result

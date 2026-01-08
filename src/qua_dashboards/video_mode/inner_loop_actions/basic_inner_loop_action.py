@@ -120,7 +120,6 @@ class BasicInnerLoopAction(InnerLoopAction):
             I, Q = channel.measure(self._pulse_for(channel).id, amplitude_scale=scale)
             result.extend([I, Q])
         qua.align()
-        qua.wait(2000)
 
         return result
 

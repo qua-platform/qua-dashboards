@@ -418,5 +418,5 @@ class VoltageControlComponent(BaseComponent):
             """,
             Output(self._get_id("keyboard-dummy"), "data"),
             Input(self._get_id("keyboard-config"), "data"),
-            prevent_initial_call=False,
+            prevent_initial_call=True,
         )

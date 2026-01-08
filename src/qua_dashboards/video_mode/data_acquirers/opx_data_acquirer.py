@@ -778,6 +778,14 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                     ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
                 )
             if (
+                "pre_measurement_delay" in params
+                and self.qua_inner_loop_action.pre_measurement_delay != params["pre_measurement_delay"]
+            ):
+                self.qua_inner_loop_action.pre_measurement_delay = params["pre_measurement_delay"]
+                flags |= (
+                    ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
+                )
+            if (
                 "gate-select-x" in params
                 and params["gate-select-x"] != self.x_axis_name
             ):

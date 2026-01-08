@@ -58,23 +58,6 @@ class SettingsTabController(BaseTabController):
             units="ns",
             step=4,
         )
-        # point_duration_input = create_input_field(
-        #     id={
-        #         "type": "point_duration",
-        #         "index": f"{self._data_acquirer_instance.component_id}::point_duration",
-        #     },
-        #     label="Point Duration",
-        #     value=getattr(self._data_acquirer_instance.qua_inner_loop_action, "point_duration", 1000),
-        #     units="ns",
-        #     step=4,
-        # )
-        # xy_duration_input = create_input_field(
-        #     id=f"{self.component_id}-xy-duration",
-        #     label="(x,y) Dwell Duration",
-        #     value=0,  # Default to 0 - just ramp through
-        #     units="ns",
-        #     step=4,
-        # )
         pre_measurement_delay_input = create_input_field(
             id={
                 "type": "pre_measurement_delay",
@@ -146,11 +129,6 @@ class SettingsTabController(BaseTabController):
                 html.Small("Inner Loop Action", className="text-light mb-2", style={"display": "block"}),
                 inner_function_selector,
                 point_sequence_section,
-                # html.Div(
-                #     id=f"{self.component_id}-timeline-display",
-                #     children=[],
-                #     style={"marginTop": "12px"},
-                # ),
             ],
             style={
                 "outline": "2px solid #fff",
@@ -689,7 +667,6 @@ class SettingsTabController(BaseTabController):
                     "overflow": "hidden",
                 }
             ))
-
         return html.Div([
             html.Div(blocks, style={"display": "flex", "alignItems": "center", "marginBottom": "8px", "overflowX": "auto",}),
             html.Div(f"Total pixel duration: {total_duration} ns", style={"fontSize": "12px", "color": "#aaa"}),

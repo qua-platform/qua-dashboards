@@ -29,6 +29,10 @@ from qua_dashboards.video_mode.tab_controllers.annotation_tab_controller import 
 from qua_dashboards.video_mode.tab_controllers.settings_tab_controller import (
     SettingsTabController,
 )
+from qua_dashboards.video_mode.tab_controllers.voltage_control_tab import (
+    VoltageControlTabController,
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +96,7 @@ class VideoModeComponent(BaseComponent):
         layout_columns: int = 12,
         layout_rows: int = 10,
         shutdown_callback: Optional[callable] = None,
+        voltage_control_tab: Optional[VoltageControlTabController] = None,
         **kwargs: Any,
     ):
         """Initializes the VideoModeComponent.
@@ -99,7 +104,7 @@ class VideoModeComponent(BaseComponent):
         Args:
             data_acquirer: The data acquirer instance.
             tab_controllers: Optional list of ITabController instances.
-                If None, default controllers (LiveView, Annotation) are used.
+                If None, default controllers (LiveView, Annotation, Settings) are used.
             default_tab_value: Value of the tab to be active by default.
             component_id: Unique ID for this component instance.
             data_polling_interval_s: Interval for polling data.
@@ -117,6 +122,7 @@ class VideoModeComponent(BaseComponent):
             component_id=f"{self.component_id}-shared-viewer"
         )
         self.shutdown_callback = shutdown_callback
+        self._last_pushed_seq: Optional[int] = None
 
         if tab_controllers is None:
             logger.info(
@@ -144,6 +150,9 @@ class VideoModeComponent(BaseComponent):
             ]
         else:
             self.tab_controllers = tab_controllers
+        
+        if voltage_control_tab is not None: 
+            self.tab_controllers.insert(1, voltage_control_tab)
 
         if not self.tab_controllers:
             logger.warning(
@@ -347,6 +356,10 @@ class VideoModeComponent(BaseComponent):
                     disabled=False,  # Initially disabled, enabled by acquirer status
                 ),
                 *shared_stores_for_layout,
+                dcc.Store(
+                id=self._get_store_id("auto-poll-config-store"),
+                data={"poll_ms": self.data_polling_interval_ms},
+                ),
             ],
             style={"paddingTop": "10px"},
         )
@@ -399,7 +412,7 @@ class VideoModeComponent(BaseComponent):
                 "orchestrator_stores": orchestrator_stores_for_tabs,
                 "shared_viewer_store_ids": shared_viewer_store_ids_for_tabs,
             }
-            if isinstance(tc, AnnotationTabController):
+            if isinstance(tc, (AnnotationTabController, LiveViewTabController)):
                 callback_kwargs_for_tab["shared_viewer_graph_id"] = (
                     shared_viewer_graph_actual_id
                 )
@@ -430,6 +443,20 @@ class VideoModeComponent(BaseComponent):
                 return "Shutting down video mode..."
             else:
                 return "Shutdown not available"
+        @app.callback(
+            Output(self._get_id(self._DATA_POLLING_INTERVAL_ID_SUFFIX), "interval"),
+            Input(self._get_store_id("auto-poll-config-store"), "data"),
+            prevent_initial_call=False,
+        )
+        def _apply_auto_poll_config(cfg):
+            try:
+                poll_ms = int((cfg or {}).get("poll_ms", self.data_polling_interval_ms))
+                # clamp to something sane
+                poll_ms = max(50, min(poll_ms, 5000))
+                return poll_ms
+            except Exception:
+                return self.data_polling_interval_ms
+
 
         # Register save button callback
         @app.callback(
@@ -559,16 +586,19 @@ class VideoModeComponent(BaseComponent):
                 "children",
                 allow_duplicate=True,
             ),
+            Output(self._get_store_id("auto-poll-config-store"), "data"),
             Input(self._get_id(self._DATA_POLLING_INTERVAL_ID_SUFFIX), "n_intervals"),
             State(self._get_store_id(self.VIEWER_DATA_STORE_SUFFIX), "data"),
             State(self._get_id(self._TABS_ID_SUFFIX), "value"),
+            State(self._get_store_id("auto-poll-config-store"), "data"),
             prevent_initial_call=True,
         )
         def handle_data_polling(
             _n_intervals: int,
             current_viewer_data_ref: Optional[Dict[str, str]],
             active_tab_value: Optional[str],
-        ) -> Tuple[Any, Any, Any]:
+            current_poll_config: Optional[Dict],
+        ) -> Tuple[Any, Any, Any, Any]:
             if not ctx.triggered_id:
                 raise PreventUpdate
 
@@ -577,6 +607,8 @@ class VideoModeComponent(BaseComponent):
             error = acquirer_response.get("error")
             status = acquirer_response.get("status", "unknown")
             self._last_known_acquirer_status = status
+            seq = acquirer_response.get("seq", None)
+            auto_poll_store_update: Any = no_update
 
             alert_children: Any = no_update
             latest_processed_data_ref_for_store: Any = no_update
@@ -599,31 +631,45 @@ class VideoModeComponent(BaseComponent):
                 )
 
             if data_object is not None and status == "running":
-                new_version = data_registry.set_data(
-                    data_registry.LIVE_DATA_KEY,
-                    {
-                        "base_image_data": data_object,
-                        "annotations": {"points": [], "lines": []},
-                    },
-                )
-                self._current_live_data_version = new_version
+                if seq is None or self._last_pushed_seq != seq: 
+                    self._last_pushed_seq = seq
 
-                data_reference = {
-                    "key": data_registry.LIVE_DATA_KEY,
-                    "version": new_version,
-                }
-                latest_processed_data_ref_for_store = data_reference
+                    current_poll_ms = (current_poll_config or {}).get("poll_ms", self.data_polling_interval_ms)
+                    if current_poll_ms != 250:
+                        auto_poll_store_update = {"poll_ms": 250}
 
-                for tab_controller in self.tab_controllers:
-                    if not isinstance(tab_controller, LiveViewTabController):
-                        continue
+                    new_version = data_registry.set_data(
+                        data_registry.LIVE_DATA_KEY,
+                        {
+                            "base_image_data": data_object,
+                            "annotations": {"points": [], "lines": []},
+                        },
+                    )
+                    self._current_live_data_version = new_version
 
-                    if tab_controller.get_tab_value() == active_tab_value:
-                        viewer_primary_data_ref_update = data_reference
+                    data_reference = {
+                        "key": data_registry.LIVE_DATA_KEY,
+                        "version": new_version,
+                    }
+                    latest_processed_data_ref_for_store = data_reference
+
+                    for tab_controller in self.tab_controllers:
+                        if not isinstance(tab_controller, (LiveViewTabController, VoltageControlTabController)):
+                            continue
+
+                        if tab_controller.get_tab_value() == active_tab_value:
+                            viewer_primary_data_ref_update = data_reference
+            else: 
+                    # When it has not updated, we can add a 'downtime', which reduces overhead
+                    current_poll_ms = (current_poll_config or {}).get("poll_ms", self.data_polling_interval_ms)
+                    downtime_ms = min(current_poll_ms*2, 2000)
+                    auto_poll_store_update = {"poll_ms": downtime_ms}
+                    
             return (
                 latest_processed_data_ref_for_store,
                 viewer_primary_data_ref_update,
                 alert_children,
+                auto_poll_store_update,
             )
 
     def _register_tab_switching_callback(self, app: Dash) -> None:

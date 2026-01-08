@@ -31,15 +31,16 @@ class VirtualLayerEditor(BaseComponent):
     
     def _render_matrix_editor(self, layer_idx):
         layer = self.gateset.layers[layer_idx]
-        N = len(layer.source_gates)
-        col_width = 12 // (N + 1)
+        num_sources = len(layer.source_gates)
+        num_targets = len(layer.target_gates)
+        col_width = 12 // (num_sources + 1)
         header = [dbc.Col("", width=col_width)] + [
             dbc.Col(html.B(name), width=col_width) for name in layer.source_gates
         ]
         rows = []
         for i, row_name in enumerate(layer.target_gates):
             row = [dbc.Col(html.B(row_name), width=col_width)]
-            for j in range(N):
+            for j in range(num_sources):
                 row.append(
                     dbc.Col(
                         dcc.Input(
@@ -134,8 +135,9 @@ class VirtualLayerEditor(BaseComponent):
                 raise dash.exceptions.PreventUpdate
             
             layer = self.gateset.layers[layer_idx]
-            length = len(layer.source_gates)
-            M = np.reshape(np.array(matrix_flat), (length, length)).tolist()
+            num_sources = len(layer.source_gates)
+            num_targets = len(layer.target_gates)
+            M = np.reshape(np.array(matrix_flat), (num_sources, num_targets)).tolist()
             layer.matrix = M
             return "Updated!", dash.no_update if False else 1
         
@@ -152,8 +154,9 @@ class VirtualLayerEditor(BaseComponent):
                 raise PreventUpdate
             
             layer = self.gateset.layers[layer_idx]
-            N = len(layer.source_gates)
-            identity = [[1.0 if i == j else 0.0 for j in range(N)] for i in range(N)]
+            num_sources = len(layer.source_gates)
+            num_targets = len(layer.target_gates)
+            identity = [[1.0 if i == j else 0.0 for j in range(num_targets)] for i in range(num_sources)]
             layer.matrix = identity
             
             return self._render_matrix_editor(layer_idx), (vg_val or 0) + 1

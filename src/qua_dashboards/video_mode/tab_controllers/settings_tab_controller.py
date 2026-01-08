@@ -2,7 +2,9 @@ import logging
 from typing import Any
 from qua_dashboards.utils.dash_utils import create_input_field
 import dash_bootstrap_components as dbc
-from dash import html, ALL, no_update, Dash, Input, Output, State, dcc
+from dash import html, ALL, no_update, Dash, Input, Output, State, dcc, callback_context, MATCH
+from qua_dashboards.core.base_updatable_component import ModifiedFlags
+
 
 from qua_dashboards.video_mode.tab_controllers.base_tab_controller import (
     BaseTabController,
@@ -43,6 +45,7 @@ class SettingsTabController(BaseTabController):
             f"Settings Tab '{self.component_id}' initialized with "
             f"Data Acquirer '{self._data_acquirer_instance}'."
         )
+        self._inner_loop_functions = self._data_acquirer_instance.inner_functions_dict
 
     def get_layout(self):
         ramp_duration_input = create_input_field(
@@ -55,6 +58,17 @@ class SettingsTabController(BaseTabController):
             units="ns",
             step=4,
         )
+        point_duration_input = create_input_field(
+            id={
+                "type": "point_duration",
+                "index": f"{self._data_acquirer_instance.component_id}::point_duration",
+            },
+            label="Point Duration",
+            value=getattr(self._data_acquirer_instance.qua_inner_loop_action, "point_duration", 1000),
+            units="ns",
+            step=4,
+        )
+
         inner_controls = []
         try:
             inner_controls = (
@@ -88,6 +102,40 @@ class SettingsTabController(BaseTabController):
                 ),
             ],
             className="mb-2 align-items-center",
+        )
+
+        inner_loop_functions = ["Go to Point(s)"] + list(self._inner_loop_functions.keys())
+        inner_function_selector = dbc.Row([            
+            dbc.Label("Inner Loop Function", width = "auto", className = "col-form-label"), 
+            dbc.Col(
+                dcc.Dropdown(
+                    id = self._data_acquirer_instance._get_id("inner-loop-function"), 
+                    options = [
+                        {"label": fn_name, "value": fn_name} for fn_name in inner_loop_functions
+                    ], 
+                    value = None, 
+                    multi= False,
+                    clearable = True, 
+                    style = {"color": "black"}, 
+                ), 
+                width = True,
+            ),
+            ], 
+            className = "mb-2 align-items-center"
+        )
+        point_sequence_section = self._build_point_sequence_section()
+        inner_loop_section = html.Div(
+            [
+                html.Small("Inner Loop Action", className="text-muted mb-2", style={"display": "block"}),
+                inner_function_selector,
+                point_sequence_section,
+            ],
+            style={
+                "outline": "2px solid #fff",
+                "borderRadius": "8px",
+                "padding": "12px",
+                "marginBottom": "12px",
+            },
         )
 
         post_processing_fn_selector = dbc.Row([            
@@ -158,6 +206,8 @@ class SettingsTabController(BaseTabController):
                     post_processing_fn_selector,
                     scan_mode_selector,
                     ramp_duration_input,
+                    point_duration_input,
+                    inner_loop_section,
                     *inner_controls,
                     html.Div(
                         id=self._get_id(self._DUMMY_OUT_SUFFIX),
@@ -200,10 +250,12 @@ class SettingsTabController(BaseTabController):
             State({"type": "select", "index": ALL}, "id"),
             Input({"type": "ramp_duration", "index": ALL}, "value"),
             State({"type": "ramp_duration", "index": ALL}, "id"),
+            Input({"type": "point_duration", "index": ALL}, "value"),
+            State({"type": "point_duration", "index": ALL}, "id"),
             prevent_initial_call=True,
         )
         def _apply_settings(
-            inner_vals, inner_ids, select_vals, select_ids, ramp_vals, ramp_ids
+            inner_vals, inner_ids, select_vals, select_ids, ramp_vals, ramp_ids, point_vals, point_ids,
         ):
             """
             Collect changes from the Settings tab and forward them to the acquirer.
@@ -230,6 +282,10 @@ class SettingsTabController(BaseTabController):
                 idx = ramp_ids[0].get("index")
                 comp_id, param = idx.split("::", 1)
                 params_to_update.setdefault(comp_id, {})[param] = ramp_vals[0]
+            if point_vals and point_ids:
+                idx = point_ids[0].get("index")
+                comp_id, param = idx.split("::", 1)
+                params_to_update.setdefault(comp_id, {})[param] = point_vals[0]
 
             if not params_to_update:
                 return no_update, no_update
@@ -259,4 +315,189 @@ class SettingsTabController(BaseTabController):
             self._data_acquirer_instance.set_scan_mode(name)
             logger.info(f"Scan Mode Changed to {name}")
             return no_update
+        
+        @app.callback(
+            Output(f"{self.component_id}-point-sequence-section", "style"), 
+            Input(acq._get_id("inner-loop-function"), "value"), 
+            prevent_initial_call=True,
+        )
+        def _toggle_point_section(fn_name): 
+            if fn_name == "Go to Point(s)": 
+                return {"display": "block"}
+            elif fn_name in self._inner_loop_functions: 
+                user_function = self._inner_loop_functions[fn_name]
+                def loop_action(inner_loop_self): 
+                    user_function()
+                acq.qua_inner_loop_action.loop_action = loop_action
+                acq._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
+                return {"display": "none"}
+            
+            else: 
+                def loop_action(inner_loop_self): 
+                    pass
+                def pre_loop_action(inner_loop_self): 
+                    pass
+                acq.qua_inner_loop_action.loop_action = loop_action
+                acq.qua_inner_loop_action.pre_loop_action = pre_loop_action
+                acq._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
+                return {"display": "none"}
+        
+        @app.callback(
+            Output(f"{self.component_id}-point-rows-container", "children"),
+            Output(main_status_id, "children", allow_duplicate=True),
+            Input(f"{self.component_id}-add-point-btn", "n_clicks"),
+            Input({"type": "remove-point-btn", "index": ALL}, "n_clicks"),
+            State(f"{self.component_id}-point-rows-container", "children"),
+            prevent_initial_call=True,
+        )
+        def _manage_point_rows(add_clicks, remove_clicks, current_rows):
+            ctx = callback_context
+            if not ctx.triggered:
+                return no_update, no_update
+            
+            trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
+            gate_set = acq.gate_set
+            
+            if not hasattr(gate_set, 'macros') or not gate_set.get_macros():
+                return no_update, dbc.Alert("No points defined in the GateSet. Identify some in the Annotation Tab first.", color="warning", dismissable=True, duration=4000)
+            
+            available_points = [{"label": name, "value": name} for name in gate_set.get_macros().keys()]
+            
+            if trigger_id == f"{self.component_id}-add-point-btn":
+                current_rows = current_rows or []
+                new_index = len(current_rows)
+                current_rows.append(self._build_point_row(new_index, available_points))
+                return current_rows, no_update
+            
+            try:
+                trigger_dict = eval(trigger_id)
+                if trigger_dict.get("type") == "remove-point-btn":
+                    remove_idx = trigger_dict["index"]
+                    new_rows = []
+                    for i, row in enumerate(current_rows):
+                        if i != remove_idx:
+                            new_rows.append(self._build_point_row(len(new_rows), available_points))
+                    return new_rows, no_update
+            except:
+                pass
+            
+            return no_update, no_update
+        
+        @app.callback(
+            Output({"type": "point-duration", "index": MATCH}, "value"),
+            Input({"type": "point-select", "index": MATCH}, "value"),
+            prevent_initial_call=True,
+        )
+        def _update_duration_from_point(point_name):
+            if not point_name:
+                return no_update
+            
+            macros = acq.gate_set.get_macros()
+            if point_name in macros:
+                return macros[point_name].duration
+            return no_update
+                
+        @app.callback(
+            Output(dummy_out, "children", allow_duplicate=True), 
+            Input({"type": "point-select", "index": ALL}, "value"),
+            Input({"type": "point-duration", "index": ALL}, "value"), 
+            Input({"type": "point-timing", "index": ALL}, "value"),
+            prevent_initial_call = True,
+        )
+        def _update_point_sequence(point_names, durations, timings): 
+            pre_points = []
+            post_points = []
+
+            for point, duration, timing in list(zip(point_names, durations, timings)): 
+                if point and duration: 
+                    if timing == "pre": 
+                        pre_points.append((point, int(duration)))
+                    else: 
+                        post_points.append((point, int(duration)))
+
+            def pre_loop_action(inner_loop_self): 
+                for point, duration in pre_points: 
+                    inner_loop_self.voltage_sequence.ramp_to_point(point, duration = duration, ramp_duration = inner_loop_self.ramp_duration)
+            def loop_action(inner_loop_self): 
+                for point, duration in post_points: 
+                    inner_loop_self.voltage_sequence.ramp_to_point(point, duration = duration, ramp_duration = inner_loop_self.ramp_duration)
+
+            acq.qua_inner_loop_action.loop_action = loop_action
+            acq.qua_inner_loop_action.pre_loop_action = pre_loop_action
+            logger.info(f"Point sequence updated - Pre: {pre_points}, Post: {post_points}")
+            acq._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
+            return no_update
+
+    def _build_point_sequence_section(self): 
+        """
+        Build a collapsible section for point sequence configuration
+        """
+
+        return html.Div(
+            [
+                html.Div(id=f"{self.component_id}-point-rows-container", children=[]),
+                dbc.Button("+ Add Point", id=f"{self.component_id}-add-point-btn", size="sm", className="mt-2"),
+            ],
+            id=f"{self.component_id}-point-sequence-section",
+            style={"display": "none"},
+        )
+
+    def _build_point_row(self, index: int, available_points: list) -> None: 
+        macros = self._data_acquirer_instance.gate_set.get_macros()
+        default_point = available_points[0]["value"] if available_points else None
+        default_duration = 1000 
+        if default_point and default_point in macros:
+            macro = macros[default_point]
+            default_duration = macro.duration
+
+        row = dbc.Row(
+            [
+                dbc.Col(
+                    dbc.Select(
+                        id={"type": "point-timing", "index": index},
+                        options=[
+                            {"label": "Before (x,y)", "value": "pre"},
+                            {"label": "After (x,y)", "value": "post"},
+                        ],
+                        value="pre",
+                        size="sm",
+                        style={"width": "150px"},
+                    ),
+                    width=3,
+                ),
+                dbc.Col(
+                    dcc.Dropdown(
+                        id = {"type": "point-select", "index": index}, 
+                        options = available_points, 
+                        value = default_point,
+                        clearable = True, 
+                        style = {"color": "black"}
+                    ), 
+                    width = 4,
+                ), 
+                dbc.Col(
+                    dcc.Input(
+                        id = {"type": "point-duration", "index": index}, 
+                        type = "number",
+                        value = default_duration,
+                        min = 16, 
+                        step = 4, 
+                        placeholder = "ns",
+                        style={"width": "80px"},
+                    ), 
+                    width = 2,
+                ), 
+                dbc.Col(
+                dbc.Button("X", id={"type": "remove-point-btn", "index": index}, color="danger", size="sm"),
+                width=1,
+            ),
+            ], 
+            className = "mb-2"
+        )
+
+        return row
+
+
+
+    
         

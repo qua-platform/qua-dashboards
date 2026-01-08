@@ -223,6 +223,7 @@ class LiveViewTabController(BaseTabController):
         app: Dash,
         orchestrator_stores: Dict[str, Any],
         shared_viewer_store_ids: Dict[str, Any],
+        shared_viewer_graph_id: str = None,
     ) -> None:
         """
         Registers Dash callbacks for the Live View tab.
@@ -241,6 +242,8 @@ class LiveViewTabController(BaseTabController):
         self._register_gridlines_callback(app, shared_viewer_store_ids)
         self._register_readoutparams_callback(app)
         self._register_mode_callback(app)
+        if shared_viewer_graph_id is not None:
+            self._register_click_to_centre_callback(app, shared_viewer_graph_id)
 
     def _register_readoutparams_callback(self, app):
         @app.callback(
@@ -261,7 +264,52 @@ class LiveViewTabController(BaseTabController):
             self._data_acquirer_instance.qua_inner_loop_action.selected_readout_channels = self._data_acquirer_instance.selected_readout_channels
 
             return self._data_acquirer_instance.qua_inner_loop_action.build_readout_controls()
+        
+    def _register_click_to_centre_callback(
+            self, 
+            app: Dash, 
+            shared_viewer_graph_id: str,
+    ) -> None: 
 
+        @app.callback(
+            Output(
+                self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX), 
+                "children", 
+                allow_duplicate = True, 
+            ), 
+            Input(
+                shared_viewer_graph_id, "clickData", 
+            ), 
+            prevent_initial_call = True, 
+        )
+        def _centre_on_click(click_data): 
+            if not click_data or "points" not in click_data: 
+                return dash.no_update
+
+            pt = click_data["points"][0]
+            x_val = pt.get("x")
+            y_val = pt.get("y")
+            if x_val is None and y_val is None:
+                return dash.no_update
+            
+            da = self._data_acquirer_instance
+            manager = getattr(da, "external_virtual_voltages_manager", None)
+
+            if manager is None: 
+                return dash.no_update
+
+            if x_val is not None and da.x_axis_name in manager._virtual_names: 
+                idx_x = manager._virtual_names.index(da.x_axis_name)
+                manager.set_virtual_voltage_from_opx(idx_x, float(x_val))
+            if (
+                y_val is not None
+                and da.y_axis_name is not None
+                and da.y_axis_name in manager._virtual_names
+            ):
+                idx_y = manager._virtual_names.index(da.y_axis_name)
+                manager.set_virtual_voltage_from_opx(idx_y, float(y_val))
+            return ""
+            
     def _register_gridlines_callback(
             self, 
             app: Dash, 

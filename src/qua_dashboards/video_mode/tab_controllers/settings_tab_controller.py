@@ -58,16 +58,23 @@ class SettingsTabController(BaseTabController):
             units="ns",
             step=4,
         )
-        point_duration_input = create_input_field(
-            id={
-                "type": "point_duration",
-                "index": f"{self._data_acquirer_instance.component_id}::point_duration",
-            },
-            label="Point Duration",
-            value=getattr(self._data_acquirer_instance.qua_inner_loop_action, "point_duration", 1000),
-            units="ns",
-            step=4,
-        )
+        # point_duration_input = create_input_field(
+        #     id={
+        #         "type": "point_duration",
+        #         "index": f"{self._data_acquirer_instance.component_id}::point_duration",
+        #     },
+        #     label="Point Duration",
+        #     value=getattr(self._data_acquirer_instance.qua_inner_loop_action, "point_duration", 1000),
+        #     units="ns",
+        #     step=4,
+        # )
+        # xy_duration_input = create_input_field(
+        #     id=f"{self.component_id}-xy-duration",
+        #     label="(x,y) Dwell Duration",
+        #     value=0,  # Default to 0 - just ramp through
+        #     units="ns",
+        #     step=4,
+        # )
         pre_measurement_delay_input = create_input_field(
             id={
                 "type": "pre_measurement_delay",
@@ -139,6 +146,11 @@ class SettingsTabController(BaseTabController):
                 html.Small("Inner Loop Action", className="text-light mb-2", style={"display": "block"}),
                 inner_function_selector,
                 point_sequence_section,
+                # html.Div(
+                #     id=f"{self.component_id}-timeline-display",
+                #     children=[],
+                #     style={"marginTop": "12px"},
+                # ),
             ],
             style={
                 "outline": "2px solid #fff",
@@ -216,7 +228,7 @@ class SettingsTabController(BaseTabController):
                     post_processing_fn_selector,
                     scan_mode_selector,
                     ramp_duration_input,
-                    point_duration_input,
+                    # xy_duration_input,
                     pre_measurement_delay_input,
                     inner_loop_section,
                     *inner_controls,
@@ -261,14 +273,12 @@ class SettingsTabController(BaseTabController):
             State({"type": "select", "index": ALL}, "id"),
             Input({"type": "ramp_duration", "index": ALL}, "value"),
             State({"type": "ramp_duration", "index": ALL}, "id"),
-            Input({"type": "point_duration", "index": ALL}, "value"),
-            State({"type": "point_duration", "index": ALL}, "id"),
             Input({"type": "pre_measurement_delay", "index": ALL}, "value"),
             State({"type": "pre_measurement_delay", "index": ALL}, "id"),
             prevent_initial_call=True,
         )
         def _apply_settings(
-            inner_vals, inner_ids, select_vals, select_ids, ramp_vals, ramp_ids, point_vals, point_ids, pre_meas_delay_vals, pre_meas_delay_ids
+            inner_vals, inner_ids, select_vals, select_ids, ramp_vals, ramp_ids, pre_meas_delay_vals, pre_meas_delay_ids
         ):
             """
             Collect changes from the Settings tab and forward them to the acquirer.
@@ -295,10 +305,6 @@ class SettingsTabController(BaseTabController):
                 idx = ramp_ids[0].get("index")
                 comp_id, param = idx.split("::", 1)
                 params_to_update.setdefault(comp_id, {})[param] = ramp_vals[0]
-            if point_vals and point_ids:
-                idx = point_ids[0].get("index")
-                comp_id, param = idx.split("::", 1)
-                params_to_update.setdefault(comp_id, {})[param] = point_vals[0]
             if pre_meas_delay_vals and pre_meas_delay_ids:
                 idx = pre_meas_delay_ids[0].get("index")
                 comp_id, param = idx.split("::", 1)
@@ -364,10 +370,13 @@ class SettingsTabController(BaseTabController):
             Output(main_status_id, "children", allow_duplicate=True),
             Input(f"{self.component_id}-add-point-btn", "n_clicks"),
             Input({"type": "remove-point-btn", "index": ALL}, "n_clicks"),
-            State(f"{self.component_id}-point-rows-container", "children"),
+            Input({"type": "point-timing", "index": ALL}, "value"),
+            State({"type": "point-select", "index": ALL}, "value"),
+            State({"type": "point-duration", "index": ALL}, "value"),
+            State(f"{self.component_id}-xy-duration", "value"),
             prevent_initial_call=True,
         )
-        def _manage_point_rows(add_clicks, remove_clicks, current_rows):
+        def _manage_point_rows(add_clicks, remove_clicks, timings, point_names, durations, xy_duration):
             ctx = callback_context
             if not ctx.triggered:
                 return no_update, no_update
@@ -376,29 +385,37 @@ class SettingsTabController(BaseTabController):
             gate_set = acq.gate_set
             
             if not hasattr(gate_set, 'macros') or not gate_set.get_macros():
-                return no_update, dbc.Alert("No points defined in the GateSet. Identify some in the Annotation Tab first.", color="warning", dismissable=True, duration=4000)
+                if trigger_id == f"{self.component_id}-add-point-btn":
+                    return no_update, dbc.Alert("No points defined in the GateSet. Identify some in the Annotation Tab first.", color="warning", dismissable=True, duration=4000)
+                return no_update, no_update
             
             available_points = [{"label": name, "value": name} for name in gate_set.get_macros().keys()]
+            rows_data = list(zip(timings, point_names, durations))
             
             if trigger_id == f"{self.component_id}-add-point-btn":
-                current_rows = current_rows or []
-                new_index = len(current_rows)
-                current_rows.append(self._build_point_row(new_index, available_points))
-                return current_rows, no_update
+                rows_data.append(("pre", available_points[0]["value"] if available_points else None, 1000))
+            else:
+                try:
+                    trigger_dict = eval(trigger_id)
+                    if trigger_dict.get("type") == "remove-point-btn":
+                        remove_idx = trigger_dict["index"]
+                        rows_data = [r for i, r in enumerate(rows_data) if i != remove_idx]
+                except:
+                    return no_update, no_update
             
-            try:
-                trigger_dict = eval(trigger_id)
-                if trigger_dict.get("type") == "remove-point-btn":
-                    remove_idx = trigger_dict["index"]
-                    new_rows = []
-                    for i, row in enumerate(current_rows):
-                        if i != remove_idx:
-                            new_rows.append(self._build_point_row(len(new_rows), available_points))
-                    return new_rows, no_update
-            except:
-                pass
+            pre_rows = [(t, p, d) for t, p, d in rows_data if t == "pre"]
+            post_rows = [(t, p, d) for t, p, d in rows_data if t == "post"]
             
-            return no_update, no_update
+            result = []
+            for i, (t, p, d) in enumerate(pre_rows):
+                result.append(self._build_point_row(i, available_points, t, p, d))
+            
+            result.append(self._build_xy_row(xy_duration or 0))
+            
+            for i, (t, p, d) in enumerate(post_rows):
+                result.append(self._build_point_row(len(pre_rows) + i, available_points, t, p, d))
+            
+            return result, no_update
         
         @app.callback(
             Output({"type": "point-duration", "index": MATCH}, "value"),
@@ -419,9 +436,10 @@ class SettingsTabController(BaseTabController):
             Input({"type": "point-select", "index": ALL}, "value"),
             Input({"type": "point-duration", "index": ALL}, "value"), 
             Input({"type": "point-timing", "index": ALL}, "value"),
+            Input(f"{self.component_id}-xy-duration", "value"),
             prevent_initial_call = True,
         )
-        def _update_point_sequence(point_names, durations, timings): 
+        def _update_point_sequence(point_names, durations, timings, xy_duration): 
             pre_points = []
             post_points = []
 
@@ -431,7 +449,7 @@ class SettingsTabController(BaseTabController):
                         pre_points.append((point, int(duration)))
                     else: 
                         post_points.append((point, int(duration)))
-
+            acq.qua_inner_loop_action.point_duration = xy_duration or 0
             def pre_loop_action(inner_loop_self): 
                 for point, duration in pre_points: 
                     inner_loop_self.voltage_sequence.ramp_to_point(point, duration = duration, ramp_duration = inner_loop_self.ramp_duration)
@@ -444,28 +462,124 @@ class SettingsTabController(BaseTabController):
             logger.info(f"Point sequence updated - Pre: {pre_points}, Post: {post_points}")
             acq._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
             return no_update
+        
+
+        @app.callback(
+            Output(f"{self.component_id}-timeline-display", "children"),
+            Input({"type": "point-select", "index": ALL}, "value"),
+            Input({"type": "point-duration", "index": ALL}, "value"),
+            Input({"type": "point-timing", "index": ALL}, "value"),
+            Input(f"{self.component_id}-xy-duration", "value"),
+            Input({"type": "ramp_duration", "index": ALL}, "value"),
+            Input({"type": "pre_measurement_delay", "index": ALL}, "value"),
+            Input({"type": "comp-inner-loop", "index": ALL}, "value"),
+            State({"type": "comp-inner-loop", "index": ALL}, "id"),
+            prevent_initial_call=False,
+        )
+        def _update_timeline(
+            point_names, point_durations, timings, 
+            xy_dur, ramp_vals, pre_meas_vals,
+            inner_vals, inner_ids
+        ):
+            inner_loop = acq.qua_inner_loop_action
+            ramp_duration = ramp_vals[0] if ramp_vals else 16
+            pre_measurement_delay = pre_meas_vals[0] if pre_meas_vals else 0
+            readout_duration = max(
+                inner_loop._pulse_for(ch).length 
+                for ch in inner_loop.selected_readout_channels
+            ) if inner_loop.selected_readout_channels else 0
+
+            pre_points = []
+            post_points = []
+            
+            for point, duration, timing in zip(point_names, point_durations, timings):
+                if point and duration:
+                    if timing == "pre":
+                        pre_points.append((point, int(duration)))
+                    else:
+                        post_points.append((point, int(duration)))
+            
+            return self._build_timeline_visuals(
+                        pre_points=pre_points,
+                        xy_duration=xy_dur or 0,
+                        post_points=post_points,
+                        ramp_duration=ramp_duration,
+                        pre_measurement_delay=pre_measurement_delay,
+                        readout_duration=readout_duration,
+                    )
+        
+    def _build_xy_row(self, xy_duration = 0): 
+        return dbc.Row(
+            [
+                dbc.Col(
+                    html.Span("(x,y)", style={"fontWeight": "bold"}),
+                    width=6,
+                ),
+                dbc.Col(
+                    dcc.Input(
+                        id=f"{self.component_id}-xy-duration",
+                        type="number",
+                        value=xy_duration,
+                        min=0,
+                        step=4,
+                        placeholder="ns",
+                        style={"width": "80px"},
+                    ),
+                    width=2,
+                ),
+                dbc.Col(html.Span("ns"), width=1),
+            ],
+            className="mb-2 align-items-center",
+            style={"padding": "8px", "borderRadius": "4px"},
+        )
 
     def _build_point_sequence_section(self): 
         """
         Build a collapsible section for point sequence configuration
         """
 
-        return html.Div(
-            [
-                html.Div(id=f"{self.component_id}-point-rows-container", children=[]),
-                dbc.Button("+ Add Point", id=f"{self.component_id}-add-point-btn", size="sm", className="mt-2"),
-            ],
-            id=f"{self.component_id}-point-sequence-section",
-            style={"display": "none"},
+        inner_loop = self._data_acquirer_instance.qua_inner_loop_action
+        ramp_duration = getattr(inner_loop, "ramp_duration", 16)
+        pre_measurement_delay = getattr(inner_loop, "pre_measurement_delay", 0)
+        readout_duration = max(
+            inner_loop._pulse_for(ch).length 
+            for ch in inner_loop.selected_readout_channels
+        ) if inner_loop.selected_readout_channels else 0
+
+        initial_timeline = self._build_timeline_visuals(
+            pre_points=[],
+            xy_duration=0,
+            post_points=[],
+            ramp_duration=ramp_duration,
+            pre_measurement_delay=pre_measurement_delay,
+            readout_duration=readout_duration,
         )
 
-    def _build_point_row(self, index: int, available_points: list) -> None: 
+        return html.Div([
+                html.Div([
+                    html.Div(id=f"{self.component_id}-point-rows-container", children=[self._build_xy_row(0)]),
+                            dbc.Button("+ Add Point", id=f"{self.component_id}-add-point-btn", size="sm", className="mt-2"),
+                        ],
+                    id=f"{self.component_id}-point-sequence-section",
+                    style={"display": "none"},
+                    ), 
+                    html.Div(
+                        id=f"{self.component_id}-timeline-display",
+                        children=initial_timeline,
+                        style={"marginTop": "12px"},
+                    ),
+                ])
+
+    def _build_point_row(self, index: int, available_points: list, timing_value = "pre", point_value = None, duration_value = None) -> None: 
         macros = self._data_acquirer_instance.gate_set.get_macros()
-        default_point = available_points[0]["value"] if available_points else None
-        default_duration = 1000 
-        if default_point and default_point in macros:
-            macro = macros[default_point]
-            default_duration = macro.duration
+        if point_value is None: 
+            point_value = available_points[0]["value"] if available_points else None
+
+        if duration_value is None:
+            duration_value = 1000 
+            if point_value and duration_value in macros:
+                macro = macros[point_value]
+                duration_value = macro.duration
 
         row = dbc.Row(
             [
@@ -476,7 +590,7 @@ class SettingsTabController(BaseTabController):
                             {"label": "Before (x,y)", "value": "pre"},
                             {"label": "After (x,y)", "value": "post"},
                         ],
-                        value="pre",
+                        value=timing_value,
                         size="sm",
                         style={"width": "150px"},
                     ),
@@ -486,7 +600,7 @@ class SettingsTabController(BaseTabController):
                     dcc.Dropdown(
                         id = {"type": "point-select", "index": index}, 
                         options = available_points, 
-                        value = default_point,
+                        value = point_value,
                         clearable = True, 
                         style = {"color": "black"}
                     ), 
@@ -496,7 +610,7 @@ class SettingsTabController(BaseTabController):
                     dcc.Input(
                         id = {"type": "point-duration", "index": index}, 
                         type = "number",
-                        value = default_duration,
+                        value = duration_value,
                         min = 16, 
                         step = 4, 
                         placeholder = "ns",
@@ -514,7 +628,70 @@ class SettingsTabController(BaseTabController):
 
         return row
 
+    def _build_timeline_visuals(
+        self, 
+        pre_points, 
+        xy_duration, 
+        post_points, 
+        ramp_duration, 
+        pre_measurement_delay, 
+        readout_duration
+    ) -> None: 
+        """
+        A function which builds the visual representation of the pixel timeline, based on the point sequence. Prints the total point duration
+        """
 
+        segments = []
+        total_duration = 0
 
-    
+        for name, duration in pre_points: 
+            segments.append({"label": name, "duration": duration, "type": "pre", "ramp": ramp_duration})
+            total_duration = total_duration + duration + ramp_duration
         
+        segments.append({"label": "(x,y)", "duration": xy_duration, "type": "xy", "ramp": ramp_duration})
+        total_duration = total_duration + xy_duration + ramp_duration
+
+        for name, duration in post_points: 
+            segments.append({"label": name, "duration": duration, "type": "post", "ramp": ramp_duration})
+            total_duration = total_duration + duration + ramp_duration
+
+        segments.append({"label": "PMD", "duration": pre_measurement_delay, "type": "pmw", "ramp": 0})
+        segments.append({"label": "Readout", "duration": readout_duration, "type": "readout", "ramp": 0})
+        total_duration += pre_measurement_delay + readout_duration
+
+        colours = {"pre": "#6c9bd1", "xy": "#f0ad4e", "post": "#5cb85c", "pmw": "#6f5e96", "readout": "#d9534f", "ramp": "#eaff00"}
+        blocks = []
+        block_height = "40px"
+        for seg in segments: 
+            if seg["ramp"] > 0: 
+                blocks.append(html.Div(
+                    f"Ramp", 
+                    style = {
+                        "width": f"{40}px",
+                        "backgroundColor": colours["ramp"],
+                        "textAlign": "center",
+                        "lineHeight": block_height,
+                        "height": block_height,
+                        "fontSize": "10px",
+                        "color": "black",
+                    }
+                ))
+            blocks.append(html.Div(
+                f"{seg['label']} {seg['duration']}ns", 
+                style={
+                    "width": f"{100}px",
+                    "backgroundColor": colours[seg["type"]],
+                    "textAlign": "center",
+                    "fontSize": "10px",
+                    "height": block_height,
+                    "lineHeight": block_height,
+                    "color": "black",
+                    "overflow": "hidden",
+                }
+            ))
+
+        return html.Div([
+            html.Div(blocks, style={"display": "flex", "alignItems": "center", "marginBottom": "8px", "overflowX": "auto",}),
+            html.Div(f"Total pixel duration: {total_duration} ns", style={"fontSize": "12px", "color": "#aaa"}),
+        ])
+

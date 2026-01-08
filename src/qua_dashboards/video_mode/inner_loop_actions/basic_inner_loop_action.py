@@ -94,7 +94,7 @@ class BasicInnerLoopAction(InnerLoopAction):
             **x_apply.get("voltage", {}),
             **(y_apply.get("voltage", {}) or {}),
         } if y_apply is not None else {**x_apply.get("voltage", {})}
-        self.voltage_sequence.ramp_to_voltages(voltage_coordinates, duration = 0, ramp_duration = self.ramp_duration)
+        self.voltage_sequence.ramp_to_voltages(voltage_coordinates, duration = self.point_duration, ramp_duration = self.ramp_duration)
 
         self.loop_action(self)
 

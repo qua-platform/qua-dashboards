@@ -523,10 +523,10 @@ class SettingsTabController(BaseTabController):
             inner_loop._pulse_for(ch).length 
             for ch in inner_loop.selected_readout_channels
         ) if inner_loop.selected_readout_channels else 0
-
+        xy_duration=int(getattr(inner_loop, "point_duration", 0) or 0)
         initial_timeline = self._build_timeline_visuals(
             pre_points=[],
-            xy_duration=0,
+            xy_duration=xy_duration,
             post_points=[],
             ramp_duration=ramp_duration,
             pre_measurement_delay=pre_measurement_delay,
@@ -535,7 +535,7 @@ class SettingsTabController(BaseTabController):
 
         return html.Div([
                 html.Div([
-                    html.Div(id=f"{self.component_id}-point-rows-container", children=[self._build_xy_row(0)]),
+                    html.Div(id=f"{self.component_id}-point-rows-container", children=[self._build_xy_row(xy_duration)]),
                             dbc.Button("+ Add Point", id=f"{self.component_id}-add-point-btn", size="sm", className="mt-2"),
                         ],
                     id=f"{self.component_id}-point-sequence-section",

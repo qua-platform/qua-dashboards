@@ -358,6 +358,40 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             "Amplitude": drive_axes,
         }
 
+    def reset(self) -> None: 
+        """Reset the acquirer with QM job"""
+        if self.qm_job is not None: 
+            try:
+                if self.qm_job.status == "running":
+                    self.qm_job.halt()
+            except Exception as e:
+                logger.warning(f"Error halting QM job during reset: {e}")
+            self.qm_job = None
+        self.qua_program = None
+        self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
+        super().reset()
+
+    def shutdown(self) -> None: 
+        """Fully shut down Video Mode"""
+        logger.info(f"Shutdown requested on component {self.component_id}")
+        self.stop_acquisition()
+        if self.qm_job is not None: 
+            try: 
+                if self.qm_job.status == "running": 
+                    self.qm_job.cancel()
+            except Exception as e:
+                logger.warning(f"Error halting QM Job: {e}")
+            self.qm_job = None
+        if self.qm is None: 
+            try: 
+                self.qm.close()
+            except Exception as e: 
+                logger.warning(f"Error closing QM: {e}")
+            self.qm = None
+
+        self.qua_program = None
+        logger.info(f"{self.component_id} shutdown complete")
+
     def generate_qua_program(self) -> Program:
         """
         Generates the QUA program for the 2D scan.

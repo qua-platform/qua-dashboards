@@ -734,7 +734,8 @@ class VideoModeComponent(BaseComponent):
                 )
                 return no_update, no_update, no_update
 
-            active_tc.is_active = True
+            for tc in self.tab_controllers:
+                tc.is_active = (tc is active_tc)
 
             store_updates_from_tab = active_tc.on_tab_activated()
             self._active_tab_value = new_active_tab_value  # Update active tab

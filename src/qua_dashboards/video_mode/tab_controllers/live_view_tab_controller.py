@@ -243,7 +243,7 @@ class LiveViewTabController(BaseTabController):
         self._register_readoutparams_callback(app)
         self._register_mode_callback(app)
         if shared_viewer_graph_id is not None:
-            self._register_click_to_centre_callback(app, shared_viewer_graph_id)
+            self._register_click_to_centre_callback(app, shared_viewer_graph_id, tabs_id=orchestrator_stores.get("control-tabs"),)
 
     def _register_readoutparams_callback(self, app):
         @app.callback(
@@ -269,6 +269,8 @@ class LiveViewTabController(BaseTabController):
             self, 
             app: Dash, 
             shared_viewer_graph_id: str,
+            *, 
+            tabs_id: str,
     ) -> None: 
 
         @app.callback(
@@ -280,9 +282,12 @@ class LiveViewTabController(BaseTabController):
             Input(
                 shared_viewer_graph_id, "clickData", 
             ), 
+            State(tabs_id, "value"),
             prevent_initial_call = True, 
         )
-        def _centre_on_click(click_data): 
+        def _centre_on_click(click_data, active_tab_value): 
+            if active_tab_value not in ("live-view-tab", "voltage-control-tab"):
+                return dash.no_update
             if not click_data or "points" not in click_data: 
                 return dash.no_update
 

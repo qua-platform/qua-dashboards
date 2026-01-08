@@ -679,20 +679,36 @@ class AnnotationTabController(BaseTabController):
                         if not name:
                             raise ValueError("No point name")
 
-                        voltages_dict = {}
+                        ac_voltages_dict = {}
+                        dc_voltages_dict = {}
                         if axis_modes.get("x_mode") == "voltage":
+                            x_sweep_axis = self._data_acquirer.x_axis
+                            if x_sweep_axis.offset_parameter: 
+                                x_dc_offset = float(x_sweep_axis.offset_parameter.get_latest())
+                            else: 
+                                x_dc_offset = 0
                             gate = self._data_acquirer.x_axis.name
-                            voltages_dict[gate] = float(point["x"])
+                            dc_voltages_dict[gate] = float(x_dc_offset)
+                            ac_voltages_dict[gate] = float(point["x"]) - x_dc_offset
                         if axis_modes.get("y_mode") == "voltage":
+                            y_sweep_axis = self._data_acquirer.y_axis
+                            if y_sweep_axis.offset_parameter: 
+                                y_dc_offset = float(y_sweep_axis.offset_parameter.get_latest())
+                            else: 
+                                y_dc_offset = 0
                             gate = self._data_acquirer.y_axis.name
+                            dc_voltages_dict[gate] = float(y_dc_offset)
                             if gate != "dummy":
-                                voltages_dict[gate] = float(point["y"])
-
-                        if not voltages_dict:
+                                ac_voltages_dict[gate] = float(point["y"]) - y_dc_offset
+                        if not ac_voltages_dict:
                             raise ValueError("No voltage axes found")
 
                         vgs = self._data_acquirer.gate_set
-                        vgs.add_point(name, voltages_dict, duration=duration)
+                        if self._data_acquirer.voltage_control_component:
+                            dc_set = self._data_acquirer.voltage_control_component.dc_set
+                        vgs.add_point(name, ac_voltages_dict, duration=duration)
+                        if dc_set is not None: 
+                            dc_set.add_point(name, dc_voltages_dict, duration = duration)
 
                     elif action == "frequency":
                 

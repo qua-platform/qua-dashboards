@@ -492,6 +492,7 @@ class SettingsTabController(BaseTabController):
                 inner_loop._pulse_for(ch).length 
                 for ch in inner_loop.selected_readout_channels
             ) if inner_loop.selected_readout_channels else 0
+            time_of_flight = max(ch.time_of_flight for ch in inner_loop.selected_readout_channels)
 
             pre_points = []
             post_points = []
@@ -510,6 +511,7 @@ class SettingsTabController(BaseTabController):
                         ramp_duration=ramp_duration,
                         pre_measurement_delay=pre_measurement_delay,
                         readout_duration=readout_duration,
+                        time_of_flight=time_of_flight
                     )
         
     def _build_xy_row(self, xy_duration = 0): 
@@ -549,6 +551,8 @@ class SettingsTabController(BaseTabController):
             inner_loop._pulse_for(ch).length 
             for ch in inner_loop.selected_readout_channels
         ) if inner_loop.selected_readout_channels else 0
+        time_of_flight = max(ch.time_of_flight for ch in inner_loop.selected_readout_channels)
+
         xy_duration=int(getattr(inner_loop, "point_duration", 0) or 0)
         initial_timeline = self._build_timeline_visuals(
             pre_points=[],
@@ -557,6 +561,7 @@ class SettingsTabController(BaseTabController):
             ramp_duration=ramp_duration,
             pre_measurement_delay=pre_measurement_delay,
             readout_duration=readout_duration,
+            time_of_flight = time_of_flight
         )
 
         return html.Div([
@@ -639,7 +644,8 @@ class SettingsTabController(BaseTabController):
         post_points, 
         ramp_duration, 
         pre_measurement_delay, 
-        readout_duration
+        readout_duration, 
+        time_of_flight,
     ) -> None: 
         """
         A function which builds the visual representation of the pixel timeline, based on the point sequence. Prints the total point duration
@@ -693,9 +699,10 @@ class SettingsTabController(BaseTabController):
                     "overflow": "hidden",
                 }
             ))
+        readout_overhead = (time_of_flight + 52)
         blocks.append(
             html.Div(
-                f"80ns OH", 
+                f"{readout_overhead}ns OH", 
                 style={
                     "width": f"{50}px",
                     "backgroundColor": "#566161",
@@ -708,7 +715,7 @@ class SettingsTabController(BaseTabController):
                 }
             )
         )
-        total_duration = total_duration + 80
+        total_duration = total_duration + readout_overhead
         return html.Div([
             html.Div(blocks, style={"display": "flex", "alignItems": "center", "marginBottom": "8px", "overflowX": "auto",}),
             html.Div(f"Total pixel duration: {total_duration} ns", style={"fontSize": "12px", "color": "#aaa"}),

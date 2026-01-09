@@ -48,16 +48,16 @@ class SettingsTabController(BaseTabController):
         self._inner_loop_functions = self._data_acquirer_instance.inner_functions_dict
 
     def get_layout(self):
-        ramp_duration_input = create_input_field(
-            id={
-                "type": "ramp_duration",
-                "index": f"{self._data_acquirer_instance.component_id}::ramp_duration",
-            },
-            label="Ramp Duration",
-            value=getattr(self._data_acquirer_instance.qua_inner_loop_action, "ramp_duration", 16),
-            units="ns",
-            step=4,
-        )
+        # ramp_duration_input = create_input_field(
+        #     id={
+        #         "type": "ramp_duration",
+        #         "index": f"{self._data_acquirer_instance.component_id}::ramp_duration",
+        #     },
+        #     label="Ramp Duration",
+        #     value=getattr(self._data_acquirer_instance.qua_inner_loop_action, "ramp_duration", 16),
+        #     units="ns",
+        #     step=4,
+        # )
         pre_measurement_delay_input = create_input_field(
             id={
                 "type": "pre_measurement_delay",
@@ -205,7 +205,7 @@ class SettingsTabController(BaseTabController):
                     result_type_selector,
                     post_processing_fn_selector,
                     scan_mode_selector,
-                    ramp_duration_input,
+                    #ramp_duration_input,
                     # xy_duration_input,
                     pre_measurement_delay_input,
                     inner_loop_section,
@@ -356,9 +356,11 @@ class SettingsTabController(BaseTabController):
             State({"type": "point-select", "index": ALL}, "value"),
             State({"type": "point-duration", "index": ALL}, "value"),
             State(f"{self.component_id}-xy-duration", "value"),
+            State({"type": "point-ramp", "index": ALL}, "value"),
+            State(f"{self.component_id}-xy-ramp", "value"),
             prevent_initial_call=True,
         )
-        def _manage_point_rows(add_clicks, remove_clicks, timings, point_names, durations, xy_duration):
+        def _manage_point_rows(add_clicks, remove_clicks, timings, point_names, durations, xy_duration, point_ramps, xy_ramp):
             ctx = callback_context
             if not ctx.triggered:
                 return no_update, no_update
@@ -372,10 +374,10 @@ class SettingsTabController(BaseTabController):
                 return no_update, no_update
             
             available_points = [{"label": name, "value": name} for name in gate_set.get_macros().keys()]
-            rows_data = list(zip(timings, point_names, durations))
+            rows_data = list(zip(timings, point_names, durations, point_ramps))
             
             if trigger_id == f"{self.component_id}-add-point-btn":
-                rows_data.append(("pre", available_points[0]["value"] if available_points else None, 1000))
+                rows_data.append(("pre", available_points[0]["value"] if available_points else None, 1000, 16))
             else:
                 try:
                     trigger_dict = eval(trigger_id)
@@ -385,24 +387,25 @@ class SettingsTabController(BaseTabController):
                 except:
                     return no_update, no_update
             
-            pre_rows = [(t, p, d) for t, p, d in rows_data if t == "pre"]
-            post_rows = [(t, p, d) for t, p, d in rows_data if t == "post"]
+            pre_rows = [(t, p, int(d), int(r)) for t, p, d, r in rows_data if t == "pre"]
+            post_rows = [(t, p, int(d), int(r)) for t, p, d, r in rows_data if t == "post"]
 
-            pre_points = [(p, int(d)) for t, p, d in rows_data if t == "pre" and p and d]
-            post_points = [(p, int(d)) for t, p, d in rows_data if t == "post" and p and d]
+            pre_points = [(p, int(d), int(r)) for t, p, d, r in rows_data if t == "pre" and p and d]
+            post_points = [(p, int(d), int(r)) for t, p, d, r in rows_data if t == "post" and p and d]
             
             acq.qua_inner_loop_action.point_duration = int(xy_duration) if xy_duration else 0
+            acq.qua_inner_loop_action.ramp_duration = int(xy_ramp) if xy_ramp else 16
             
             def pre_loop_action(inner_loop_self):
-                for point, duration in pre_points:
+                for point, duration, ramp_duration in pre_points:
                     inner_loop_self.voltage_sequence.ramp_to_point(
-                        point, duration=duration, ramp_duration=inner_loop_self.ramp_duration
+                        point, duration=duration, ramp_duration=ramp_duration
                     )
             
             def loop_action(inner_loop_self):
-                for point, duration in post_points:
+                for point, duration, ramp_duration in post_points:
                     inner_loop_self.voltage_sequence.ramp_to_point(
-                        point, duration=duration, ramp_duration=inner_loop_self.ramp_duration
+                        point, duration=duration, ramp_duration=ramp_duration
                     )
             
             acq.qua_inner_loop_action.pre_loop_action = pre_loop_action
@@ -410,14 +413,14 @@ class SettingsTabController(BaseTabController):
             acq._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
             logger.info(f"Point sequence updated from row manager - Pre: {pre_points}, Post: {post_points}")
             
-            result = []
-            for i, (t, p, d) in enumerate(pre_rows):
-                result.append(self._build_point_row(i, available_points, t, p, d))
+            result = [self._build_point_header_row()]
+            for i, (t, p, d, r) in enumerate(pre_rows):
+                result.append(self._build_point_row(i, available_points, t, p, d, r))
             
             result.append(self._build_xy_row(xy_duration or 0))
             
-            for i, (t, p, d) in enumerate(post_rows):
-                result.append(self._build_point_row(len(pre_rows) + i, available_points, t, p, d))
+            for i, (t, p, d, r) in enumerate(post_rows):
+                result.append(self._build_point_row(len(pre_rows) + i, available_points, t, p, d, r))
             
             return result, no_update
         
@@ -441,25 +444,29 @@ class SettingsTabController(BaseTabController):
             Input({"type": "point-duration", "index": ALL}, "value"), 
             Input({"type": "point-timing", "index": ALL}, "value"),
             Input(f"{self.component_id}-xy-duration", "value"),
+            Input({"type": "point-ramp", "index": ALL}, "value"),
+            Input(f"{self.component_id}-xy-ramp", "value"),
             prevent_initial_call = True,
         )
-        def _update_point_sequence(point_names, durations, timings, xy_duration): 
+        def _update_point_sequence(point_names, durations, timings, xy_duration, point_ramps, xy_ramp): 
             pre_points = []
             post_points = []
 
-            for point, duration, timing in list(zip(point_names, durations, timings)): 
+            for point, duration, timing, ramp in list(zip(point_names, durations, timings, point_ramps)): 
                 if point and duration: 
+                    ramp_val = int(ramp or 16)
                     if timing == "pre": 
-                        pre_points.append((point, int(duration)))
+                        pre_points.append((point, int(duration), ramp_val))
                     else: 
-                        post_points.append((point, int(duration)))
+                        post_points.append((point, int(duration), ramp_val))
             acq.qua_inner_loop_action.point_duration = int(xy_duration or 0)
+            acq.qua_inner_loop_action.ramp_duration = int(xy_ramp or 16)
             def pre_loop_action(inner_loop_self): 
-                for point, duration in pre_points: 
-                    inner_loop_self.voltage_sequence.ramp_to_point(point, duration = duration, ramp_duration = inner_loop_self.ramp_duration)
+                for point, duration, ramp in pre_points: 
+                    inner_loop_self.voltage_sequence.ramp_to_point(point, duration = duration, ramp_duration = ramp)
             def loop_action(inner_loop_self): 
-                for point, duration in post_points: 
-                    inner_loop_self.voltage_sequence.ramp_to_point(point, duration = duration, ramp_duration = inner_loop_self.ramp_duration)
+                for point, duration, ramp in post_points: 
+                    inner_loop_self.voltage_sequence.ramp_to_point(point, duration = duration, ramp_duration = ramp)
 
             acq.qua_inner_loop_action.loop_action = loop_action
             acq.qua_inner_loop_action.pre_loop_action = pre_loop_action
@@ -474,19 +481,20 @@ class SettingsTabController(BaseTabController):
             Input({"type": "point-duration", "index": ALL}, "value"),
             Input({"type": "point-timing", "index": ALL}, "value"),
             Input(f"{self.component_id}-xy-duration", "value"),
-            Input({"type": "ramp_duration", "index": ALL}, "value"),
             Input({"type": "pre_measurement_delay", "index": ALL}, "value"),
             Input({"type": "comp-inner-loop", "index": ALL}, "value"),
             State({"type": "comp-inner-loop", "index": ALL}, "id"),
+            Input({"type": "point-ramp", "index": ALL}, "value"),
+            Input(f"{self.component_id}-xy-ramp", "value"),
             prevent_initial_call=False,
         )
         def _update_timeline(
             point_names, point_durations, timings, 
-            xy_dur, ramp_vals, pre_meas_vals,
-            inner_vals, inner_ids
+            xy_dur, pre_meas_vals,
+            inner_vals, inner_ids, 
+            point_ramps, xy_ramp,
         ):
             inner_loop = acq.qua_inner_loop_action
-            ramp_duration = ramp_vals[0] if ramp_vals else 16
             pre_measurement_delay = pre_meas_vals[0] if pre_meas_vals else 0
             readout_duration = max(
                 inner_loop._pulse_for(ch).length 
@@ -497,30 +505,41 @@ class SettingsTabController(BaseTabController):
             pre_points = []
             post_points = []
             
-            for point, duration, timing in zip(point_names, point_durations, timings):
+            for point, duration, timing, ramp in zip(point_names, point_durations, timings, point_ramps):
                 if point and duration:
+                    ramp_val = int(ramp or 16)
                     if timing == "pre":
-                        pre_points.append((point, int(duration)))
+                        pre_points.append((point, int(duration), ramp_val))
                     else:
-                        post_points.append((point, int(duration)))
+                        post_points.append((point, int(duration), ramp_val))
             
             return self._build_timeline_visuals(
                         pre_points=pre_points,
                         xy_duration=xy_dur or 0,
+                        xy_ramp = int(xy_ramp or 16),
                         post_points=post_points,
-                        ramp_duration=ramp_duration,
                         pre_measurement_delay=pre_measurement_delay,
                         readout_duration=readout_duration,
                         time_of_flight=time_of_flight
                     )
+    def _build_point_header_row(self) -> dbc.Row:
+        return dbc.Row([
+            dbc.Col(html.Small("Timing", className="text-light mb-2"), width=3),
+            dbc.Col(html.Small("Point", className="text-light mb-2"), width=2),
+            dbc.Col(html.Small("Ramp Duration", className="text-light mb-2"), width=3),
+            dbc.Col(html.Small("Point Duration", className="text-light mb-2"), width=3),
+            dbc.Col(width=1),
+        ], className="mb-1")
         
-    def _build_xy_row(self, xy_duration = 0): 
+    def _build_xy_row(self, xy_duration = 0, xy_ramp = 16): 
         return dbc.Row(
             [
                 dbc.Col(
                     html.Span("(x,y)", style={"fontWeight": "bold"}),
-                    width=6,
+                    width=5,
                 ),
+                dbc.Col(dcc.Input(id=f"{self.component_id}-xy-ramp", type="number", value=xy_ramp, min=4, step=4, style={"width": "70px"}), width=2),
+                dbc.Col(html.Span("ns"), width=1),
                 dbc.Col(
                     dcc.Input(
                         id=f"{self.component_id}-xy-duration",
@@ -545,7 +564,7 @@ class SettingsTabController(BaseTabController):
         """
 
         inner_loop = self._data_acquirer_instance.qua_inner_loop_action
-        ramp_duration = getattr(inner_loop, "ramp_duration", 16)
+        xy_ramp = getattr(inner_loop, "ramp_duration", 16)
         pre_measurement_delay = getattr(inner_loop, "pre_measurement_delay", 0)
         readout_duration = max(
             inner_loop._pulse_for(ch).length 
@@ -558,7 +577,7 @@ class SettingsTabController(BaseTabController):
             pre_points=[],
             xy_duration=xy_duration,
             post_points=[],
-            ramp_duration=ramp_duration,
+            xy_ramp = xy_ramp,
             pre_measurement_delay=pre_measurement_delay,
             readout_duration=readout_duration,
             time_of_flight = time_of_flight
@@ -566,7 +585,7 @@ class SettingsTabController(BaseTabController):
 
         return html.Div([
                 html.Div([
-                    html.Div(id=f"{self.component_id}-point-rows-container", children=[self._build_xy_row(xy_duration)]),
+                    html.Div(id=f"{self.component_id}-point-rows-container", children=[self._build_point_header_row(),self._build_xy_row(xy_duration)]),
                             dbc.Button("+ Add Point", id=f"{self.component_id}-add-point-btn", size="sm", className="mt-2"),
                         ],
                     id=f"{self.component_id}-point-sequence-section",
@@ -579,7 +598,7 @@ class SettingsTabController(BaseTabController):
                     ),
                 ])
 
-    def _build_point_row(self, index: int, available_points: list, timing_value = "pre", point_value = None, duration_value = None) -> None: 
+    def _build_point_row(self, index: int, available_points: list, timing_value = "pre", point_value = None, duration_value = None, ramp_value=None) -> dbc.Row: 
         macros = self._data_acquirer_instance.gate_set.get_macros()
         if point_value is None: 
             point_value = available_points[0]["value"] if available_points else None
@@ -589,6 +608,8 @@ class SettingsTabController(BaseTabController):
             if point_value and duration_value in macros:
                 macro = macros[point_value]
                 duration_value = macro.duration
+        if ramp_value is None: 
+            ramp_value = 16
 
         row = dbc.Row(
             [
@@ -611,10 +632,22 @@ class SettingsTabController(BaseTabController):
                         options = available_points, 
                         value = point_value,
                         clearable = True, 
-                        style = {"color": "black"}
+                        style = {"color": "black", "width": "100px"}
                     ), 
-                    width = 4,
+                    width = 2,
                 ), 
+                dbc.Col(
+                    dcc.Input(
+                        id={"type": "point-ramp", "index": index},
+                        type="number",
+                        value=ramp_value,
+                        min=16,
+                        step=4,
+                        style={"width": "70px"},
+                    ),
+                    width=2,
+                ),
+                dbc.Col(html.Span("ns"), width=1),
                 dbc.Col(
                     dcc.Input(
                         id = {"type": "point-duration", "index": index}, 
@@ -627,6 +660,7 @@ class SettingsTabController(BaseTabController):
                     ), 
                     width = 2,
                 ), 
+                dbc.Col(html.Span("ns"), width=1),
                 dbc.Col(
                 dbc.Button("X", id={"type": "remove-point-btn", "index": index}, color="danger", size="sm"),
                 width=1,
@@ -641,8 +675,8 @@ class SettingsTabController(BaseTabController):
         self, 
         pre_points, 
         xy_duration, 
+        xy_ramp,
         post_points, 
-        ramp_duration, 
         pre_measurement_delay, 
         readout_duration, 
         time_of_flight,
@@ -654,16 +688,16 @@ class SettingsTabController(BaseTabController):
         segments = []
         total_duration = 0
 
-        for name, duration in pre_points: 
-            segments.append({"label": name, "duration": duration, "type": "pre", "ramp": ramp_duration})
-            total_duration = total_duration + duration + ramp_duration
+        for name, duration, ramp in pre_points: 
+            segments.append({"label": name, "duration": duration, "type": "pre", "ramp": ramp})
+            total_duration = total_duration + duration + ramp
         
-        segments.append({"label": "(x,y)", "duration": xy_duration, "type": "xy", "ramp": ramp_duration})
-        total_duration = total_duration + xy_duration + ramp_duration
+        segments.append({"label": "(x,y)", "duration": xy_duration, "type": "xy", "ramp": xy_ramp})
+        total_duration = total_duration + xy_duration + xy_ramp
 
-        for name, duration in post_points: 
-            segments.append({"label": name, "duration": duration, "type": "post", "ramp": ramp_duration})
-            total_duration = total_duration + duration + ramp_duration
+        for name, duration, ramp in post_points: 
+            segments.append({"label": name, "duration": duration, "type": "post", "ramp": ramp})
+            total_duration = total_duration + duration + ramp
 
         segments.append({"label": "PMD", "duration": pre_measurement_delay, "type": "pmw", "ramp": 0})
         segments.append({"label": "Readout", "duration": readout_duration, "type": "readout", "ramp": 0})

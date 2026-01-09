@@ -282,10 +282,14 @@ class SettingsTabController(BaseTabController):
             if ramp_vals and ramp_ids:
                 idx = ramp_ids[0].get("index")
                 comp_id, param = idx.split("::", 1)
+                if ramp_vals[0] is not None: 
+                    ramp_vals[0] = int(ramp_vals[0])
                 params_to_update.setdefault(comp_id, {})[param] = ramp_vals[0]
             if pre_meas_delay_vals and pre_meas_delay_ids:
                 idx = pre_meas_delay_ids[0].get("index")
                 comp_id, param = idx.split("::", 1)
+                if pre_meas_delay_vals[0] is not None: 
+                    pre_meas_delay_vals[0] = int(pre_meas_delay_vals[0])
                 params_to_update.setdefault(comp_id, {})[param] = pre_meas_delay_vals[0]
 
             if not params_to_update:
@@ -383,6 +387,28 @@ class SettingsTabController(BaseTabController):
             
             pre_rows = [(t, p, d) for t, p, d in rows_data if t == "pre"]
             post_rows = [(t, p, d) for t, p, d in rows_data if t == "post"]
+
+            pre_points = [(p, int(d)) for t, p, d in rows_data if t == "pre" and p and d]
+            post_points = [(p, int(d)) for t, p, d in rows_data if t == "post" and p and d]
+            
+            acq.qua_inner_loop_action.point_duration = int(xy_duration) if xy_duration else 0
+            
+            def pre_loop_action(inner_loop_self):
+                for point, duration in pre_points:
+                    inner_loop_self.voltage_sequence.ramp_to_point(
+                        point, duration=duration, ramp_duration=inner_loop_self.ramp_duration
+                    )
+            
+            def loop_action(inner_loop_self):
+                for point, duration in post_points:
+                    inner_loop_self.voltage_sequence.ramp_to_point(
+                        point, duration=duration, ramp_duration=inner_loop_self.ramp_duration
+                    )
+            
+            acq.qua_inner_loop_action.pre_loop_action = pre_loop_action
+            acq.qua_inner_loop_action.loop_action = loop_action
+            acq._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
+            logger.info(f"Point sequence updated from row manager - Pre: {pre_points}, Post: {post_points}")
             
             result = []
             for i, (t, p, d) in enumerate(pre_rows):
@@ -427,7 +453,7 @@ class SettingsTabController(BaseTabController):
                         pre_points.append((point, int(duration)))
                     else: 
                         post_points.append((point, int(duration)))
-            acq.qua_inner_loop_action.point_duration = xy_duration or 0
+            acq.qua_inner_loop_action.point_duration = int(xy_duration or 0)
             def pre_loop_action(inner_loop_self): 
                 for point, duration in pre_points: 
                     inner_loop_self.voltage_sequence.ramp_to_point(point, duration = duration, ramp_duration = inner_loop_self.ramp_duration)
@@ -667,6 +693,22 @@ class SettingsTabController(BaseTabController):
                     "overflow": "hidden",
                 }
             ))
+        blocks.append(
+            html.Div(
+                f"80ns OH", 
+                style={
+                    "width": f"{50}px",
+                    "backgroundColor": "#566161",
+                    "textAlign": "center",
+                    "fontSize": "10px",
+                    "height": block_height,
+                    "lineHeight": block_height,
+                    "color": "black",
+                    "overflow": "hidden",
+                }
+            )
+        )
+        total_duration = total_duration + 80
         return html.Div([
             html.Div(blocks, style={"display": "flex", "alignItems": "center", "marginBottom": "8px", "overflowX": "auto",}),
             html.Div(f"Total pixel duration: {total_duration} ns", style={"fontSize": "12px", "color": "#aaa"}),

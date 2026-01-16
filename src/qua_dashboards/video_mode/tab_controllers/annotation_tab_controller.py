@@ -79,6 +79,16 @@ class AnnotationTabController(BaseTabController):
     _SHOW_LABELS_CHECKLIST_SUFFIX = "show-labels-checklist"
     _LINE_PROFILE_BUTTON_SUFFIX = "line-profile-button"
 
+
+    _STANDARD_POINT_NAMES = [
+        "initialize",
+        "measure", 
+        "operate",
+        "idle",
+        "load",
+        "unload",
+    ]
+
     def __init__(
         self,
         component_id: str = "annotation-tab-controller",
@@ -185,6 +195,49 @@ class AnnotationTabController(BaseTabController):
             )
             return None
         return base_image
+    
+    @property
+    def available_components(self) -> Dict[str, Any]: 
+        """Extract the available components in the Quam structure, to create consistent point naming schemes. """
+        machine = self._data_acquirer.machine
+        components = {}
+        collection_names = [
+            "quantum_dots", 
+            "sensor_dots", 
+            "barrier_gates", 
+            "quantum_dot_pairs", 
+            "qubits", 
+            "qubit_pairs",
+        ]
+        for collection_name in collection_names: 
+            collection = getattr(machine, collection_name, None)
+            if collection is not None: 
+                components.update(collection)
+        return components
+    
+    def get_component_dropdown_options(self) -> List[Dict]:
+        """Generate dropdown options for point name prefixes based on the components available"""
+        options = [{"label": "(None - add to GateSet only)", "value": "__none__"}]
+        components = self.available_components
+
+        grouped = {}
+        for comp_id, comp in components.items():
+            type_name = type(comp).__name__
+            if type_name not in grouped:
+                grouped[type_name] = []
+            grouped[type_name].append(comp_id)
+        
+        for type_name, ids in sorted(grouped.items()):
+            options.append({
+                "label": f"── {type_name} ──", 
+                "value": f"__header_{type_name}__", 
+                "disabled": True
+            })
+            for comp_id in sorted(ids):
+                options.append({"label": comp_id, "value": comp_id})
+        
+        return options
+
 
     def _get_new_point_id(self) -> str:
         """Generates a unique ID for a new point."""
@@ -600,6 +653,43 @@ class AnnotationTabController(BaseTabController):
         self._register_param_editor_callback(app, viewer_data_store_id)
         self._register_apply_options_callback(app, viewer_data_store_id)
         self._register_apply_quam_callback(app, viewer_data_store_id)
+        self._register_point_preview_callback(app)
+        self._register_custom_name_callback(app)
+
+    def _register_point_preview_callback(self, app: Dash) -> None:
+        @app.callback(
+            Output({"comp": self.component_id, "kind": "save_points_to_vgs", "field": "preview"}, "children"),
+            Input({"comp": self.component_id, "kind": "save_points_to_vgs", "field": "name"}, "value"),
+            Input({"comp": self.component_id, "kind": "save_points_to_vgs", "field": "component"}, "value"),
+            prevent_initial_call=True,
+        )
+        def _update_preview(name: Optional[str], component_id: Optional[str]):
+            if not name or name == "__custom__":
+                return "Select a point name (or enter custom name)"
+            
+            if component_id and component_id != "__none__":
+                full_name = f"{component_id}_{name}"
+                return f"Preview: Will save as '{full_name}'"
+            else:
+                return f"Preview: Will save as '{name}' (no component prefix)"
+            
+    def _register_custom_name_callback(
+            self, app:Dash,
+    ) -> None: 
+        @app.callback(
+            Output({"comp": self.component_id, "kind": "save_points_to_vgs", "field": "custom_name_container"}, "children"),
+            Input({"comp": self.component_id, "kind": "save_points_to_vgs", "field": "name"}, "value"),
+            prevent_initial_call=True,
+        )
+        def _toggle_custom_input(name_value: Optional[str]):
+            if name_value == "__custom__":
+                return dbc.Input(
+                    id={"comp": self.component_id, "kind": "save_points_to_vgs", "field": "custom_name"},
+                    type="text",
+                    placeholder="Enter custom point name",
+                    className="mt-2",
+                )
+            return None
 
     def _register_apply_quam_callback(self, app: Dash, viewer_data_store_id: Dict[str, str]) -> None: 
         @app.callback(
@@ -613,7 +703,6 @@ class AnnotationTabController(BaseTabController):
             State({"axis": ALL, "comp": self.component_id, "kind": "frequency", "type": "param-input"}, "value"),
             State({"axis": ALL, "comp": self.component_id, "kind": "amplitude", "type": "param-input"}, "id"),
             State({"axis": ALL, "comp": self.component_id, "kind": "amplitude", "type": "param-input"}, "value"),
-
             prevent_initial_call=True,
         )
         def _apply_to_quam(
@@ -630,11 +719,16 @@ class AnnotationTabController(BaseTabController):
                 if not n_clicks or not action:
                     raise PreventUpdate
                 
-                name = selector = duration = None
+                name = selector = duration = component_id = custom_name = None
                 for sid, val in zip(spv_ids or [], spv_vals or []):
                     if sid.get("field") == "name": name = val
                     elif sid.get("field") == "selector": selector = val
                     elif sid.get("field") == "duration": duration = None if val in (None, "") else float(val)
+                    elif sid.get("field") == "component": component_id = val if val != "__none__" else None
+                    elif sid.get("field") == "custom_name": custom_name = val
+
+                if name == "__custom__": 
+                    name = custom_name
 
                 if duration is not None:
                     duration_int = int(duration)
@@ -702,14 +796,41 @@ class AnnotationTabController(BaseTabController):
                                 ac_voltages_dict[gate] = float(point["y"]) - y_dc_offset
                         if not ac_voltages_dict:
                             raise ValueError("No voltage axes found")
-
+                        dc_set = None
                         vgs = self._data_acquirer.gate_set
                         if self._data_acquirer.voltage_control_component:
                             dc_set = self._data_acquirer.voltage_control_component.dc_set
-                        vgs.add_point(name, ac_voltages_dict, duration=duration)
-                        if dc_set is not None: 
-                            dc_set.add_point(name, dc_voltages_dict, duration = duration)
 
+                        if component_id is None: 
+                            vgs.add_point(name, ac_voltages_dict, duration=duration)
+                            if dc_set is not None: 
+                                dc_set.add_point(name, dc_voltages_dict, duration = duration)
+                            return dbc.Alert("Update Applied", color = "success", dismissable = True, duration = 4000)
+
+                        # If component is not in the machine, it would not be an option anyway. 
+                        component = self.available_components[component_id]
+                        if hasattr(component, "add_point"): 
+                            try: 
+                                component.add_point(
+                                    point_name = name, voltages = ac_voltages_dict, duration = duration
+                                )
+                                if dc_set is not None: 
+                                    dc_full_name = f"{component_id}_{name}"
+                                    dc_set.add_point(dc_full_name, dc_voltages_dict, duration = duration)
+                                    return dbc.Alert(
+                                        f"Point '{component_id}_{name}' added via {type(component).__name__} '{component_id}'",
+                                        color = "success"
+                                    )
+                            except Exception as e:
+                                logger.error(f"Error adding point via component: {e}")
+                                return dbc.Alert(f"Error adding via component: {str(e)}", color = "danger")
+                        else: 
+                            full_name = f"{component_id}_{name}"
+                            vgs.add_point(full_name, ac_voltages_dict, duration=duration)
+                            if dc_set is not None:
+                                dc_set.add_point(full_name, dc_voltages_dict, duration=duration)
+                            return dbc.Alert(f"Point '{full_name}' added to GateSet (component has no add_point method)", 
+                                             color = "warning")
                     elif action == "frequency":
                 
                         if freq_x is not None and axis_modes.get("x_mode") == "frequency":
@@ -759,6 +880,8 @@ class AnnotationTabController(BaseTabController):
 
             if not selected_kind:
                 return []
+            
+            component_opts = self.get_component_dropdown_options()
 
             selected_kind = str(selected_kind).lower()
             logger.info(f"selected_kind: {selected_kind}")
@@ -786,18 +909,43 @@ class AnnotationTabController(BaseTabController):
                     ),
                     dbc.Row(
                         [
-                            dbc.Col(html.Div("Point name:"), width=4),
+                            dbc.Col(html.Div("Associate with:"), width=4),
                             dbc.Col(
-                                dbc.Input(
-                                    id={"comp": self.component_id, "kind": "save_points_to_vgs", "field": "name"},
-                                    type="text",
-                                    value=None,
-                                    placeholder="Enter point name",
+                                dcc.Dropdown(
+                                    id={"comp": self.component_id, "kind": "save_points_to_vgs", "field": "component"},
+                                    options=component_opts,
+                                    value="__none__",
+                                    placeholder="Select component (optional)",
+                                    clearable=False,
+                                    style={"color": "black"},
                                 ),
                                 width=8,
                             ),
                         ],
                         className="g-2 mb-2",
+                    ),
+                    dbc.Row(
+                        [
+                            dbc.Col(html.Div("Point name:"), width=4),
+                            dbc.Col(
+                                dcc.Dropdown(
+                                    id={"comp": self.component_id, "kind": "save_points_to_vgs", "field": "name"},
+                                    options=[
+                                        *[{"label": n, "value": n} for n in self._STANDARD_POINT_NAMES],
+                                        {"label": "── Custom ──", "value": "__custom__"},
+                                    ],
+                                    value=None,
+                                    placeholder="Select point name",
+                                    clearable=True,
+                                    style={"color": "black"},
+                                ),
+                                width=8,
+                            ),
+                        ],
+                        className="g-2 mb-2",
+                    ),
+                    html.Div(
+                        id={"comp": self.component_id, "kind": "save_points_to_vgs", "field": "custom_name_container"},
                     ),
                     dbc.Row(
                         [
@@ -814,7 +962,11 @@ class AnnotationTabController(BaseTabController):
                         ],
                         className="g-2 mb-2",
                     ),
-                    html.Div("Press 'Apply to QUAM state' to save.", className="text-muted"),
+                    html.Div(
+                        id={"comp": self.component_id, "kind": "save_points_to_vgs", "field": "preview"},
+                        className="text-muted mt-2",
+                        children="Select a point name (or enter custom name)",
+                    ),
                 ]
 
             rows = []

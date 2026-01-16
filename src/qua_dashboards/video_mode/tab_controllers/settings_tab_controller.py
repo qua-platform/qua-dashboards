@@ -417,7 +417,7 @@ class SettingsTabController(BaseTabController):
             for i, (t, p, d, r) in enumerate(pre_rows):
                 result.append(self._build_point_row(i, available_points, t, p, d, r))
             
-            result.append(self._build_xy_row(xy_duration or 0))
+            result.append(self._build_xy_row(xy_duration or 0, xy_ramp or 16))
             
             for i, (t, p, d, r) in enumerate(post_rows):
                 result.append(self._build_point_row(len(pre_rows) + i, available_points, t, p, d, r))
@@ -524,38 +524,45 @@ class SettingsTabController(BaseTabController):
                     )
     def _build_point_header_row(self) -> dbc.Row:
         return dbc.Row([
-            dbc.Col(html.Small("Timing", className="text-light mb-2"), width=3),
-            dbc.Col(html.Small("Point", className="text-light mb-2"), width=2),
-            dbc.Col(html.Small("Ramp Duration", className="text-light mb-2"), width=3),
-            dbc.Col(html.Small("Point Duration", className="text-light mb-2"), width=3),
-            dbc.Col(width=1),
-        ], className="mb-1")
+            dbc.Col(html.Small("Timing", className="text-light"), width=2),
+            dbc.Col(html.Small("Point", className="text-light"), width=5),
+            dbc.Col(html.Small("Ramp Dur (ns)", className="text-light"), width=2),
+            dbc.Col(html.Small("Point Dur (ns)", className="text-light"), width=3),
+        ], className="mb-1 g-1 align-items-center flex-nowrap pe-1")
         
     def _build_xy_row(self, xy_duration = 0, xy_ramp = 16): 
         return dbc.Row(
             [
+                dbc.Col(html.Span(""), width=2),
+                dbc.Col(html.Span("(x,y)", style={"fontWeight": "bold"}), width=5),
                 dbc.Col(
-                    html.Span("(x,y)", style={"fontWeight": "bold"}),
-                    width=5,
+                    dbc.Input(
+                        id=f"{self.component_id}-xy-ramp",
+                        type="number",
+                        value=xy_ramp,
+                        min=4,
+                        step=4,
+                        size="sm",
+                        style={"width": "70px"},
+                    ),
+                    width=2,
                 ),
-                dbc.Col(dcc.Input(id=f"{self.component_id}-xy-ramp", type="number", value=xy_ramp, min=4, step=4, style={"width": "70px"}), width=2),
-                dbc.Col(html.Span("ns"), width=1),
                 dbc.Col(
-                    dcc.Input(
+                    dbc.Input(
                         id=f"{self.component_id}-xy-duration",
                         type="number",
                         value=xy_duration,
                         min=0,
                         step=4,
-                        placeholder="ns",
+                        size="sm",
                         style={"width": "80px"},
                     ),
-                    width=2,
+                    width="auto", 
+                    className="px-0 me-1"
                 ),
-                dbc.Col(html.Span("ns"), width=1),
             ],
-            className="mb-2 align-items-center",
-            style={"padding": "8px", "borderRadius": "4px"},
+            className="mb-1 g-1 align-items-center flex-nowrap pe-1",
+            style={"padding": "0px"},
         )
 
     def _build_point_sequence_section(self): 
@@ -585,7 +592,7 @@ class SettingsTabController(BaseTabController):
 
         return html.Div([
                 html.Div([
-                    html.Div(id=f"{self.component_id}-point-rows-container", children=[self._build_point_header_row(),self._build_xy_row(xy_duration)]),
+                    html.Div(id=f"{self.component_id}-point-rows-container", children=[self._build_point_header_row(),self._build_xy_row(xy_duration, xy_ramp)]),
                             dbc.Button("+ Add Point", id=f"{self.component_id}-add-point-btn", size="sm", className="mt-2"),
                         ],
                     id=f"{self.component_id}-point-sequence-section",
@@ -622,51 +629,59 @@ class SettingsTabController(BaseTabController):
                         ],
                         value=timing_value,
                         size="sm",
-                        style={"width": "150px"},
+                        style={"width": "100%"},
                     ),
-                    width=3,
+                    width=2,
                 ),
                 dbc.Col(
-                    dcc.Dropdown(
+                    dbc.Select(
                         id = {"type": "point-select", "index": index}, 
                         options = available_points, 
                         value = point_value,
-                        clearable = True, 
-                        style = {"color": "black", "width": "100px"}
+                        # clearable = True, 
+                        size = "sm",
+                        style = {"color": "black", "width": "100%"}
                     ), 
-                    width = 2,
+                    width = 5,
                 ), 
                 dbc.Col(
-                    dcc.Input(
+                    dbc.Input(
                         id={"type": "point-ramp", "index": index},
                         type="number",
                         value=ramp_value,
                         min=16,
                         step=4,
+                        size="sm",
                         style={"width": "70px"},
                     ),
                     width=2,
                 ),
-                dbc.Col(html.Span("ns"), width=1),
                 dbc.Col(
-                    dcc.Input(
-                        id = {"type": "point-duration", "index": index}, 
-                        type = "number",
-                        value = duration_value,
-                        min = 16, 
-                        step = 4, 
-                        placeholder = "ns",
+                    dbc.Input(
+                        id={"type": "point-duration", "index": index},
+                        type="number",
+                        value=duration_value,
+                        min=16,
+                        step=4,
+                        size="sm",
                         style={"width": "80px"},
-                    ), 
-                    width = 2,
-                ), 
-                dbc.Col(html.Span("ns"), width=1),
+                    ),
+                    width=3,
+                ),
                 dbc.Col(
-                dbc.Button("X", id={"type": "remove-point-btn", "index": index}, color="danger", size="sm"),
-                width=1,
-            ),
+                    dbc.Button(
+                        "X",
+                        id={"type": "remove-point-btn", "index": index},
+                        color="danger",
+                        size="sm",
+                        className="px-1",
+                        style={"marginLeft": "-6px"}
+                    ),
+                    width="auto",
+                    className="ps-0",
+                ),
             ], 
-            className = "mb-2"
+            className="mb-1 g-1 align-items-center flex-nowrap pe-1"
         )
 
         return row

@@ -67,6 +67,7 @@ from quam_builder.architecture.quantum_dots.components import (
     VoltageGate,
     VirtualGateSet,
     ReadoutResonatorSingle,
+    QdacSpec,
 )
 from quam_builder.architecture.quantum_dots.qpu import BaseQuamQD
 from qua_dashboards.virtual_gates import VirtualLayerEditor, ui_update
@@ -103,8 +104,9 @@ def setup_DC_channel(
         id=name,
         opx_output=opx_output,  # Output for channel
         sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
-        qdac_channel=qdac_port,
     )
+    qdac_spec = QdacSpec(qdac_output_port = qdac_port)
+    channel.qdac_spec = qdac_spec
     if qdac_port is None:
         channel.offset_parameter = None
     return channel
@@ -193,7 +195,7 @@ def main():
 
     # Adjust the IP and cluster name here
     qm_ip = "172.16.33.115"
-    cluster_name = "CS_3"
+    cluster_name = "CS_4"
 
     # If connecting to qdac, set qdac_connect = True, and the qdac_ip.
     qdac_ip = "172.16.33.101"
@@ -217,6 +219,7 @@ def main():
     p1 = setup_DC_channel(name="plunger_1", opx_output_port=1, qdac_port=1, fem=fem)
     p2 = setup_DC_channel(name="plunger_2", opx_output_port=2, qdac_port=2, fem=fem)
     p3 = setup_DC_channel(name="plunger_3", opx_output_port=3, qdac_port=3, fem=fem)
+    p4 = setup_DC_channel(name="plunger_4", opx_output_port=8, qdac_port=8, fem=fem)
     s1 = setup_DC_channel(name="sensor_1", opx_output_port=4, qdac_port=4, fem=fem)
     s2 = setup_DC_channel(name="sensor_2", opx_output_port=5, qdac_port=5, fem=fem)
     b1 = setup_DC_channel(name="barrier_1", opx_output_port=6, qdac_port=6, fem=fem)
@@ -248,6 +251,7 @@ def main():
             "virtual_dot_1": p1,
             "virtual_dot_2": p2,
             "virtual_dot_3": p3,
+            "virtual_dot_4": p4,
             "virtual_barrier_1": b1,
             "virtual_barrier_2": b2,
             "virtual_sensor_1": s1,
@@ -256,12 +260,27 @@ def main():
     )
 
     machine.register_channel_elements(
-        plunger_channels=[p1, p2, p3],
-        barrier_channels=[b1, b2],
-        sensor_channels_resonators=[
-            (s1, sensor_readout_channel_1),
-            (s2, sensor_readout_channel_2),
-        ],
+        plunger_channels = [p1, p2, p3, p4],
+        barrier_channels = [b1, b2],
+        sensor_resonator_mappings = {
+            s1: sensor_readout_channel_1, 
+            s2: sensor_readout_channel_2,
+        },
+    )
+
+    # Register the quantum dot pairs
+    machine.register_quantum_dot_pair(
+        id = "dot1_dot2_pair",
+        quantum_dot_ids = ["virtual_dot_1", "virtual_dot_2"], 
+        sensor_dot_ids = ["virtual_sensor_1"], 
+        barrier_gate_id = "virtual_barrier_1"
+    )
+
+    machine.register_quantum_dot_pair(
+        id = "dot3_dot4_pair",
+        quantum_dot_ids = ["virtual_dot_3", "virtual_dot_4"], 
+        sensor_dot_ids = ["virtual_sensor_1"],
+        barrier_gate_id = "virtual_barrier_2"
     )
 
     if qdac_connect:
@@ -299,6 +318,17 @@ def main():
             [0.2 , 0.3, 0.25],
         ],
         target = "both"
+    )
+
+    # Define the detuning axes for both QuantumDotPairs
+    machine.quantum_dot_pairs["dot1_dot2_pair"].define_detuning_axis(
+        matrix = [[1,-1]], 
+        detuning_axis_name = "dot1_dot2_pair_epsilon"
+    )
+
+    machine.quantum_dot_pairs["dot3_dot4_pair"].define_detuning_axis(
+        matrix = [[1,-1]], 
+        detuning_axis_name = "dot3_dot4_pair_epsilon"
     )
 
     scan_mode_dict = {

@@ -1,6 +1,7 @@
 import logging
 import uuid
 from typing import Any, Dict, Union
+import numpy as np
 
 import dash_bootstrap_components as dbc
 import dash
@@ -242,6 +243,7 @@ class LiveViewTabController(BaseTabController):
         self._register_gridlines_callback(app, shared_viewer_store_ids)
         self._register_readoutparams_callback(app)
         self._register_mode_callback(app)
+        self._register_overlay_callback(app, shared_viewer_store_ids)
         if shared_viewer_graph_id is not None:
             self._register_click_to_centre_callback(app, shared_viewer_graph_id, tabs_id=orchestrator_stores.get("control-tabs"),)
 
@@ -675,3 +677,50 @@ class LiveViewTabController(BaseTabController):
                 )
         return current_type_params
 
+    def _register_overlay_callback(
+        self, 
+        app: Dash, 
+        shared_viewer_store_ids: Dict[str, Any],
+    ) -> None: 
+        @app.callback(
+            Output(shared_viewer_store_ids["layout_config_store"], "data", allow_duplicate=True), 
+            Input(shared_viewer_store_ids["viewer_data_store"], "data"), 
+            State(shared_viewer_store_ids["layout_config_store"], "data"),
+            prevent_initial_call = True,
+        )
+        def _update_overlay(viewer_data_ref, existing_layout): 
+            layout = existing_layout or {}
+            da = self._data_acquirer_instance
+            x_centre = np.round(da.x_axis.sweep_values_with_offset[len(da.x_axis.sweep_values_with_offset)//2], 4)
+            x_name = da.x_axis_name
+            x_mode = da.x_mode
+
+            lines = [f"{x_name} ({x_mode}): {x_centre:.4f} V"]
+
+            if da.y_axis_name is not None: 
+                y_centre = np.round(da.y_axis.sweep_values_with_offset[len(da.y_axis.sweep_values_with_offset)//2], 4)
+                y_name = da.y_axis_name
+                y_mode = da.y_mode
+                lines.append(f"{y_name} ({y_mode}): {y_centre:.4f} V")
+
+            overlay_text = "<br>".join(lines)
+
+            layout["annotations"] = [
+                {
+                    "text": overlay_text,
+                    "xref": "paper",
+                    "yref": "paper",
+                    "x": 0.98,
+                    "y": 0.98,
+                    "xanchor": "right",
+                    "yanchor": "top",
+                    "showarrow": False,
+                    "font": {"size": 12, "color": "white"},
+                    "bgcolor": "rgba(0,0,0,0.45)",
+                    "bordercolor": "rgba(255,255,255,0.35)",
+                    "borderwidth": 1,
+                    "borderpad": 6,
+                }
+            ]
+            
+            return layout

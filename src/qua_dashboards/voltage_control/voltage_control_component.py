@@ -66,6 +66,7 @@ class VoltageControlComponent(BaseComponent):
         update_interval_ms: int = 1000,
         layout_columns: int = 3,
         step_size: float = 100e-6,
+        preselected_gates: Sequence[str] | None = None,
     ):
         super().__init__(component_id=component_id)
         if voltage_parameters is None and dc_set is None: 
@@ -90,8 +91,10 @@ class VoltageControlComponent(BaseComponent):
         self.layout_columns = layout_columns
         self.step_size = step_size
 
-        # Full list of available parameters is stored in self.voltage_parameters, and selected ones are appended to gates_to_display. 
-        self.gates_to_display = []
+        # Full list of available parameters is stored in self.voltage_parameters, and selected ones are appended to gates_to_display
+        all_names = {p.name for p in self.voltage_parameters}
+        self._initial_selected_names = [n for n in (preselected_gates or []) if n in all_names]
+        self.gates_to_display = [p for p in self.voltage_parameters if p.name in self._initial_selected_names]
 
     def _get_id_type_str(self, element_name: str) -> str:
         return f"comp-{self.component_id}-{element_name}"
@@ -143,14 +146,14 @@ class VoltageControlComponent(BaseComponent):
                 dcc.Dropdown(
                     id = self._get_id("dc-gate-selector"), 
                     options = self._build_dropdown_options(),
-                    value = [], 
+                    value = self._initial_selected_names, 
                     multi = True, 
                     placeholder = "Select gates to display", 
                     style = {"color": "black"}
                 ),
                 html.Div(
                     id = self._get_id("rows-container"), 
-                    children = [],
+                    children = [self._row_components[n].get_layout() for n in self._initial_selected_names],
                 ),
                 dcc.Interval(
                     id=self._get_id("update-interval"),

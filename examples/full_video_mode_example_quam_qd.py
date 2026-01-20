@@ -104,6 +104,7 @@ def setup_DC_channel(
         id=name,
         opx_output=opx_output,  # Output for channel
         sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
+        attenuation = 10,
     )
     qdac_spec = QdacSpec(qdac_output_port = qdac_port)
     channel.qdac_spec = qdac_spec
@@ -257,6 +258,7 @@ def main():
             "virtual_sensor_1": s1,
             "virtual_sensor_2": s2,
         },
+        adjust_for_attenuation=False,
     )
 
     machine.register_channel_elements(
@@ -347,6 +349,7 @@ def main():
             component_id="Voltage_Control",
             dc_set = machine.virtual_dc_sets["main_qpu"],
             update_interval_ms=1000,
+            preselected_gates=["plunger_1", "plunger_2", "virtual_dot_1", "virtual_dot_2"]
         )
         from qua_dashboards.video_mode.tab_controllers import (
             VoltageControlTabController,
@@ -373,7 +376,7 @@ def main():
             readout_pulse_ch1,
             readout_pulse_ch2,
         ],  # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI.
-        acquisition_interval_s=0.05,
+        acquisition_interval_s=0.01,
         voltage_control_component=voltage_control_component,
     )
 

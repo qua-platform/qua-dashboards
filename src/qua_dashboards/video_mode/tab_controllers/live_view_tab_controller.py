@@ -715,7 +715,8 @@ class LiveViewTabController(BaseTabController):
                 lines.append(f"{y_name} ({y_mode}): {y_centre:.4f} V")
 
             overlay_text = "<br>".join(lines)
-            if overlay_text == self._last_overlay_text:
+            existing_annotations = (existing_layout or {}).get("annotations", [])
+            if overlay_text == self._last_overlay_text and existing_annotations:
                 return dash.no_update
             self._last_overlay_text = overlay_text
 

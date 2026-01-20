@@ -1,6 +1,6 @@
 import logging
 import uuid
-from typing import Any, Dict, Union
+from typing import Any, Dict, Union, Optional
 import numpy as np
 
 import dash_bootstrap_components as dbc
@@ -60,6 +60,10 @@ class LiveViewTabController(BaseTabController):
         super().__init__(component_id=component_id, is_active=is_active, **kwargs)
         self._data_acquirer_instance: BaseDataAcquirer = data_acquirer
         self._show_inner_loop_controls = show_inner_loop_controls
+        self._last_overlay_text: Optional[str] = None
+        self._last_overlay_version: Optional[str] = None
+        self._last_gridlines_state: Optional[str] = None
+
         logger.info(
             f"LiveViewTabController '{self.component_id}' initialized with "
             f"Data Acquirer '{self._data_acquirer_instance.component_id}'."
@@ -341,6 +345,13 @@ class LiveViewTabController(BaseTabController):
             shapes = []
             alpha = float(opacity)/100
             n_subplots = max(1, len(self._data_acquirer_instance.selected_readout_channels))
+
+            cache_key = (show, opacity, tuple(self._data_acquirer_instance.x_axis.sweep_values_with_offset),
+                tuple(self._data_acquirer_instance.y_axis.sweep_values_with_offset),
+                len(self._data_acquirer_instance.selected_readout_channels))
+            if cache_key == self._last_gridlines_state:
+                return dash.no_update
+            self._last_gridlines_state = cache_key
 
             if show: 
                 def ax_suffix(i):  # i = 1..N
@@ -689,13 +700,13 @@ class LiveViewTabController(BaseTabController):
             prevent_initial_call = True,
         )
         def _update_overlay(viewer_data_ref, existing_layout): 
-            layout = existing_layout or {}
             da = self._data_acquirer_instance
             x_centre = np.round(da.x_axis.sweep_values_with_offset[len(da.x_axis.sweep_values_with_offset)//2], 4)
             x_name = da.x_axis_name
             x_mode = da.x_mode
 
-            lines = [f"{x_name} ({x_mode}): {x_centre:.4f} V"]
+            lines = []
+            lines.append(f"{x_name} ({x_mode}): {x_centre:.4f} V")
 
             if da.y_axis_name is not None: 
                 y_centre = np.round(da.y_axis.sweep_values_with_offset[len(da.y_axis.sweep_values_with_offset)//2], 4)
@@ -704,7 +715,11 @@ class LiveViewTabController(BaseTabController):
                 lines.append(f"{y_name} ({y_mode}): {y_centre:.4f} V")
 
             overlay_text = "<br>".join(lines)
+            if overlay_text == self._last_overlay_text:
+                return dash.no_update
+            self._last_overlay_text = overlay_text
 
+            layout = dict(existing_layout or {})
             layout["annotations"] = [
                 {
                     "text": overlay_text,

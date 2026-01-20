@@ -642,8 +642,8 @@ class VideoModeComponent(BaseComponent):
                     self._last_pushed_seq = seq
 
                     current_poll_ms = (current_poll_config or {}).get("poll_ms", self.data_polling_interval_ms)
-                    if current_poll_ms != 250:
-                        auto_poll_store_update = {"poll_ms": 250}
+                    if current_poll_ms != 50:
+                        auto_poll_store_update = {"poll_ms": 50}
 
                     new_version = data_registry.set_data(
                         data_registry.LIVE_DATA_KEY,

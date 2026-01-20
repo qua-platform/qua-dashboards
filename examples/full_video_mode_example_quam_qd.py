@@ -382,7 +382,7 @@ def main():
 
     video_mode_component = VideoModeComponent(
         data_acquirer=data_acquirer,
-        data_polling_interval_s=0.5,  # How often the dashboard polls for new data
+        data_polling_interval_s=0.2,  # How often the dashboard polls for new data
         voltage_control_tab=voltage_control_tab,
         save_path=r"C:\Users\...",
     )

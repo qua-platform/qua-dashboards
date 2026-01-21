@@ -54,7 +54,7 @@ class SettingsTabController(BaseTabController):
         #         "index": f"{self._data_acquirer_instance.component_id}::ramp_duration",
         #     },
         #     label="Ramp Duration",
-        #     value=getattr(self._data_acquirer_instance.qua_inner_loop_action, "ramp_duration", 16),
+        #     value=getattr(self._data_acquirer_instance.inner_loop_action, "ramp_duration", 16),
         #     units="ns",
         #     step=4,
         # )
@@ -64,7 +64,7 @@ class SettingsTabController(BaseTabController):
                 "index": f"{self._data_acquirer_instance.component_id}::pre_measurement_delay",
             },
             label="Pre-Measurement Delay",
-            value=getattr(self._data_acquirer_instance.qua_inner_loop_action, "pre_measurement_delay", 0),
+            value=getattr(self._data_acquirer_instance.inner_loop_action, "pre_measurement_delay", 0),
             units="ns",
             step=4,
         )
@@ -72,7 +72,7 @@ class SettingsTabController(BaseTabController):
         inner_controls = []
         try:
             inner_controls = (
-                self._data_acquirer_instance.qua_inner_loop_action.get_dash_components(
+                self._data_acquirer_instance.inner_loop_action.get_dash_components(
                     include_subcomponents=True
                 )
             )
@@ -197,17 +197,21 @@ class SettingsTabController(BaseTabController):
             ],
             className="mb-2 align-items-center",
         )
+
+        display_components = [
+            readout_selector, 
+            result_type_selector, 
+            post_processing_fn_selector,
+            scan_mode_selector, 
+        ]
+        if hasattr(self._data_acquirer_instance.inner_loop_action, "pre_measurement_delay"): 
+            display_components.append(pre_measurement_delay_input)
+
         return dbc.Card(
             dbc.CardBody(
                 [
                     html.H5("Settings", className="text-light"),
-                    readout_selector,
-                    result_type_selector,
-                    post_processing_fn_selector,
-                    scan_mode_selector,
-                    #ramp_duration_input,
-                    # xy_duration_input,
-                    pre_measurement_delay_input,
+                    *display_components,
                     inner_loop_section,
                     *inner_controls,
                     html.Div(
@@ -272,7 +276,7 @@ class SettingsTabController(BaseTabController):
                     if param is None:
                         continue
                     params_to_update.setdefault(
-                        acq.qua_inner_loop_action.component_id, {}
+                        acq.inner_loop_action.component_id, {}
                     )[param] = v
             if select_vals and select_ids:
                 idx = select_ids[0].get("index")
@@ -333,7 +337,8 @@ class SettingsTabController(BaseTabController):
                 user_function = self._inner_loop_functions[fn_name]
                 def loop_action(inner_loop_self): 
                     user_function()
-                acq.qua_inner_loop_action.loop_action = loop_action
+                if hasattr(acq.inner_loop_action, "loop_action"):
+                    acq.inner_loop_action.loop_action = loop_action
                 acq._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
                 return {"display": "none"}
             
@@ -342,8 +347,10 @@ class SettingsTabController(BaseTabController):
                     pass
                 def pre_loop_action(inner_loop_self): 
                     pass
-                acq.qua_inner_loop_action.loop_action = loop_action
-                acq.qua_inner_loop_action.pre_loop_action = pre_loop_action
+                if hasattr(acq.inner_loop_action, "loop_action"):
+                    acq.inner_loop_action.loop_action = loop_action
+                if hasattr(acq.inner_loop_action, "pre_loop_action"):
+                    acq.inner_loop_action.pre_loop_action = pre_loop_action
                 acq._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
                 return {"display": "none"}
         
@@ -393,8 +400,10 @@ class SettingsTabController(BaseTabController):
             pre_points = [(p, int(d), int(r)) for t, p, d, r in rows_data if t == "pre" and p and d]
             post_points = [(p, int(d), int(r)) for t, p, d, r in rows_data if t == "post" and p and d]
             
-            acq.qua_inner_loop_action.point_duration = int(xy_duration) if xy_duration else 0
-            acq.qua_inner_loop_action.ramp_duration = int(xy_ramp) if xy_ramp else 16
+            if hasattr(acq.inner_loop_action, "point_duration"):
+                acq.inner_loop_action.point_duration = int(xy_duration) if xy_duration else 0
+            if hasattr(acq.inner_loop_action, "ramp_duration"):
+                acq.inner_loop_action.ramp_duration = int(xy_ramp) if xy_ramp else 16
             
             def pre_loop_action(inner_loop_self):
                 for point, duration, ramp_duration in pre_points:
@@ -408,8 +417,10 @@ class SettingsTabController(BaseTabController):
                         point, duration=duration, ramp_duration=ramp_duration
                     )
             
-            acq.qua_inner_loop_action.pre_loop_action = pre_loop_action
-            acq.qua_inner_loop_action.loop_action = loop_action
+            if hasattr(acq.inner_loop_action, "loop_action"):
+                acq.inner_loop_action.loop_action = loop_action
+            if hasattr(acq.inner_loop_action, "pre_loop_action"):
+                acq.inner_loop_action.pre_loop_action = pre_loop_action
             acq._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
             logger.info(f"Point sequence updated from row manager - Pre: {pre_points}, Post: {post_points}")
             
@@ -459,8 +470,10 @@ class SettingsTabController(BaseTabController):
                         pre_points.append((point, int(duration), ramp_val))
                     else: 
                         post_points.append((point, int(duration), ramp_val))
-            acq.qua_inner_loop_action.point_duration = int(xy_duration or 0)
-            acq.qua_inner_loop_action.ramp_duration = int(xy_ramp or 16)
+            if hasattr(acq.inner_loop_action, "point_duration"): 
+                acq.inner_loop_action.point_duration = int(xy_duration or 0)
+            if hasattr(acq.inner_loop_action, "ramp_duration"): 
+                acq.inner_loop_action.ramp_duration = int(xy_ramp or 16)
             def pre_loop_action(inner_loop_self): 
                 for point, duration, ramp in pre_points: 
                     inner_loop_self.voltage_sequence.ramp_to_point(point, duration = duration, ramp_duration = ramp)
@@ -468,8 +481,10 @@ class SettingsTabController(BaseTabController):
                 for point, duration, ramp in post_points: 
                     inner_loop_self.voltage_sequence.ramp_to_point(point, duration = duration, ramp_duration = ramp)
 
-            acq.qua_inner_loop_action.loop_action = loop_action
-            acq.qua_inner_loop_action.pre_loop_action = pre_loop_action
+            if hasattr(acq.inner_loop_action, "loop_action"):
+                acq.inner_loop_action.loop_action = loop_action
+            if hasattr(acq.inner_loop_action, "pre_loop_action"):
+                acq.inner_loop_action.pre_loop_action = pre_loop_action
             logger.info(f"Point sequence updated - Pre: {pre_points}, Post: {post_points}")
             acq._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
             return no_update
@@ -494,12 +509,14 @@ class SettingsTabController(BaseTabController):
             inner_vals, inner_ids, 
             point_ramps, xy_ramp,
         ):
-            inner_loop = acq.qua_inner_loop_action
+            inner_loop = acq.inner_loop_action
             pre_measurement_delay = pre_meas_vals[0] if pre_meas_vals else 0
-            readout_duration = max(
-                inner_loop._pulse_for(ch).length 
-                for ch in inner_loop.selected_readout_channels
-            ) if inner_loop.selected_readout_channels else 0
+            readout_duration = 0
+            if hasattr(inner_loop, "_pulse_for"): 
+                readout_duration = max(
+                    inner_loop._pulse_for(ch).length 
+                    for ch in inner_loop.selected_readout_channels
+                ) if inner_loop.selected_readout_channels else 0
             time_of_flight = max(ch.time_of_flight for ch in inner_loop.selected_readout_channels)
 
             pre_points = []
@@ -570,13 +587,15 @@ class SettingsTabController(BaseTabController):
         Build a collapsible section for point sequence configuration
         """
 
-        inner_loop = self._data_acquirer_instance.qua_inner_loop_action
+        inner_loop = self._data_acquirer_instance.inner_loop_action
         xy_ramp = getattr(inner_loop, "ramp_duration", 16)
         pre_measurement_delay = getattr(inner_loop, "pre_measurement_delay", 0)
-        readout_duration = max(
-            inner_loop._pulse_for(ch).length 
-            for ch in inner_loop.selected_readout_channels
-        ) if inner_loop.selected_readout_channels else 0
+        readout_duration = 0
+        if hasattr(inner_loop, "_pulse_for"): 
+            readout_duration = max(
+                inner_loop._pulse_for(ch).length 
+                for ch in inner_loop.selected_readout_channels
+            ) if inner_loop.selected_readout_channels else 0
         time_of_flight = max(ch.time_of_flight for ch in inner_loop.selected_readout_channels)
 
         xy_duration=int(getattr(inner_loop, "point_duration", 0) or 0)

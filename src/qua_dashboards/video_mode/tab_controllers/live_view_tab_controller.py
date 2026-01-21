@@ -253,7 +253,7 @@ class LiveViewTabController(BaseTabController):
 
     def _register_readoutparams_callback(self, app):
         @app.callback(
-            Output(f"{self._data_acquirer_instance.qua_inner_loop_action.component_id}-readout-params-container", "children"),
+            Output(f"{self._data_acquirer_instance.inner_loop_action.component_id}-readout-params-container", "children"),
             Input(self._data_acquirer_instance._get_id("readouts"), "value"),
             prevent_initial_call=True,
         )
@@ -267,9 +267,9 @@ class LiveViewTabController(BaseTabController):
                 for n in names
                 if n in self._data_acquirer_instance.available_readout_channels
             ]
-            self._data_acquirer_instance.qua_inner_loop_action.selected_readout_channels = self._data_acquirer_instance.selected_readout_channels
+            self._data_acquirer_instance.inner_loop_action.selected_readout_channels = self._data_acquirer_instance.selected_readout_channels
 
-            return self._data_acquirer_instance.qua_inner_loop_action.build_readout_controls()
+            return self._data_acquirer_instance.inner_loop_action.build_readout_controls()
         
     def _register_click_to_centre_callback(
             self, 

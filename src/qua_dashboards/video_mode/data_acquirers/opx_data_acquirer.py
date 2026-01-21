@@ -70,7 +70,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         y_axis_name: str,
         scan_modes: Dict[str, ScanMode],
         available_readout_pulses: List[ReadoutPulse],
-        qua_inner_loop_action: Optional[InnerLoopAction] = None,
+        inner_loop_action: Optional[InnerLoopAction] = None,
         component_id: str = "opx-data-acquirer",
         num_software_averages: int = 1,
         acquisition_interval_s: float = 0.1,
@@ -94,7 +94,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             x_axis_name: Name of the X sweep axis (must match a GateSet channel or virtual gate).
             y_axis_name: Name of the Y sweep axis (must match a GateSet channel or virtual gate).
             available_readout_pulses: A list of the QUAM Pulse objects to measure.
-            qua_inner_loop_action: Optional custom QUA inner loop action. If not provided,
+            inner_loop_action: Optional custom QUA inner loop action. If not provided,
                                    BasicInnerLoopAction will be created automatically.
             component_id: Unique ID for Dash elements.
             num_software_averages: Number of raw snapshots for software averaging.
@@ -127,9 +127,9 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self.qm: Any = None
 
         # Create BasicInnerLoopAction if not provided
-        if qua_inner_loop_action is None:
+        if inner_loop_action is None:
             inner_loop_kwargs = inner_loop_kwargs or {}
-            self.qua_inner_loop_action = BasicInnerLoopAction(
+            self.inner_loop_action = BasicInnerLoopAction(
                 gate_set=gate_set,
                 x_axis=self.x_axis,
                 y_axis=self.y_axis,
@@ -137,7 +137,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 **inner_loop_kwargs,
             )
         else:
-            self.qua_inner_loop_action = qua_inner_loop_action
+            self.inner_loop_action = inner_loop_action
         self.scan_modes = scan_modes
         self.scan_2d: ScanMode = next(iter(self.scan_modes.values()))
         self.scan_1d: ScanMode = LineScan()
@@ -162,7 +162,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
         self.inner_functions_dict = inner_functions_dict or {}
     @property
     def x_axis(self) -> BaseSweepAxis:
-        inner_loop = getattr(self, "qua_inner_loop_action", None)
+        inner_loop = getattr(self, "inner_loop_action", None)
         if inner_loop is not None:
             inner_loop.x_mode = self.x_mode
         try:
@@ -177,7 +177,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
     @property
     def y_axis(self) -> BaseSweepAxis:
-        inner_loop = getattr(self, "qua_inner_loop_action", None)
+        inner_loop = getattr(self, "inner_loop_action", None)
         if self.y_axis_name is None:
             return self._dummy_axis
         if inner_loop is not None:
@@ -231,7 +231,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             self.available_readout_channels[p.channel.name] = p.channel
             self.readout_pulse_mapping[p.channel.name] = p
 
-        self.qua_inner_loop_action.readout_pulse_mapping = self.readout_pulse_mapping
+        self.inner_loop_action.readout_pulse_mapping = self.readout_pulse_mapping
 
         self.selected_readout_channels = (
             [
@@ -243,7 +243,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             else []
         )
 
-        self.qua_inner_loop_action.selected_readout_channels = (
+        self.inner_loop_action.selected_readout_channels = (
             self.selected_readout_channels
         )
 
@@ -430,7 +430,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             y_qua_values = self.y_axis.qua_sweep_values
         self._compiled_xy = (int(self.x_axis.points), (1 if self._is_1d else int(self.y_axis.points)), self._is_1d)
 
-        self.qua_inner_loop_action.selected_readout_channels = (
+        self.inner_loop_action.selected_readout_channels = (
             self.selected_readout_channels
         )
         self._rebuild_stream_vars()
@@ -439,7 +439,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             self._compiled_stream_vars = self.stream_vars.copy()
 
             with infinite_loop_():
-                self.qua_inner_loop_action.initial_action()
+                self.inner_loop_action.initial_action()
                 if self.initial_delay_s is not None and self.initial_delay_s > 0:
                     wait(int(self.initial_delay_s * 1e9 / 4))
 
@@ -449,7 +449,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                     x_mode=self.x_mode,
                     y_mode=(self.y_mode if not self._is_1d else None),  # type: ignore
                 ):
-                    measured_qua_values = self.qua_inner_loop_action(
+                    measured_qua_values = self.inner_loop_action(
                         x_qua_var, y_qua_var
                     )
 
@@ -460,7 +460,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
                     if len(measured_qua_values) != len(self.stream_vars):
                         raise ValueError(
-                            f"Number of values returned by qua_inner_loop_action ({len(measured_qua_values)}) "
+                            f"Number of values returned by inner_loop_action ({len(measured_qua_values)}) "
                             f"does not match number of stream_vars ({len(self.stream_vars)})."
                         )
 
@@ -469,7 +469,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                     ):
                         save(qua_value_to_save, qua_streams[var_name])
 
-                self.qua_inner_loop_action.final_action()
+                self.inner_loop_action.final_action()
 
             num_points_total = self.x_axis.points * self.y_axis.points
             with stream_processing():
@@ -750,7 +750,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
             logger.warning("Axis dispatch error: %s", e)
 
         try:
-            il_flags = self.qua_inner_loop_action.update_parameters(parameters)
+            il_flags = self.inner_loop_action.update_parameters(parameters)
             flags |= il_flags
         except Exception as e:
             logger.warning("Inner-loop dispatch error: %s", e)
@@ -763,25 +763,25 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 flags |= ModifiedFlags.PARAMETERS_MODIFIED
             if (
                 "ramp_duration" in params
-                and self.qua_inner_loop_action.ramp_duration != params["ramp_duration"]
+                and self.inner_loop_action.ramp_duration != params["ramp_duration"]
             ):
-                self.qua_inner_loop_action.ramp_duration = params["ramp_duration"]
+                self.inner_loop_action.ramp_duration = params["ramp_duration"]
                 flags |= (
                     ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
                 )
             if (
                 "point_duration" in params
-                and self.qua_inner_loop_action.point_duration != params["point_duration"]
+                and self.inner_loop_action.point_duration != params["point_duration"]
             ):
-                self.qua_inner_loop_action.point_duration = params["point_duration"]
+                self.inner_loop_action.point_duration = params["point_duration"]
                 flags |= (
                     ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
                 )
             if (
                 "pre_measurement_delay" in params
-                and self.qua_inner_loop_action.pre_measurement_delay != params["pre_measurement_delay"]
+                and self.inner_loop_action.pre_measurement_delay != params["pre_measurement_delay"]
             ):
-                self.qua_inner_loop_action.pre_measurement_delay = params["pre_measurement_delay"]
+                self.inner_loop_action.pre_measurement_delay = params["pre_measurement_delay"]
                 flags |= (
                     ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
                 )
@@ -813,7 +813,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                 if [ch.name for ch in self.selected_readout_channels] != new_names:
                     old_stream_vars = self.stream_vars.copy()
                     self.selected_readout_channels = new_objs
-                    self.qua_inner_loop_action.selected_readout_channels = (
+                    self.inner_loop_action.selected_readout_channels = (
                         self.selected_readout_channels
                     )
 
@@ -859,10 +859,10 @@ class OPXDataAcquirer(Base2DDataAcquirer):
                     self.scan_mode.get_dash_components(include_subcomponents)
                 )
             if include_inner_loop_controls and hasattr(
-                self.qua_inner_loop_action, "get_dash_components"
+                self.inner_loop_action, "get_dash_components"
             ):
                 components.extend(
-                    self.qua_inner_loop_action.get_dash_components(
+                    self.inner_loop_action.get_dash_components(
                         include_subcomponents
                     )
                 )
@@ -975,7 +975,7 @@ class OPXDataAcquirer(Base2DDataAcquirer):
 
     def get_components(self) -> List[BaseUpdatableComponent]:
         components = super().get_components()
-        components.extend(self.qua_inner_loop_action.get_components())
+        components.extend(self.inner_loop_action.get_components())
         return components
 
     def _halt_acquisition(self) -> None:

@@ -68,7 +68,7 @@ class RandomDataAcquirer(Base2DDataAcquirer):
                 self.component_id = name
 
         dummy_channel = Dummy(name = "dummy1")
-        self.qua_inner_loop_action = dummy_channel
+        self.inner_loop_action = dummy_channel
         self.available_readout_channels = {"readout_channel_1": dummy_channel}
         self.selected_readout_channels = [dummy_channel]
 

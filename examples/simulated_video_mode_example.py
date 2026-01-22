@@ -1,10 +1,10 @@
 """
-Example Script: Video Mode with OPX with Virtual Gating
+Example Script: Video Mode with Simulated Data with Virtual Gating
 
-This script demonstrates how to use the VideoModeComponent with an OPXDataAcquirer
-to perform live 2D scans on a quantum device. It sets up a QUA program to sweep
-two DC voltage channels and measure a readout signal, displaying the results in a
-real-time dashboard.
+This script demonstrates how to use the VideoModeComponent with a SimulationDataAcquirer
+to perform live 2D scans on a quantum device. It sets up a simulated sweep of
+two DC voltage channels, or frequency, or pulse amplitude, and measure a readout signal, 
+displaying the results in a real-time dashboard.
 
 Quick How-to-Use:
 1.  **Configure Hardware**:
@@ -14,7 +14,7 @@ Quick How-to-Use:
         (channels, pulses) that match your experimental setup.
         Ensure `ch1`, `ch2` etc (for sweeping) and `ch1_readout` (or your measurement
         channel) are correctly defined.
-2.  **Add/Adjust your virtual gates**: 
+2.  **Add/Adjust your virtual gates via the VirtualGateSet**: 
     * This script assumes a single layer of virtual gates. Adjust and add virtual gates 
         as necessary. 
     * Be sure to adjust the virtual gating matrices to suit your experimental needs. 

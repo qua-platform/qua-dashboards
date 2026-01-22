@@ -1,10 +1,10 @@
 """
-Example Script: Video Mode with OPX with Virtual Gating
+Example Script: Video Mode with Simulated Data with Virtual Gating
 
-This script demonstrates how to use the VideoModeComponent with an OPXDataAcquirer
-to perform live 2D scans on a quantum device. It sets up a QUA program to sweep
-two DC voltage channels and measure a readout signal, displaying the results in a
-real-time dashboard.
+This script demonstrates how to use the VideoModeComponent with a SimulationDataAcquirer
+to perform live 2D scans on a quantum device. It sets up a simulated sweep of
+two DC voltage channels, or frequency, or pulse amplitude, and measure a readout signal, 
+displaying the results in a real-time dashboard.
 
 Quick How-to-Use:
 1.  **Configure Hardware**:
@@ -14,32 +14,29 @@ Quick How-to-Use:
         (channels, pulses) that match your experimental setup.
         Ensure `ch1`, `ch2` etc (for sweeping) and `ch1_readout` (or your measurement
         channel) are correctly defined.
-2.  **Add/Adjust your virtual gates**: 
+2.  **Add/Adjust your virtual gates via the VirtualGateSet**: 
     * This script assumes a single layer of virtual gates. Adjust and add virtual gates 
         as necessary. 
     * Be sure to adjust the virtual gating matrices to suit your experimental needs. 
         This can be adjusted via the UI.
-3.  **Configure the DC Control**
-    * Adjust the VoltageControlComponent to suit your experiment
-    * Ensure that each Quam channel is mapped to the correct output in the VoltageControlComponent. 
-    * This example assumes the use of a QM QDAC, however is flexible for any voltage source.
-4.  **Define your Readout Pulses**: 
+3.  **Define your Readout Pulses**: 
     * First instantiate the relevant readout pulses
     * When creating your readout Quam channel, ensure that each readout pulse is correctly 
         and uniquely mapped to your readout elements. 
     * Pass the readout pulses to the data_acquirer instance as a list.
-5.  **Adjust Scan Parameters**:
+4.  **Adjust Scan Parameters**:
     * Select a `scan_mode` (e.g., `SwitchRasterScan`, `RasterScan`).
     * Set `result_type` in `OPXDataAcquirer` (e.g., "I", "Q", "amplitude", "phase").
-6.  **Set a save_path to save Quam State JSON in the right directory**
-7.  **Run the Script**: Execute this Python file.
-8.  **Open Dashboard**: Navigate to `http://localhost:8050` (or the address shown
+5.  **Set a save_path to save Quam State JSON in the right directory**
+6.  **Run the Script**: Execute this Python file.
+7.  **Open Dashboard**: Navigate to `http://localhost:8050` (or the address shown
     in your terminal) in a web browser to view the live video mode dashboard.
 
 Note: The sections for "(Optional) Run program and acquire data" and "DEBUG: Generate QUA script"
 and "Test simulation" are for direct execution/debugging and can be commented out
 if you only intend to run the live dashboard.
 """
+
 
 # %% Imports
 from qm import QuantumMachinesManager

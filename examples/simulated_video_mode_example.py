@@ -252,7 +252,7 @@ data_acquirer = SimulationDataAcquirer(
     scan_modes=scan_mode_dict,
     result_type="I",  # "I", "Q", "amplitude", or "phase"
     available_readout_pulses=[readout_pulse_ch1, readout_pulse_ch2], # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI. 
-    acquisition_interval_s=0.05, 
+    acquisition_interval_s=0.5, 
     voltage_control_component=voltage_control_component
 )
 

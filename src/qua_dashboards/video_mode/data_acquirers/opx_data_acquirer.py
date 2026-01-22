@@ -13,7 +13,7 @@ from qm.qua import (
     wait,
 )
 
-from qua_dashboards.video_mode.data_acquirers.gate_set_data_acquirer import GateSetDataAcquirer
+from qua_dashboards.video_mode.data_acquirers.base_gate_set_data_acquirer import BaseGateSetDataAcquirer
 from qua_dashboards.core import ModifiedFlags
 from qua_dashboards.video_mode.sweep_axis import (
     BaseSweepAxis,
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 __all__ = ["OPXDataAcquirer"]
 
 
-class OPXDataAcquirer(GateSetDataAcquirer):
+class OPXDataAcquirer(BaseGateSetDataAcquirer):
     """
     Data acquirer for OPX devices using a QUAM Machine object.
 

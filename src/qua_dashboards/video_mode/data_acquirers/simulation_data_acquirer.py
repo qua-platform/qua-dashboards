@@ -5,7 +5,7 @@ from typing import Any, Optional, Tuple
 
 import numpy as np
 
-from qua_dashboards.video_mode.data_acquirers.gate_set_data_acquirer import GateSetDataAcquirer
+from qua_dashboards.video_mode.data_acquirers.base_gate_set_data_acquirer import BaseGateSetDataAcquirer
 from qua_dashboards.voltage_control.voltage_control_component import VoltageControlComponent
 from qua_dashboards.video_mode.inner_loop_actions import SimulatedInnerLoopAction
 
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 __all__ = ["SimulationDataAcquirer"]
 
 
-class SimulationDataAcquirer(GateSetDataAcquirer):
+class SimulationDataAcquirer(BaseGateSetDataAcquirer):
     """Data acquirer that generates random 2D data for simulation purposes.
 
     Inherits from Base2DDataAcquirer and simulates a delay for data acquisition.

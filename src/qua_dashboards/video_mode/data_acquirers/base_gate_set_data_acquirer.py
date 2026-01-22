@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 __all__ = ["GateSetDataAcquirer"]
 
 
-class GateSetDataAcquirer(Base2DDataAcquirer):
+class BaseGateSetDataAcquirer(Base2DDataAcquirer):
     """Base Data Acquirer that is built upon GateSet. 
 
     Inherits from Base2DDataAcquirer and builds around the GateSet and VirtualGateSet to built the UI.

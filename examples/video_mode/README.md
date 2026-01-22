@@ -34,12 +34,12 @@ For development, testing, or educational purposes, you can run Video Mode in a s
 This does not require any connection to an OPX.
 
 - **Purpose**: This example is designed for **simulating the behavior and testing the functionality** of the Video Mode dashboard.
-  It utilizes the `RandomDataAcquirer`, which generates random data points instead of interfacing with actual hardware.
+  It utilizes the `SimulationDataAcquirer`, which generates random data points or sources the data from a simulation instead of interfacing with actual hardware.
 - **Use Case**:
   - Developing and testing custom `VideoModeComponent` configurations without needing an OPX.
   - Familiarizing yourself with the video mode interface and features.
   - Debugging custom scan modes or inner loop actions in a controlled environment.
-- **How it Works**: It sets up `SweepAxis` for X and Y dimensions and feeds them to a `RandomDataAcquirer`.
+- **How it Works**: It sets up `SweepAxis` for X and Y dimensions and feeds them to a `SimulationDataAcquirer`.
   The `VideoModeComponent` then displays the randomly generated 2D scan.
 - **Further Details**: For a detailed guide, see the `example_video_mode_random.py` script.
 

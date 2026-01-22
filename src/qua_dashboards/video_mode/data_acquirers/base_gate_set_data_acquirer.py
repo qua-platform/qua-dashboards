@@ -15,7 +15,6 @@ from qua_dashboards.video_mode.data_acquirers.base_2d_data_acquirer import (
 )
 from quam.components.pulses import ReadoutPulse
 from qua_dashboards.video_mode.scan_modes import ScanMode, LineScan
-from qua_dashboards.voltage_control.voltage_control_component import VoltageControlComponent
 from qua_dashboards.video_mode.inner_loop_actions import SimulatedInnerLoopAction
 from qua_dashboards.video_mode.sweep_axis import BaseSweepAxis, VoltageSweepAxis, AmplitudeSweepAxis, FrequencySweepAxis
 from quam_builder.architecture.quantum_dots.components import VoltageGate, GateSet

@@ -1,13 +1,13 @@
 # qua_dashboards/video_mode/data_acquirers/random_data_acquirer.py
 import logging
 from time import sleep
-from typing import Any, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Type
 
 import numpy as np
 
 from qua_dashboards.video_mode.data_acquirers.base_gate_set_data_acquirer import BaseGateSetDataAcquirer
 from qua_dashboards.voltage_control.voltage_control_component import VoltageControlComponent
-from qua_dashboards.video_mode.inner_loop_actions import SimulatedInnerLoopAction
+from qua_dashboards.video_mode.inner_loop_actions import InnerLoopAction, SimulatedInnerLoopAction
 
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,9 @@ class SimulationDataAcquirer(BaseGateSetDataAcquirer):
         machine,
         acquire_time: float = 0.1,
         *,
+        inner_loop_action: Optional[InnerLoopAction] = None,
+        inner_loop_action_cls: Optional[Type[InnerLoopAction]] = None,
+        inner_loop_action_kwargs: Optional[Dict[str, Any]] = None,
         voltage_control_component: Optional[VoltageControlComponent] = None,
         **kwargs: Any,
 
@@ -54,11 +57,18 @@ class SimulationDataAcquirer(BaseGateSetDataAcquirer):
         )
         self.voltage_control_component = voltage_control_component
 
-        self.inner_loop_action = SimulatedInnerLoopAction(
-            gate_set = self.gate_set, 
-            x_axis = self.x_axis, 
-            y_axis = self.y_axis, 
-        )
+        if inner_loop_action is None:
+            if inner_loop_action_cls is None:
+                inner_loop_action_cls = SimulatedInnerLoopAction
+            if inner_loop_action_kwargs is None:
+                inner_loop_action_kwargs = {}
+            inner_loop_action = inner_loop_action_cls(
+                gate_set=self.gate_set,
+                x_axis=self.x_axis,
+                y_axis=self.y_axis,
+                **inner_loop_action_kwargs,
+            )
+        self.inner_loop_action = inner_loop_action
         self._configure_readout()
         self.machine = machine
 
@@ -107,6 +117,21 @@ class SimulationDataAcquirer(BaseGateSetDataAcquirer):
         is_multi_readout = num_sel > 1
         expected_points = self.x_axis.points * self.y_axis.points
 
+        def _to_scan_flat(data: np.ndarray) -> np.ndarray:
+            """Convert a 2D frame into a 1D stream that follows the scan order."""
+            data = np.asarray(data)
+            if data.ndim != 2:
+                return data.ravel()
+
+            y_pts, x_pts = int(self.y_axis.points), int(self.x_axis.points)
+            if data.shape == (x_pts, y_pts):
+                data = data.T
+            elif data.shape != (y_pts, x_pts):
+                return data.ravel()
+
+            x_indices, y_indices = self.get_scan_indices(x_pts=x_pts, y_pts=y_pts)
+            return data[y_indices, x_indices]
+
         def _normalize_flat(flat: np.ndarray) -> np.ndarray:
             """
             Trim or pad a 1D stream of samples to exactly one 2D frame and reshape.
@@ -114,6 +139,7 @@ class SimulationDataAcquirer(BaseGateSetDataAcquirer):
             - If fewer samples are available than a full frame, returns a 2D array filled with NaNs
             - Otherwise, reshape samples into the appropriate dimensions
             """
+            flat = _to_scan_flat(flat)
             flat = np.asarray(flat).ravel()
             # keep last full frame if concatenated
             if flat.size > expected_points:
@@ -175,6 +201,7 @@ class SimulationDataAcquirer(BaseGateSetDataAcquirer):
                     raise ValueError(f"Invalid result_type '{self.result_type}'.")
 
                 # trim/pad per-layer, similar to _normalize_flat
+                flat = _to_scan_flat(flat)
                 if flat.size > expected_points:
                     flat = flat[-expected_points:]
                 if flat.size < expected_points:

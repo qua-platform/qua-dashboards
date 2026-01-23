@@ -1,0 +1,23 @@
+import numpy as np
+from typing import Sequence, Any
+
+from qua_dashboards.video_mode.inner_loop_actions.simulators.base_simulator import BaseSimulator
+
+__all__ = ["RandomSimulator"]
+
+class RandomSimulator(BaseSimulator): 
+    """
+    Random simulator which returns randomised data. 
+    """
+
+    def __init__(
+        self, 
+        **kwargs: Any,
+    ): 
+        super().__init__(**kwargs)
+        
+    def measure_data(self, x_vals, y_vals, n_measurements: int):
+
+        I, Q = np.random.rand(int(n_measurements), len(x_vals), len(y_vals)), np.random.rand(int(n_measurements), len(x_vals), len(y_vals))
+        return I, Q
+        

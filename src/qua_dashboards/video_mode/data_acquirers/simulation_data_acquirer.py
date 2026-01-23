@@ -8,6 +8,7 @@ import numpy as np
 from qua_dashboards.video_mode.data_acquirers.base_gate_set_data_acquirer import BaseGateSetDataAcquirer
 from qua_dashboards.voltage_control.voltage_control_component import VoltageControlComponent
 from qua_dashboards.video_mode.inner_loop_actions import InnerLoopAction, SimulatedInnerLoopAction
+from qua_dashboards.video_mode.inner_loop_actions.simulators import BaseSimulator
 
 
 logger = logging.getLogger(__name__)
@@ -25,11 +26,12 @@ class SimulationDataAcquirer(BaseGateSetDataAcquirer):
     def __init__(
         self,
         machine,
+        simulator: BaseSimulator,
         acquire_time: float = 0.1,
         *,
         inner_loop_action: Optional[InnerLoopAction] = None,
-        inner_loop_action_cls: Optional[Type[InnerLoopAction]] = None,
-        inner_loop_action_kwargs: Optional[Dict[str, Any]] = None,
+        # inner_loop_action_cls: Optional[Type[InnerLoopAction]] = None,
+        # inner_loop_action_kwargs: Optional[Dict[str, Any]] = None,
         voltage_control_component: Optional[VoltageControlComponent] = None,
         **kwargs: Any,
 
@@ -46,6 +48,7 @@ class SimulationDataAcquirer(BaseGateSetDataAcquirer):
                 num_software_averages and acquisition_interval_s for
                 BaseDataAcquirer.
         """
+        self.voltage_control_component = voltage_control_component
         super().__init__(
             **kwargs,
         )
@@ -55,18 +58,14 @@ class SimulationDataAcquirer(BaseGateSetDataAcquirer):
             f"Initializing SimulationDataAcquirer (ID: {self.component_id}) with "
             f"acquire_time: {self.acquire_time}s"
         )
-        self.voltage_control_component = voltage_control_component
+        
 
         if inner_loop_action is None:
-            if inner_loop_action_cls is None:
-                inner_loop_action_cls = SimulatedInnerLoopAction
-            if inner_loop_action_kwargs is None:
-                inner_loop_action_kwargs = {}
-            inner_loop_action = inner_loop_action_cls(
+            inner_loop_action = SimulatedInnerLoopAction(
                 gate_set=self.gate_set,
                 x_axis=self.x_axis,
                 y_axis=self.y_axis,
-                **inner_loop_action_kwargs,
+                simulator = simulator
             )
         self.inner_loop_action = inner_loop_action
         self._configure_readout()

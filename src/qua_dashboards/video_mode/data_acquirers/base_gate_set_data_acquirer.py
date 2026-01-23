@@ -15,7 +15,7 @@ from qua_dashboards.video_mode.data_acquirers.base_2d_data_acquirer import (
 )
 from quam.components.pulses import ReadoutPulse
 from qua_dashboards.video_mode.scan_modes import ScanMode, LineScan
-from qua_dashboards.video_mode.inner_loop_actions import SimulatedInnerLoopAction
+from qua_dashboards.video_mode.inner_loop_actions import InnerLoopAction
 from qua_dashboards.video_mode.sweep_axis import BaseSweepAxis, VoltageSweepAxis, AmplitudeSweepAxis, FrequencySweepAxis
 from quam_builder.architecture.quantum_dots.components import VoltageGate, GateSet
 
@@ -84,11 +84,7 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
             acquisition_interval_s=acquisition_interval_s,
             **kwargs,
         )
-        self.inner_loop_action = SimulatedInnerLoopAction(
-            gate_set = gate_set, 
-            x_axis = self.x_axis, 
-            y_axis = self.y_axis, 
-        )
+        self.inner_loop_action: Optional[InnerLoopAction] = None
         self._compilation_flags: ModifiedFlags = ModifiedFlags.NONE
         self.scan_modes = scan_modes
         self.scan_2d: ScanMode = next(iter(self.scan_modes.values()))
@@ -141,6 +137,18 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
                 np.asarray(y_idx, dtype=np.intp),
             )
         return self._scan_idx_cache[1], self._scan_idx_cache[2]
+    
+    def ensure_axis(self) -> None:
+        gs = self.gate_set
+        have = {axis.name for ax in self.sweep_axes.values() for axis in ax}
+        for nm in gs.valid_channel_names:
+            if nm not in have:
+                offset_parameter = None
+                if self.voltage_control_component is not None: 
+                    params = self.voltage_control_component.voltage_parameters_by_name
+                    if nm in params: 
+                        offset_parameter = params[nm]
+                self.sweep_axes["Voltage"].append(VoltageSweepAxis(name=nm, offset_parameter=offset_parameter))
         
     def _build_dropdown_options(self, _display_sweep_axis):
         """Build dropdown options with physical/virtual grouping."""
@@ -171,8 +179,9 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
         for p in self.available_readout_pulses:
             self.available_readout_channels[p.channel.name] = p.channel
             self.readout_pulse_mapping[p.channel.name] = p
-
-        self.inner_loop_action.readout_pulse_mapping = self.readout_pulse_mapping
+        
+        if self.inner_loop_action is not None: 
+            self.inner_loop_action.readout_pulse_mapping = self.readout_pulse_mapping
 
         self.selected_readout_channels = (
             [
@@ -183,10 +192,10 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
             if self.available_readout_channels
             else []
         )
-
-        self.inner_loop_action.selected_readout_channels = (
-            self.selected_readout_channels
-        )
+        if self.inner_loop_action is not None: 
+            self.inner_loop_action.selected_readout_channels = (
+                self.selected_readout_channels
+            )
     
     def _generate_sweep_axes(
         self, gate_set, available_pulses
@@ -252,43 +261,44 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
                     flags |= child_flags
         except Exception as e:
             logger.warning("Axis dispatch error: %s", e)
-
-        try:
-            il_flags = self.inner_loop_action.update_parameters(parameters)
-            flags |= il_flags
-        except Exception as e:
-            logger.warning("Inner-loop dispatch error: %s", e)
-            raise
+        if self.inner_loop_action is not None: 
+            try:
+                il_flags = self.inner_loop_action.update_parameters(parameters)
+                flags |= il_flags
+            except Exception as e:
+                logger.warning("Inner-loop dispatch error: %s", e)
+                raise
 
         if self.component_id in parameters:
             params = parameters[self.component_id]
             if "result-type" in params and self.result_type != params["result-type"]:
                 self.result_type = params["result-type"]
                 flags |= ModifiedFlags.PARAMETERS_MODIFIED
-            if (
-                "ramp_duration" in params
-                and self.inner_loop_action.ramp_duration != params["ramp_duration"]
-            ):
-                self.inner_loop_action.ramp_duration = params["ramp_duration"]
-                flags |= (
-                    ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
-                )
-            if (
-                "point_duration" in params
-                and self.inner_loop_action.point_duration != params["point_duration"]
-            ):
-                self.inner_loop_action.point_duration = params["point_duration"]
-                flags |= (
-                    ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
-                )
-            if (
-                "pre_measurement_delay" in params
-                and self.inner_loop_action.pre_measurement_delay != params["pre_measurement_delay"]
-            ):
-                self.inner_loop_action.pre_measurement_delay = params["pre_measurement_delay"]
-                flags |= (
-                    ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
-                )
+            if self.inner_loop_action is not None: 
+                if (
+                    "ramp_duration" in params
+                    and self.inner_loop_action.ramp_duration != params["ramp_duration"]
+                ):
+                    self.inner_loop_action.ramp_duration = params["ramp_duration"]
+                    flags |= (
+                        ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
+                    )
+                if (
+                    "point_duration" in params
+                    and self.inner_loop_action.point_duration != params["point_duration"]
+                ):
+                    self.inner_loop_action.point_duration = params["point_duration"]
+                    flags |= (
+                        ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
+                    )
+                if (
+                    "pre_measurement_delay" in params
+                    and self.inner_loop_action.pre_measurement_delay != params["pre_measurement_delay"]
+                ):
+                    self.inner_loop_action.pre_measurement_delay = params["pre_measurement_delay"]
+                    flags |= (
+                        ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
+                    )
             if (
                 "gate-select-x" in params
                 and params["gate-select-x"] != self.x_axis_name
@@ -316,9 +326,10 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
                 new_objs = [self.available_readout_channels[n] for n in new_names]
                 if [ch.name for ch in self.selected_readout_channels] != new_names:
                     self.selected_readout_channels = new_objs
-                    self.inner_loop_action.selected_readout_channels = (
-                        self.selected_readout_channels
-                    )
+                    if self.inner_loop_action is not None: 
+                        self.inner_loop_action.selected_readout_channels = (
+                            self.selected_readout_channels
+                        )
 
                     flags |= ModifiedFlags.PROGRAM_MODIFIED
                     flags |= ModifiedFlags.PARAMETERS_MODIFIED
@@ -473,7 +484,8 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
 
     def get_components(self) -> List[BaseUpdatableComponent]:
         components = super().get_components()
-        components.extend(self.inner_loop_action.get_components())
+        if self.inner_loop_action is not None: 
+            components.extend(self.inner_loop_action.get_components())
         return components
 
     def mark_virtual_layer_changed(self, *, affects_config: bool = False):

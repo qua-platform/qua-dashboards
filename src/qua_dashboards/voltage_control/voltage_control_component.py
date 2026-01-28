@@ -48,7 +48,7 @@ class VirtualGateParameter:
         return self.dc_set.get_voltage(self.name)
     
     def set(self, value) -> None:
-        self.dc_set.set_voltages({self.name: value})
+        self.dc_set.set_voltages({self.name: value}, requery=False, resync=False)
 
 
 class VoltageControlComponent(BaseComponent):

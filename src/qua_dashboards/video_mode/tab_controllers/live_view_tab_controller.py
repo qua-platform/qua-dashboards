@@ -412,8 +412,7 @@ class LiveViewTabController(BaseTabController):
                 }
             }
             self._data_acquirer_instance.update_parameters(params)
-            #return "", self._data_acquirer_instance.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
-            return "", dash.no_update
+            return "", self._data_acquirer_instance.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
     def _register_mode_callback(
             self, app: Dash
     ) -> None:
@@ -451,8 +450,7 @@ class LiveViewTabController(BaseTabController):
             }
 
             da.update_parameters(params)
-            #return "", da.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
-            return "", dash.no_update
+            return "", da.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
 
 
 
@@ -697,10 +695,7 @@ class LiveViewTabController(BaseTabController):
     ) -> None: 
         @app.callback(
             Output(shared_viewer_store_ids["layout_config_store"], "data", allow_duplicate=True), 
-            Input(self._data_acquirer_instance._get_id("gate-select-x"), "value"),
-            Input(self._data_acquirer_instance._get_id("gate-select-y"), "value"),
-            Input(self._data_acquirer_instance._get_id("x-mode"), "value"),
-            Input(self._data_acquirer_instance._get_id("y-mode"), "value"),
+            Input(shared_viewer_store_ids["viewer_data_store"], "data"), 
             State(shared_viewer_store_ids["layout_config_store"], "data"),
             prevent_initial_call = True,
         )

@@ -178,7 +178,7 @@ def main():
 
     # Adjust the IP and cluster name here
     qm_ip = "172.16.33.101"
-    cluster_name = "CS_1"
+    cluster_name = "CS_2"
     qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
     machine = BasicQuam()
 
@@ -190,11 +190,11 @@ def main():
         qdac = connect_to_qdac(qdac_ip)
 
     # Define your readout pulses here. Each pulse should be uniquely mapped to your readout elements. 
-    readout_pulse_ch1 = pulses.SquareReadoutPulse(id="readout", length=100, amplitude=0.1)
-    readout_pulse_ch2 = pulses.SquareReadoutPulse(id="readout", length=100, amplitude=0.1)
+    readout_pulse_ch1 = pulses.SquareReadoutPulse(id="readout", length=30000, amplitude=0.1)
+    readout_pulse_ch2 = pulses.SquareReadoutPulse(id="readout", length=30000, amplitude=0.1)
 
     # Choose the FEM. For OPX+, keep fem = None. 
-    fem = 5
+    fem = None
 
     # Set up the readout channels
     setup_readout_channel(machine, name = "ch1_readout", readout_pulse=readout_pulse_ch1, opx_output_port = 6, opx_input_port = 1, IF = 150e6, fem = fem)
@@ -258,14 +258,14 @@ def main():
         result_type="I",  # "I", "Q", "amplitude", or "phase"
         available_readout_pulses=[readout_pulse_ch1, readout_pulse_ch2], # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI. 
         acquisition_interval_s=0.05, 
-        voltage_control_component=voltage_control_component
+        voltage_control_component=voltage_control_component, 
     )
 
     virtual_gating_component = VirtualLayerEditor(gateset = virtual_gate_set, component_id = 'virtual-gates-ui', dc_set = dc_gate_set)
 
     video_mode_component = VideoModeComponent(
         data_acquirer=data_acquirer,
-        data_polling_interval_s=0.5,  # How often the dashboard polls for new data
+        data_polling_interval_s=0.01,  # How often the dashboard polls for new data
         voltage_control_tab = voltage_control_tab,
         save_path = r"C:\Users\..."
     )

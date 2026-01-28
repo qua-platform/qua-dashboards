@@ -33,12 +33,12 @@ def make_readout_subplots_with_profile(
         except ValueError:
             target_idx = 0
 
-    fig = make_subplots(
-        rows=1,
-        cols=n,
-        subplot_titles=labels,
-        horizontal_spacing=min(0.06, 1.0 / (max(n - 1, 1)) - 1e-6),
-    )
+    # fig = make_subplots(
+    #     rows=1,
+    #     cols=n,
+    #     subplot_titles=labels,
+    #     horizontal_spacing=min(0.06, 1.0 / (max(n - 1, 1)) - 1e-6),
+    # )
 
     cols = 2 if n > 2 else n
     rows = 1 if n <= 2 else ceil(n / 2)
@@ -90,7 +90,8 @@ def make_readout_subplots_with_profile(
                 try:
                     z = np.asarray(tr["z"])
                     rows, cols = z.shape
-                    tr["customdata"] = [[i + 1] * cols for _ in range(rows)]
+                    #tr["customdata"] = [[i + 1] * cols for _ in range(rows)]
+                    tr["customdata"] = np.full((rows, cols), i + 1, dtype=np.int16)
                 except Exception:
                     pass
                 fig.add_trace(tr, row=r, col=c)
@@ -261,7 +262,8 @@ def make_readout_subplots(da: xr.DataArray) -> go.Figure:
         try:
             z = np.asarray(tr["z"])
             rows, cols = z.shape
-            tr["customdata"] = [[i + 1] * cols for _ in range(rows)]
+            #tr["customdata"] = [[i + 1] * cols for _ in range(rows)]
+            tr["customdata"] = np.full((rows, cols), i + 1, dtype=np.int16)
         except Exception:
             pass
         fig.add_trace(tr, row=1, col=i + 1)
@@ -560,7 +562,7 @@ def build_two_col_readout_grid(data_xr: xr.DataArray) -> go.Figure:
     for i, rname in enumerate(readouts):
         r = i // 2 + 1
         c = i % 2 + 1
-        z = data_xr.sel(readout=rname).values
+        z = data_xr.isel(readout=rname).values
 
         fig.add_trace(
             go.Heatmap(

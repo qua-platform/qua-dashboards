@@ -58,7 +58,7 @@ class SharedViewerComponent(BaseComponent):
                     id=self._get_id(self._MAIN_GRAPH_ID_SUFFIX),
                     figure=self._current_figure,
                     style={"height": "100%", "width": "100%"},
-                    config={"scrollZoom": True, "displaylogo": False},
+                    config={"scrollZoom": True, "displaylogo": False, "displayModeBar": False},
                 )
             ],
         )

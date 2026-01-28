@@ -123,6 +123,8 @@ class VideoModeComponent(BaseComponent):
         )
         self.shutdown_callback = shutdown_callback
         self._last_pushed_seq: Optional[int] = None
+        if hasattr(self.data_acquirer, "_plot_time_ms"): 
+            self.data_acquirer._plot_time_ms = data_polling_interval_s*1000
 
         if tab_controllers is None:
             logger.info(
@@ -642,8 +644,8 @@ class VideoModeComponent(BaseComponent):
                     self._last_pushed_seq = seq
 
                     current_poll_ms = (current_poll_config or {}).get("poll_ms", self.data_polling_interval_ms)
-                    if current_poll_ms != 50:
-                        auto_poll_store_update = {"poll_ms": 50}
+                    if current_poll_ms != 150:
+                        auto_poll_store_update = {"poll_ms": 150}
 
                     new_version = data_registry.set_data(
                         data_registry.LIVE_DATA_KEY,

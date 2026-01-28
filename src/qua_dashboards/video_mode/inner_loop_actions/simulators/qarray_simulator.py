@@ -9,8 +9,6 @@ class QarraySimulator(BaseSimulator):
     """
     Simulator using Qarray to simulate a QD structure.  
     """
-
-class QarraySimulator(BaseSimulator):
     def __init__(
         self, *, 
         gate_set, 

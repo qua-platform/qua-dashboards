@@ -264,7 +264,7 @@ def main():
     machine.register_channel_elements(
         plunger_channels = [p1, p2, p3, p4],
         barrier_channels = [b1, b2],
-        sensor_resonator_mappings = {
+        sensor_readout_mappings = {
             s1: sensor_readout_channel_1, 
             s2: sensor_readout_channel_2,
         },

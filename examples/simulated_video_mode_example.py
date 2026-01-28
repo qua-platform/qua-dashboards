@@ -293,35 +293,35 @@ def main():
         machine.create_virtual_dc_set("main_qpu")
 
     # Update Cross Capacitance matrix values
-    machine.update_cross_compensation_submatrix(
-        virtual_names=["virtual_barrier_1", "virtual_barrier_2"],
-        channels=[p3],
-        matrix=[[0.05, 0.05]],
-        target = "both"
-    )
+    # machine.update_cross_compensation_submatrix(
+    #     virtual_names=["virtual_barrier_1", "virtual_barrier_2"],
+    #     channels=[p3],
+    #     matrix=[[0.05, 0.05]],
+    #     target = "both"
+    # )
 
-    machine.update_cross_compensation_submatrix(
-        virtual_names=["virtual_dot_1", "virtual_dot_2", "virtual_dot_3"],
-        channels=[p1, p2, p3],
-        matrix=[
-            [1, 0.1, 0.0],
-            [0.1, 1, 0.1],
-            [0.0, 0.1, 1],
-        ],
-        target = "both"
-    )
+    # machine.update_cross_compensation_submatrix(
+    #     virtual_names=["virtual_dot_1", "virtual_dot_2", "virtual_dot_3"],
+    #     channels=[p1, p2, p3],
+    #     matrix=[
+    #         [1, 0.1, 0.0],
+    #         [0.1, 1, 0.1],
+    #         [0.0, 0.1, 1],
+    #     ],
+    #     target = "both"
+    # )
 
-    machine.update_cross_compensation_submatrix(
-        virtual_names=["virtual_dot_1", "virtual_dot_2", "virtual_dot_3"],
-        channels=[b1, b2, s1, s2],
-        matrix=[
-            [0.08, 0.04, 0.00 ],
-            [0.00 , 0.04, 0.08 ],
-            [-0.4 , -0.4, -0.4],
-            [-0.5 , -0.4, -0.4],
-        ],
-        target = "both"
-    )
+    # machine.update_cross_compensation_submatrix(
+    #     virtual_names=["virtual_dot_1", "virtual_dot_2", "virtual_dot_3"],
+    #     channels=[b1, b2, s1, s2],
+    #     matrix=[
+    #         [0.08, 0.04, 0.00 ],
+    #         [0.00 , 0.04, 0.08 ],
+    #         [-0.4 , -0.4, -0.4],
+    #         [-0.5 , -0.4, -0.4],
+    #     ],
+    #     target = "both"
+    # )
 
     # Define the detuning axes for both QuantumDotPairs
     machine.quantum_dot_pairs["dot1_dot2_pair"].define_detuning_axis(
@@ -406,7 +406,8 @@ def main():
         gate_set = machine.virtual_gate_sets["main_qpu"], 
         dc_set = machine.virtual_dc_sets["main_qpu"],
         model = model,
-        sensor_gate_names = ("virtual_dot_1", "virtual_dot_2")
+        sensor_gate_names = ("virtual_dot_1", "virtual_dot_2"), 
+        n_charges = [1, 3, 0, 0, 0, 0, 5, 5],
     )
 
 

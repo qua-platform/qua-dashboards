@@ -356,6 +356,9 @@ class LiveViewTabController(BaseTabController):
             alpha = float(opacity)/100
             n_subplots = max(1, len(self._data_acquirer_instance.selected_readout_channels))
 
+            da = self._data_acquirer_instance
+            is_1d = da.y_axis_name is None
+
             cache_key = (show, show_full, opacity, tuple(self._data_acquirer_instance.x_axis.sweep_values_with_offset),
                 tuple(self._data_acquirer_instance.y_axis.sweep_values_with_offset),
                 len(self._data_acquirer_instance.selected_readout_channels))
@@ -363,59 +366,90 @@ class LiveViewTabController(BaseTabController):
                 return dash.no_update
             self._last_gridlines_state = cache_key
 
-            if show: 
-                def ax_suffix(i):  # i = 1..N
+            if show or show_full:
+                def ax_suffix(i):
                     return "" if i == 1 else str(i)
 
                 xr = list(self._data_acquirer_instance.x_axis.sweep_values_with_offset)
-                yr = list(self._data_acquirer_instance.y_axis.sweep_values_with_offset)
                 x_centre = float(xr[len(xr) // 2])
-                y_centre = float(yr[len(yr) // 2])
-                xs = np.linspace(xr[0], xr[-1], 15).tolist() 
-                ys = np.linspace(yr[0], yr[-1], 15).tolist() 
+                xs = np.linspace(xr[0], xr[-1], 15).tolist()
+
+                if not is_1d:
+                    yr = list(self._data_acquirer_instance.y_axis.sweep_values_with_offset)
+                    y_centre = float(yr[len(yr) // 2])
+                    ys = np.linspace(yr[0], yr[-1], 15).tolist()
 
                 for i in range(1, n_subplots + 1):
                     sfx = ax_suffix(i)
                     xref = f"x{sfx}"
-                    yref = f"y{sfx}"
                     grid_color = f"rgba(0,0,0,{alpha})"
-                    if show_full: 
-                        for xv in xs:
-                            #0 grid line has 3x higher alpha
+                    grid_color_1d = f"rgba(255,255,255,{alpha})"
+
+                    if show:
+                        if is_1d:
+                            shapes.append({
+                                "type": "line",
+                                "xref": xref,
+                                "yref": "paper",
+                                "x0": x_centre, "x1": x_centre,
+                                "y0": 0, "y1": 1,
+                                "line": {"width": 5, "color": grid_color_1d},
+                                "layer": "above",
+                                "name": "crosshair-x",
+                            })
+                        else:
+                            yref = f"y{sfx}"
                             shapes.append({
                                 "type": "line",
                                 "xref": xref, "yref": yref,
-                                "x0": xv, "x1": xv, "y0": min(ys), "y1": max(ys),
-                                "line": {"width": 4, "color": grid_color},
+                                "x0": x_centre, "x1": x_centre, "y0": min(ys), "y1": max(ys),
+                                "line": {"width": 5, "color": grid_color},
                                 "layer": "above",
-                                "name": "grid-x",
+                                "name": "crosshair-x",
                             })
-                        for yv in ys:
                             shapes.append({
                                 "type": "line",
                                 "xref": xref, "yref": yref,
-                                "x0": min(xs), "x1": max(xs), "y0": yv, "y1": yv,
-                                "line": {"width": 4, "color": grid_color},
+                                "x0": min(xs), "x1": max(xs), "y0": y_centre, "y1": y_centre,
+                                "line": {"width": 5, "color": grid_color},
                                 "layer": "above",
-                                "name": "grid-y",
+                                "name": "crosshair-y",
                             })
-                    else: 
-                        shapes.append({
-                            "type": "line",
-                            "xref": xref, "yref": yref,
-                            "x0": x_centre, "x1": x_centre, "y0": min(ys), "y1": max(ys),
-                            "line": {"width": 5, "color": grid_color},
-                            "layer": "above",
-                            "name": "crosshair-x",
-                        })
-                        shapes.append({
-                            "type": "line",
-                            "xref": xref, "yref": yref,
-                            "x0": min(xs), "x1": max(xs), "y0": y_centre, "y1": y_centre,
-                            "line": {"width": 5, "color": grid_color},
-                            "layer": "above",
-                            "name": "crosshair-y",
-                        })
+
+                    if show_full:
+                        if is_1d:
+                            for xv in xs:
+                                shapes.append({
+                                    "type": "line",
+                                    "xref": xref,
+                                    "yref": "paper",
+                                    "x0": xv, "x1": xv,
+                                    "y0": 0, "y1": 1,
+                                    "line": {"width": 2, "color": grid_color_1d},
+                                    "layer": "above",
+                                    "name": "grid-x",
+                                })
+                        else:
+                            yref = f"y{sfx}"
+                            for xv in xs:
+                                shapes.append({
+                                    "type": "line",
+                                    "xref": xref, "yref": yref,
+                                    "x0": xv, "x1": xv, "y0": min(ys), "y1": max(ys),
+                                    "line": {"width": 2, "color": grid_color},
+                                    "layer": "above",
+                                    "name": "grid-x",
+                                })
+                            for yv in ys:
+                                shapes.append({
+                                    "type": "line",
+                                    "xref": xref, "yref": yref,
+                                    "x0": min(xs), "x1": max(xs), "y0": yv, "y1": yv,
+                                    "line": {"width": 2, "color": grid_color},
+                                    "layer": "above",
+                                    "name": "grid-y",
+                                })
+
             layout["shapes"] = shapes
             return layout
 

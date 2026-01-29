@@ -330,8 +330,34 @@ def figure_from_data(da: xr.DataArray | None) -> go.Figure:
         u = c.attrs.get("units") if c is not None else None
         if u:
             xlabel = f"{xlabel} [{u}]"
+
+        # Invisible 2D grid under the 1D plot, so that click to jump works. 
+        y = np.asarray(d.values).ravel()
+        ymin = float(np.nanmin(y)) if np.size(y) else 0.0
+        ymax = float(np.nanmax(y)) if np.size(y) else 1.0
+        span = (ymax - ymin) if (ymax > ymin) else 1.0
+        pad = 0.05 * span
+        cap_y = [ymin - pad, ymax + pad]
+        cap_z = np.zeros((2, len(x)), dtype=float)
+
+
         fig = go.Figure()
+        # Visible 1D line.
         fig.add_trace(go.Scatter(x=x, y=np.asarray(d.values).ravel(), mode="lines"))
+
+        fig.add_trace(
+            go.Heatmap(
+                x=x,
+                y=cap_y,
+                z=cap_z,
+                showscale=False,
+                name="_click_capture_1d",
+                colorscale=[[0, "rgba(128,128,128,0.001)"], [1, "rgba(128,128,128,0.001)"]],
+                zmin=0, zmax=1,
+                hoverongaps=False
+            )
+        )
+        
         return fig.update_layout(
             template="plotly_dark", xaxis_title=xlabel, yaxis_title="Value"
         )

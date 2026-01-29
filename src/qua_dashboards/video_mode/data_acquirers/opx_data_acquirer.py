@@ -2,6 +2,9 @@ import logging
 import time
 from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
+import threading
+import queue
+
 from qm import QuantumMachinesManager, Program
 from qm.jobs.running_qm_job import RunningQmJob
 from qm.qua import (
@@ -59,7 +62,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         inner_functions_dict: Optional[Dict] = None,
         apply_compensation_pulse: bool = True, 
         voltage_control_component: Optional["VoltageControlComponent"] = None,
-        buffer_frames: int = 10,
+        buffer_frames: int = 20,
         **kwargs: Any,
     ):
         """
@@ -117,10 +120,11 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         self._compiled_stream_vars: Optional[List[str]] = None
         self.inner_functions_dict = inner_functions_dict or {}
         self.buffer_frames = buffer_frames
-        self._stored_frames = []
-        self._fetch_time_ms = None
-        self._plot_time_ms = None
-        self._min_buffer_frames, self._max_buffer_frames = 3, 20
+        self._frame_queue = queue.Queue(maxsize=30)
+        self._fetch_thread = None
+        self._fetch_running = False
+        self._last_frame = None
+
         
     @property
     def x_axis(self) -> BaseSweepAxis:
@@ -234,7 +238,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
             except Exception as e:
                 logger.warning(f"Error halting QM Job: {e}")
             self.qm_job = None
-        if self.qm is None: 
+        if self.qm is not None: 
             try: 
                 self.qm.close()
             except Exception as e: 
@@ -309,7 +313,9 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                         buffered_streams[self.stream_vars[i]]
                     )  # type: ignore
 
+                combined_qua_stream.save("latest_frame")  # Unbuffered - first frame fast
                 combined_qua_stream.buffer(self.buffer_frames).save("all_streams_combined")
+                # combined_qua_stream.buffer(self.buffer_frames).save("all_streams_combined")
 
         self.qua_program = prog
         return prog
@@ -488,7 +494,50 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
             return self.buffer_frames
         optimal = int(self._fetch_time_ms / self._plot_time_ms)
         return max(self._min_buffer_frames, min(self._max_buffer_frames, optimal))
+    
+    def _fetch_loop(self):
+        """Continuous background fetcher."""
+        while self._fetch_running:
+            try:
+                if self.qm_job is None or self.qm_job.status != "running":
+                    time.sleep(0.01)
+                    continue
 
+                buffered_handle = self.qm_job.result_handles.get("all_streams_combined")
+                latest_handle = self.qm_job.result_handles.get("latest_frame")
+                buffered_results = buffered_handle.fetch_all()
+                
+                if buffered_results is not None and len(buffered_results) > 0:
+                    for frame_idx in range(len(buffered_results)):
+                        frame = buffered_results[frame_idx]
+                        single_frame = tuple(frame)
+                        processed = self._process_fetched_results(single_frame)
+                        try:
+                            self._frame_queue.put(processed, timeout=0.1)
+                        except queue.Full:
+                            pass
+                else:
+                    latest_result = latest_handle.fetch_all()
+                    if latest_result is not None:
+                        single_frame = tuple(latest_result)
+                        processed = self._process_fetched_results(single_frame)
+                        try:
+                            self._frame_queue.put(processed, timeout=0.1)
+                        except queue.Full:
+                            pass
+                    else:
+                        time.sleep(0.01)
+                        
+            except Exception as e:
+                logger.warning(f"Fetch loop error: {e}")
+                time.sleep(0.1)
+        
+    def _clear_queue(self) -> None: 
+        while not self._frame_queue.empty():
+            try:
+                self._frame_queue.get_nowait()
+            except queue.Empty:
+                break
 
     def perform_actual_acquisition(self) -> np.ndarray:
         if self._acquisition_status == "stopped":
@@ -496,9 +545,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         cur = (int(self.x_axis.points), 1 if self._is_1d else int(self.y_axis.points), self._is_1d)
         if self._compiled_xy is not None and cur != self._compiled_xy:
             logger.info(f"Scan shape changed {self._compiled_xy} -> {cur}. Forcing recompile.")
-            self._stored_frames.clear()
-            self._fetch_time_ms = None
-            self._halt_acquisition()
+            self._clear_queue()
             self._compiled_stream_vars = None
             self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
         if self._compiled_stream_vars is not None:
@@ -513,12 +560,14 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                 self._halt_acquisition()
                 self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
         if self._compilation_flags & ModifiedFlags.CONFIG_MODIFIED:
-            self._stored_frames.clear()
+            self._fetch_running = False
+            self._clear_queue()
             logger.info(f"Config regeneration triggered for {self.component_id}.")
             self._regenerate_config_and_reopen_qm()
             self._compilation_flags = ModifiedFlags.NONE
         elif self._compilation_flags & ModifiedFlags.PROGRAM_MODIFIED:
-            self._stored_frames.clear()
+            self._fetch_running = False
+            self._clear_queue()
             self._halt_acquisition()
             self.execute_program()
             self._compilation_flags = ModifiedFlags.NONE
@@ -537,41 +586,20 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
             else:
                 return np.full((self.y_axis.points, self.x_axis.points), np.nan)
             
-        if self._stored_frames:
-            now = time.perf_counter()
-            if hasattr(self, '_last_frame_time'):
-                elapsed = (now - self._last_frame_time) * 1000
-                if elapsed < 100: 
-                    time.sleep(0.05)
-            self._last_frame_time = time.perf_counter()
-            return self._stored_frames.pop(0)
+        
+        if self._fetch_thread is None or not self._fetch_thread.is_alive():
+            self._fetch_running = True
+            self._fetch_thread = threading.Thread(target=self._fetch_loop, daemon=True)
+            self._fetch_thread.start()
 
-        start_time = time.perf_counter()
         try:
-            result_handle = self.qm_job.result_handles.get("all_streams_combined")
-            fetched_results_batch = result_handle.fetch_all()
-        except Exception as e:
-            logger.error(
-                f"Error fetching results from QM job for {self.component_id}: {e}"
-            )
-            raise
-
-        if fetched_results_batch is None:
-            logger.debug("No QUA results available yet (job just restarted).")
+            frame = self._frame_queue.get_nowait()
+            self._last_frame = frame
+            return frame
+        except queue.Empty:
+            if self._last_frame is not None:
+                return self._last_frame
             return np.full((self.y_axis.points, self.x_axis.points), np.nan)
-        acquisition_time = (time.perf_counter() - start_time) * 1000
-        self._fetch_time_ms = acquisition_time
-        logger.debug(
-            f"{self.component_id}: Fetched QUA results in {acquisition_time:.2f} ms."
-        )
-
-        for frame_idx in range(self.buffer_frames):
-            frame = fetched_results_batch[frame_idx]
-            single_frame = tuple(frame) 
-            processed = self._process_fetched_results(single_frame)
-            self._stored_frames.append(processed)
-
-        return self._stored_frames.pop(0)
 
     def _regenerate_config_and_reopen_qm(self) -> None:
         logger.info(f"Regenerating QUA config for {self.component_id} from machine.")
@@ -595,6 +623,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         self.qua_program = None
 
     def stop_acquisition(self) -> None:
+        self._fetch_running = False
         logger.info(f"OPXDataAcquirer ({self.component_id}) attempting to halt QM job.")
         super().stop_acquisition()
         if self.qm_job and self.qm_job.status == "running":

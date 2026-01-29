@@ -117,16 +117,25 @@ class LiveViewTabController(BaseTabController):
                         html.Div(
                             [
                                 dbc.Row(
-                                    dbc.Col(
+                                    [dbc.Col(
                                         dbc.Checklist(
                                             id=self._get_id("center-marker-toggle"),
-                                            options=[{"label": "Gridlines", "value": "on"}],
+                                            options=[{"label": "Crosshairs", "value": "on"}],
                                             value=[],
                                             switch=True,
                                         ),
                                         width="auto",
                                     ),
-                                    className="align-items-center g-1",
+                                    dbc.Col(
+                                        dbc.Checklist(
+                                            id=self._get_id("show-full-grid-toggle"),
+                                            options=[{"label": "Full grid", "value": "on"}],
+                                            value=[],
+                                            switch=True,
+                                        ),
+                                        width="auto",
+                                    )],
+                                    className="align-items-center g-2",
                                 ),
 
                                 dbc.Row(
@@ -247,7 +256,6 @@ class LiveViewTabController(BaseTabController):
         self._register_gridlines_callback(app, shared_viewer_store_ids)
         self._register_readoutparams_callback(app)
         self._register_mode_callback(app)
-        self._register_overlay_callback(app, shared_viewer_store_ids)
         if shared_viewer_graph_id is not None:
             self._register_click_to_centre_callback(app, shared_viewer_graph_id, tabs_id=orchestrator_stores.get("control-tabs"),)
 
@@ -335,18 +343,20 @@ class LiveViewTabController(BaseTabController):
         @app.callback(
             Output(shared_viewer_store_ids["layout_config_store"], "data", allow_duplicate = True),
             Input(self._get_id("center-marker-toggle"), "value"),
+            Input(self._get_id("show-full-grid-toggle"), "value"),
             Input(self._get_id("grid_opacity"), "value"),
             State(shared_viewer_store_ids["layout_config_store"], "data"),
             prevent_initial_call=True,
         )
-        def _toggle_gridlines(toggle_val, opacity, existing_layout):
+        def _toggle_gridlines(toggle_val, full_val, opacity, existing_layout):
             layout = existing_layout or {}
             show = "on" in toggle_val
+            show_full = "on" in (full_val or [])
             shapes = []
             alpha = float(opacity)/100
             n_subplots = max(1, len(self._data_acquirer_instance.selected_readout_channels))
 
-            cache_key = (show, opacity, tuple(self._data_acquirer_instance.x_axis.sweep_values_with_offset),
+            cache_key = (show, show_full, opacity, tuple(self._data_acquirer_instance.x_axis.sweep_values_with_offset),
                 tuple(self._data_acquirer_instance.y_axis.sweep_values_with_offset),
                 len(self._data_acquirer_instance.selected_readout_channels))
             if cache_key == self._last_gridlines_state:
@@ -359,6 +369,8 @@ class LiveViewTabController(BaseTabController):
 
                 xr = list(self._data_acquirer_instance.x_axis.sweep_values_with_offset)
                 yr = list(self._data_acquirer_instance.y_axis.sweep_values_with_offset)
+                x_centre = float(xr[len(xr) // 2])
+                y_centre = float(yr[len(yr) // 2])
                 xs = np.linspace(xr[0], xr[-1], 15).tolist() 
                 ys = np.linspace(yr[0], yr[-1], 15).tolist() 
 
@@ -366,26 +378,43 @@ class LiveViewTabController(BaseTabController):
                     sfx = ax_suffix(i)
                     xref = f"x{sfx}"
                     yref = f"y{sfx}"
-                    for xv in xs:
-                        #0 grid line has 3x higher alpha
-                        grid_color = f"rgba(0,0,0,{alpha*3})" if xv == 0 else f"rgba(0,0,0,{alpha})"
+                    grid_color = f"rgba(0,0,0,{alpha})"
+                    if show_full: 
+                        for xv in xs:
+                            #0 grid line has 3x higher alpha
+                            shapes.append({
+                                "type": "line",
+                                "xref": xref, "yref": yref,
+                                "x0": xv, "x1": xv, "y0": min(ys), "y1": max(ys),
+                                "line": {"width": 4, "color": grid_color},
+                                "layer": "above",
+                                "name": "grid-x",
+                            })
+                        for yv in ys:
+                            shapes.append({
+                                "type": "line",
+                                "xref": xref, "yref": yref,
+                                "x0": min(xs), "x1": max(xs), "y0": yv, "y1": yv,
+                                "line": {"width": 4, "color": grid_color},
+                                "layer": "above",
+                                "name": "grid-y",
+                            })
+                    else: 
                         shapes.append({
                             "type": "line",
                             "xref": xref, "yref": yref,
-                            "x0": xv, "x1": xv, "y0": min(ys), "y1": max(ys),
-                            "line": {"width": 4, "color": grid_color},
+                            "x0": x_centre, "x1": x_centre, "y0": min(ys), "y1": max(ys),
+                            "line": {"width": 5, "color": grid_color},
                             "layer": "above",
-                            "name": "grid-x",
+                            "name": "crosshair-x",
                         })
-                    for yv in ys:
-                        grid_color = f"rgba(0,0,0,{alpha*3})" if yv == 0 else f"rgba(0,0,0,{alpha})"
                         shapes.append({
                             "type": "line",
                             "xref": xref, "yref": yref,
-                            "x0": min(xs), "x1": max(xs), "y0": yv, "y1": yv,
-                            "line": {"width": 4, "color": grid_color},
+                            "x0": min(xs), "x1": max(xs), "y0": y_centre, "y1": y_centre,
+                            "line": {"width": 5, "color": grid_color},
                             "layer": "above",
-                            "name": "grid-y",
+                            "name": "crosshair-y",
                         })
             layout["shapes"] = shapes
             return layout
@@ -412,8 +441,7 @@ class LiveViewTabController(BaseTabController):
                 }
             }
             self._data_acquirer_instance.update_parameters(params)
-            #return "", self._data_acquirer_instance.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
-            return "", dash.no_update
+            return "", self._data_acquirer_instance.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
     def _register_mode_callback(
             self, app: Dash
     ) -> None:
@@ -451,8 +479,7 @@ class LiveViewTabController(BaseTabController):
             }
 
             da.update_parameters(params)
-            #return "", da.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
-            return "", dash.no_update
+            return "", da.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
 
 
 
@@ -689,59 +716,3 @@ class LiveViewTabController(BaseTabController):
                     f"{param_id_dict} of type {component_id}"
                 )
         return current_type_params
-
-    def _register_overlay_callback(
-        self, 
-        app: Dash, 
-        shared_viewer_store_ids: Dict[str, Any],
-    ) -> None: 
-        @app.callback(
-            Output(shared_viewer_store_ids["layout_config_store"], "data", allow_duplicate=True), 
-            Input(self._data_acquirer_instance._get_id("gate-select-x"), "value"),
-            Input(self._data_acquirer_instance._get_id("gate-select-y"), "value"),
-            Input(self._data_acquirer_instance._get_id("x-mode"), "value"),
-            Input(self._data_acquirer_instance._get_id("y-mode"), "value"),
-            State(shared_viewer_store_ids["layout_config_store"], "data"),
-            prevent_initial_call = True,
-        )
-        def _update_overlay(viewer_data_ref, existing_layout): 
-            da = self._data_acquirer_instance
-            x_centre = np.round(da.x_axis.sweep_values_with_offset[len(da.x_axis.sweep_values_with_offset)//2], 4)
-            x_name = da.x_axis_name
-            x_mode = da.x_mode
-
-            lines = []
-            lines.append(f"{x_name} ({x_mode}): {x_centre:.4f} V")
-
-            if da.y_axis_name is not None: 
-                y_centre = np.round(da.y_axis.sweep_values_with_offset[len(da.y_axis.sweep_values_with_offset)//2], 4)
-                y_name = da.y_axis_name
-                y_mode = da.y_mode
-                lines.append(f"{y_name} ({y_mode}): {y_centre:.4f} V")
-
-            overlay_text = "<br>".join(lines)
-            existing_annotations = (existing_layout or {}).get("annotations", [])
-            if overlay_text == self._last_overlay_text and existing_annotations:
-                return dash.no_update
-            self._last_overlay_text = overlay_text
-
-            layout = dict(existing_layout or {})
-            layout["annotations"] = [
-                {
-                    "text": overlay_text,
-                    "xref": "paper",
-                    "yref": "paper",
-                    "x": 0.98,
-                    "y": 0.98,
-                    "xanchor": "right",
-                    "yanchor": "top",
-                    "showarrow": False,
-                    "font": {"size": 12, "color": "white"},
-                    "bgcolor": "rgba(0,0,0,0.45)",
-                    "bordercolor": "rgba(255,255,255,0.35)",
-                    "borderwidth": 1,
-                    "borderpad": 6,
-                }
-            ]
-            
-            return layout

@@ -51,32 +51,65 @@ class QarraySimulator(BaseSimulator):
         physical_voltages = self.gate_set.resolve_voltages(point, allow_extra_entries=True)
         return np.array([float(physical_voltages.get(name, 0.0)) for name in self.qarray_gate_order], dtype = float)
     
-    def get_physical_grid(self, x_axis_name, y_axis_name, x_vals, y_vals): 
-        """x_vals and y_vals are 1d sweeps"""
+    # def get_physical_grid(self, x_axis_name, y_axis_name, x_vals, y_vals): 
+    #     """x_vals and y_vals are 1d sweeps"""
+    #     base = dict(self.dc_set._current_levels)
+    #     base.update(self.base_point)
+
+    #     x_vals = np.asarray(x_vals, float)
+    #     y_vals = np.asarray(y_vals, float)
+    #     x_vals = x_vals - x_vals[len(x_vals)//2]
+    #     y_vals = y_vals - y_vals[len(y_vals)//2]
+
+    #     n_gates = len(self.qarray_gate_order)
+
+    #     grids = [np.zeros((len(y_vals), len(x_vals)), float) for _ in range(n_gates)]
+    #     for iy, dy in enumerate(y_vals):
+    #         for ix, dx in enumerate(x_vals):
+    #             point = dict(base)
+    #             point[x_axis_name] = point.get(x_axis_name, 0.0) + dx
+    #             point[y_axis_name] = point.get(y_axis_name, 0.0) + dy
+    #             phys = self.gate_set.resolve_voltages(
+    #                 point,
+    #                 allow_extra_entries=True,
+    #             )
+    #             for gi, gate_name in enumerate(self.qarray_gate_order):
+    #                 grids[gi][iy, ix] = float(phys.get(gate_name, 0.0))
+
+    #     return grids
+
+    def get_physical_grid(self, x_axis_name, y_axis_name, x_vals, y_vals):
+        """Vectorized version - much faster for large grids."""
         base = dict(self.dc_set._current_levels)
         base.update(self.base_point)
-
+        
         x_vals = np.asarray(x_vals, float)
         y_vals = np.asarray(y_vals, float)
         x_vals = x_vals - x_vals[len(x_vals)//2]
         y_vals = y_vals - y_vals[len(y_vals)//2]
-
+        
+        base_phys = self.gate_set.resolve_voltages(base, allow_extra_entries=True)
+        
+        delta_x = self.gate_set.resolve_voltages(
+            {**{k: 0.0 for k in base}, x_axis_name: 1.0}, 
+            allow_extra_entries=True
+        )
+        delta_y = self.gate_set.resolve_voltages(
+            {**{k: 0.0 for k in base}, y_axis_name: 1.0}, 
+            allow_extra_entries=True
+        )
+        
         n_gates = len(self.qarray_gate_order)
-
-        grids = [np.zeros((len(y_vals), len(x_vals)), float) for _ in range(n_gates)]
-        for iy, dy in enumerate(y_vals):
-            for ix, dx in enumerate(x_vals):
-                point = dict(base)
-                point[x_axis_name] = point.get(x_axis_name, 0.0) + dx
-                point[y_axis_name] = point.get(y_axis_name, 0.0) + dy
-                phys = self.gate_set.resolve_voltages(
-                    point,
-                    allow_extra_entries=True,
-                )
-                for gi, gate_name in enumerate(self.qarray_gate_order):
-                    grids[gi][iy, ix] = float(phys.get(gate_name, 0.0))
-
-        return grids
+        base_vec = np.array([base_phys.get(g, 0.0) for g in self.qarray_gate_order])
+        dx_vec = np.array([delta_x.get(g, 0.0) for g in self.qarray_gate_order])
+        dy_vec = np.array([delta_y.get(g, 0.0) for g in self.qarray_gate_order])
+        
+        X, Y = np.meshgrid(x_vals, y_vals)
+        grids = (base_vec[None, None, :] 
+                + X[:, :, None] * dx_vec[None, None, :] 
+                + Y[:, :, None] * dy_vec[None, None, :])
+        
+        return [grids[:, :, i] for i in range(n_gates)]
     
     def grids_to_vg(self, grids): 
         grids = [np.asarray(g, float) for g in grids]

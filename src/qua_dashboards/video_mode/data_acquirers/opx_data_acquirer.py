@@ -496,7 +496,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         return max(self._min_buffer_frames, min(self._max_buffer_frames, optimal))
     
     def _fetch_loop(self):
-        """Continuous background fetcher."""
+        """Continuous background fetcher, with a 2 stream system."""
         while self._fetch_running:
             try:
                 if self.qm_job is None or self.qm_job.status != "running":
@@ -505,10 +505,18 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
 
                 buffered_handle = self.qm_job.result_handles.get("all_streams_combined")
                 latest_handle = self.qm_job.result_handles.get("latest_frame")
+
+                if buffered_handle is None or latest_handle is None:
+                    logger.debug("Result handles not available yet")
+                    time.sleep(0.05)
+                    continue
+
                 buffered_results = buffered_handle.fetch_all()
                 
                 if buffered_results is not None and len(buffered_results) > 0:
                     for frame_idx in range(len(buffered_results)):
+                        if not self._fetch_running:
+                            break
                         frame = buffered_results[frame_idx]
                         single_frame = tuple(frame)
                         processed = self._process_fetched_results(single_frame)
@@ -533,11 +541,13 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                 time.sleep(0.1)
         
     def _clear_queue(self) -> None: 
+        """Clear all frames from queue and reset last frame."""
         while not self._frame_queue.empty():
             try:
                 self._frame_queue.get_nowait()
             except queue.Empty:
                 break
+        self._last_frame = None
 
     def perform_actual_acquisition(self) -> np.ndarray:
         if self._acquisition_status == "stopped":

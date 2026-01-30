@@ -518,7 +518,6 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
             raise
 
         acquisition_time = (time.perf_counter() - start_time) * 1000
-        self._fetch_time_ms = acquisition_time
         logger.debug(
             f"{self.component_id}: Fetched QUA results in {acquisition_time:.2f} ms."
         )

@@ -6,7 +6,7 @@ import numpy as np
 from qm.qua import assign, declare, fixed, for_, if_
 
 
-from typing import Generator, Sequence, Tuple
+from typing import Generator, Sequence, Tuple, Callable
 
 
 class SpiralScan(ScanMode):
@@ -48,7 +48,7 @@ class SpiralScan(ScanMode):
         return np.array(idxs_x), np.array(idxs_y)
 
     def scan(
-        self, x_vals: Sequence[float], y_vals: Sequence[float], x_mode: str = None, y_mode: str = None
+        self, x_vals: Sequence[float], y_vals: Sequence[float], x_mode: str = None, y_mode: str = None, compensation_pulse: Callable = None, 
     ) -> Generator[Tuple[QuaVariableFloat, QuaVariableFloat], None, None]:
         movement_direction = declare(fixed)
         half_spiral_idx = declare(int)

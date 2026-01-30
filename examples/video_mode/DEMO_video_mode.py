@@ -297,16 +297,23 @@ def main():
         )
 
 
+    matrix = [
+    [0.12, 0.02, 0.005], 
+    [0.02, 0.11, 0.005],
 
+    ]
+    import numpy as np
+    machine.update_cross_compensation_submatrix(
+        virtual_names = ["virtual_dot_1", "virtual_dot_2"], 
+        channels = [p1, p2, s1], 
+        matrix = np.linalg.pinv(matrix).tolist()
+    )
     from qarray import ChargeSensedDotArray, WhiteNoise, TelegraphNoise, LatchingModel
     Cdd = [
         [0.10, 0.04],
         [0.04, 0.10],
     ]
-    Cgd = [
-    [0.12, 0.02, 0.005], 
-    [0.02, 0.11, 0.005],
-    ]   
+    Cgd = matrix   
     Cds = [
         [0.015, 0.012], 
     ]

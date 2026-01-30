@@ -643,3 +643,12 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                 logger.info(f"QM job for {self.component_id} halted.")
             except Exception as e:
                 logger.warning(f"Error halting QM job for {self.component_id}: {e}")
+
+    def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
+        """Update parameters and clear queue if anything changed."""
+        flags = super().update_parameters(parameters)
+        
+        if flags != ModifiedFlags.NONE:
+            self._clear_queue()
+        
+        return flags

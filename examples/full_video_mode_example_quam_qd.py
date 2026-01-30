@@ -378,6 +378,7 @@ def main():
         ],  # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI.
         acquisition_interval_s=0.01,
         voltage_control_component=voltage_control_component,
+        mid_scan_compensation=True
     )
 
     video_mode_component = VideoModeComponent(

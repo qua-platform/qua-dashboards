@@ -29,12 +29,6 @@ class ScanMode(BaseUpdatableComponent, ABC):
     def get_idxs(self, x_points: int, y_points: int) -> Tuple[np.ndarray, np.ndarray]:
         pass
 
-    @abstractmethod
-    def compensation_idxs(self) -> np.ndarray:
-        """Returns an array of scan indices to play the compensation pulse on"""
-        pass
-
-
     def plot_scan(
         self, x_points: int, y_points: int
     ) -> Tuple[figure.Figure, axes.Axes]:

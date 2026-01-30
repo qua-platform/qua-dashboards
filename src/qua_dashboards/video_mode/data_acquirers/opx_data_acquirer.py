@@ -59,7 +59,6 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         inner_functions_dict: Optional[Dict] = None,
         apply_compensation_pulse: bool = True, 
         voltage_control_component: Optional["VoltageControlComponent"] = None,
-        buffer_frames: int = 10,
         **kwargs: Any,
     ):
         """
@@ -116,12 +115,6 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         self._configure_readout()
         self._compiled_stream_vars: Optional[List[str]] = None
         self.inner_functions_dict = inner_functions_dict or {}
-        self.buffer_frames = buffer_frames
-        self._stored_frames = []
-        self._fetch_time_ms = None
-        self._buffer_calibrated = False
-        self._plot_time_ms = 100
-        self._min_buffer_frames, self._max_buffer_frames = 3, 20
     @property
     def x_axis(self) -> BaseSweepAxis:
         inner_loop = getattr(self, "inner_loop_action", None)
@@ -297,7 +290,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                         buffered_streams[self.stream_vars[i]]
                     )  # type: ignore
 
-                combined_qua_stream.buffer(self.buffer_frames).save("all_streams_combined")
+                combined_qua_stream.save("all_streams_combined")
 
         self.qua_program = prog
         return prog
@@ -471,13 +464,6 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
 
             return np.stack(output_layers, axis=0)
 
-    def _calculate_optimal_buffer_frames(self) -> int:
-        if self._fetch_time_ms is None:
-            return self.buffer_frames
-        optimal = int(self._fetch_time_ms / self._plot_time_ms)
-        return max(self._min_buffer_frames, min(self._max_buffer_frames, optimal))
-
-
     def perform_actual_acquisition(self) -> np.ndarray:
         if self._acquisition_status == "stopped":
             return np.full((self.y_axis.points, self.x_axis.points), np.nan)
@@ -487,7 +473,6 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
             self._halt_acquisition()
             self._compiled_stream_vars = None
             self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
-            self._stored_frames.clear()
         if self._compiled_stream_vars is not None:
             if len(self.selected_readout_channels) <= 1:
                 expected_vars = self.stream_vars_default.copy()
@@ -500,12 +485,10 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                 self._halt_acquisition()
                 self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
         if self._compilation_flags & ModifiedFlags.CONFIG_MODIFIED:
-            self._stored_frames.clear()
             logger.info(f"Config regeneration triggered for {self.component_id}.")
             self._regenerate_config_and_reopen_qm()
             self._compilation_flags = ModifiedFlags.NONE
         elif self._compilation_flags & ModifiedFlags.PROGRAM_MODIFIED:
-            self._stored_frames.clear()
             self._halt_acquisition()
             self.execute_program()
             self._compilation_flags = ModifiedFlags.NONE
@@ -523,20 +506,11 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                     )
             else:
                 return np.full((self.y_axis.points, self.x_axis.points), np.nan)
-            
-        if self._stored_frames:
-            now = time.perf_counter()
-            if hasattr(self, '_last_frame_time'):
-                elapsed = (now - self._last_frame_time) * 1000
-                if elapsed < 100:  # Don't release faster than viewer can display
-                    time.sleep(0.05)
-            self._last_frame_time = time.perf_counter()
-            return self._stored_frames.pop(0)
 
         start_time = time.perf_counter()
         try:
             result_handle = self.qm_job.result_handles.get("all_streams_combined")
-            fetched_results_batch = result_handle.fetch_all()
+            fetched_results_tuple = result_handle.fetch_all()
         except Exception as e:
             logger.error(
                 f"Error fetching results from QM job for {self.component_id}: {e}"
@@ -549,24 +523,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
             f"{self.component_id}: Fetched QUA results in {acquisition_time:.2f} ms."
         )
 
-        if not self._buffer_calibrated:
-            optimal = self._calculate_optimal_buffer_frames()
-            if optimal != self.buffer_frames:
-                logger.info(f"Calibrating buffer_frames: {self.buffer_frames} -> {optimal} (fetch time: {self._fetch_time_ms:.0f}ms)")
-                self.buffer_frames = optimal
-                self._buffer_calibrated = True
-                self._stored_frames.clear()
-                self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
-                return np.full((self.y_axis.points, self.x_axis.points), np.nan)
-            self._buffer_calibrated = True
-
-        for frame_idx in range(self.buffer_frames):
-            frame = fetched_results_batch[frame_idx]
-            single_frame = tuple(frame) 
-            processed = self._process_fetched_results(single_frame)
-            self._stored_frames.append(processed)
-
-        return self._stored_frames.pop(0)
+        return self._process_fetched_results(fetched_results_tuple)
 
     def _regenerate_config_and_reopen_qm(self) -> None:
         logger.info(f"Regenerating QUA config for {self.component_id} from machine.")

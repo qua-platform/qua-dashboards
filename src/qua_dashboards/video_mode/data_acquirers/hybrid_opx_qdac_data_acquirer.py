@@ -101,7 +101,7 @@ class HybridOPXQDACDataAcquirer(OPXDataAcquirer):
         if not isinstance(self.y_axis, VoltageSweepAxis): 
             raise ValueError("Qdac Sweep Axis must be mode 'Voltage'")
         
-        self._last_dc_list_y_offset = self.y_axis.offset
+        self._last_dc_list_y_offset = self.y_axis.offset_parameter.get_latest()
         physical_dc_lists = self._find_physical_dc_lists(self.y_axis)
 
         for name, voltages in physical_dc_lists.items():

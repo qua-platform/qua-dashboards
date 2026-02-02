@@ -1,3 +1,4 @@
+import logging
 from typing import Dict, List, Union
 import numpy as np
 
@@ -14,8 +15,10 @@ from qm.qua import (
 )
 from qua_dashboards.video_mode.data_acquirers.opx_data_acquirer import OPXDataAcquirer
 from qua_dashboards.video_mode.sweep_axis import VoltageSweepAxis
-from qua_dashboards.video_mode.scan_modes import LineScan
 from quam_builder.architecture.quantum_dots.components import VirtualDCSet
+from qua_dashboards.core import ModifiedFlags
+
+logger = logging.getLogger(__name__)
 
 
 __all__ = ["HybridOPXQDACDataAcquirer"]
@@ -61,6 +64,8 @@ class HybridOPXQDACDataAcquirer(OPXDataAcquirer):
         self.qdac = qdac
         self.qdac_ext_trigger_input_port = qdac_ext_trigger_input_port
 
+        self._last_dc_list_y_offset = None
+
     def _find_physical_dc_lists(
         self, 
         qdac_sweep_axis: VoltageSweepAxis,
@@ -95,6 +100,8 @@ class HybridOPXQDACDataAcquirer(OPXDataAcquirer):
         """
         if not isinstance(self.y_axis, VoltageSweepAxis): 
             raise ValueError("Qdac Sweep Axis must be mode 'Voltage'")
+        
+        self._last_dc_list_y_offset = self.y_axis.offset
         physical_dc_lists = self._find_physical_dc_lists(self.y_axis)
 
         for name, voltages in physical_dc_lists.items():
@@ -191,3 +198,20 @@ class HybridOPXQDACDataAcquirer(OPXDataAcquirer):
 
         self.qua_program = prog
         return prog
+    
+    def perform_actual_acquisition(self) -> np.ndarray:
+            # Check if Y offset has changed since DC lists were prepared
+            if (
+                self._last_dc_list_y_offset is not None 
+                and not self._is_1d
+                and isinstance(self.y_axis, VoltageSweepAxis)
+            ):
+                current_y_offset = self.y_axis.offset_parameter.get_latest()
+                if current_y_offset != self._last_dc_list_y_offset:
+                    logger.info(
+                        f"Y axis offset changed ({self._last_dc_list_y_offset} -> {current_y_offset}), "
+                        "triggering DC list regeneration"
+                    )
+                    self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
+            
+            return super().perform_actual_acquisition()

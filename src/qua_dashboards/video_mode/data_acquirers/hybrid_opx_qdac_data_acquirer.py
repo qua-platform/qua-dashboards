@@ -81,7 +81,7 @@ class HybridOPXQDACDataAcquirer(OPXDataAcquirer):
         dc_set = self.dc_set
         full_physical_dicts = {name: [] for name in dc_set.channels.keys()}
 
-        for value in axis_values: 
+        for value in ordered_axis_values: 
             virtual_dict = {axis_name: float(value)}
             physical_dict = dc_set.resolve_voltages(virtual_dict)
 

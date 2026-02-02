@@ -36,6 +36,7 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         acquisition_interval_s: float = 0.1,
         x_mode: str = "Voltage", 
         y_mode: str = "Voltage",
+        _show_y_mode_selector: bool = True,
         **kwargs: Any,
     ) -> None:
         """
@@ -88,6 +89,8 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         self.x_mode = x_mode
         self.y_mode = y_mode
 
+        # For a triggered sweep
+        self._show_y_mode_selector = _show_y_mode_selector
     @property
     def _is_1d(self) -> bool:
         return self.y_axis_name is None
@@ -177,49 +180,82 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         components = super().get_dash_components(include_subcomponents)
         keys = self.sweep_axes.keys()
 
-        mode_selection_ui = [
-            html.Div(
-                [
-                    dbc.Row(
-                        [
-                            dbc.Col(
-                                [
-                                    html.H6("Select X Mode"),
-                                    dcc.Dropdown(
-                                        id=self._get_id("x-mode"),
-                                        options=[
-                                            {"label": mode, "value": mode}
-                                            for mode in keys
-                                        ],
-                                        value=self.x_mode,
-                                        style={"color": "black"},
-                                        className="mb-2",
-                                        clearable=False,
-                                    ),
-                                ]
-                            ),
-                            dbc.Col(
-                                [
-                                    html.H6("Select Y Mode"),
-                                    dcc.Dropdown(
-                                        id=self._get_id("y-mode"),
-                                        options=[
-                                            {"label": mode, "value": mode}
-                                            for mode in keys
-                                        ],
-                                        value=self.y_mode,
-                                        style={"color": "black"},
-                                        className="mb-2",
-                                        placeholder="None",
-                                        clearable=False,
-                                    ),
-                                ]
-                            ),
-                        ]
-                    )
-                ]
-            )
-        ]
+        if self._show_y_mode_selector:
+            mode_selection_ui = [
+                html.Div(
+                    [
+                        dbc.Row(
+                            [
+                                dbc.Col(
+                                    [
+                                        html.H6("Select X Mode"),
+                                        dcc.Dropdown(
+                                            id=self._get_id("x-mode"),
+                                            options=[
+                                                {"label": mode, "value": mode}
+                                                for mode in keys
+                                            ],
+                                            value=self.x_mode,
+                                            style={"color": "black"},
+                                            className="mb-2",
+                                            clearable=False,
+                                        ),
+                                    ]
+                                ),
+                                dbc.Col(
+                                    [
+                                        html.H6("Select Y Mode"),
+                                        dcc.Dropdown(
+                                            id=self._get_id("y-mode"),
+                                            options=[
+                                                {"label": mode, "value": mode}
+                                                for mode in keys
+                                            ],
+                                            value=self.y_mode,
+                                            style={"color": "black"},
+                                            className="mb-2",
+                                            placeholder="None",
+                                            clearable=False,
+                                        ),
+                                    ]
+                                ),
+                            ]
+                        )
+                    ]
+                )
+            ]
+        else: 
+            mode_selection_ui = [
+                html.Div(
+                    [
+                        dbc.Row(
+                            [
+                                dbc.Col(
+                                    [
+                                        html.H6("Select X Mode"),
+                                        dcc.Dropdown(
+                                            id=self._get_id("x-mode"),
+                                            options=[
+                                                {"label": mode, "value": mode}
+                                                for mode in keys
+                                            ],
+                                            value=self.x_mode,
+                                            style={"color": "black"},
+                                            className="mb-2",
+                                            clearable=False,
+                                        ),
+                                    ]
+                                ),
+                                dbc.Col(
+                                    [
+                                        html.H6("Y Mode: Voltage"),
+                                    ]
+                                ),
+                            ]
+                        )
+                    ]
+                )
+            ]
 
         selection_ui = [
             html.Div(

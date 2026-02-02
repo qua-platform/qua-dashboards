@@ -279,7 +279,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                     y_vals=(y_qua_values if not self._is_1d else None),
                     x_mode=self.x_mode,
                     y_mode=(self.y_mode if not self._is_1d else None),  # type: ignore
-                    compensation_pulse = None if self.mid_scan_compensation is False else self.inner_loop_action.voltage_sequence.apply_compensation_pulse(),
+                    compensation_pulse = None if self.mid_scan_compensation is False else self.inner_loop_action.voltage_sequence.apply_compensation_pulse,
                 ):
                     measured_qua_values = self.inner_loop_action(
                         x_qua_var, y_qua_var

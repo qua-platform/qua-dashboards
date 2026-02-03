@@ -117,15 +117,18 @@ class HybridOPXQDACDataAcquirer(OPXDataAcquirer):
         x_qua_values = self.x_axis.qua_sweep_values
         y_points = 1 if self._is_1d else int(self.y_axis.points)
 
-        self._prepare_qdac_sweeps()
+        if self.y_axis is not None and not self._is_1d:
+            self._prepare_qdac_sweeps()
+
         trigger_channel = None
-        for ch in self.dc_set.channels.values(): 
-            if ch.qdac_spec is not None and ch.qdac_spec.opx_trigger_out is not None: 
-                trigger_channel = ch.qdac_spec.opx_trigger_out
-                break
-        if trigger_channel is None: 
-            raise ValueError("No VoltageGate channel has a configured qdac_spec with opx_trigger_out.")
-        
+        if self.y_axis is not None and not self._is_1d:
+            for ch in self.dc_set.channels.values(): 
+                if ch.qdac_spec is not None and ch.qdac_spec.opx_trigger_out is not None: 
+                    trigger_channel = ch.qdac_spec.opx_trigger_out
+                    break
+            if trigger_channel is None: 
+                raise ValueError("No VoltageGate channel has a configured qdac_spec with opx_trigger_out.")
+            
         self._compiled_xy = (int(self.x_axis.points), (1 if self._is_1d else int(self.y_axis.points)), self._is_1d)
 
 
@@ -147,8 +150,9 @@ class HybridOPXQDACDataAcquirer(OPXDataAcquirer):
                     
                     # This should automatically the Qdac to step to the next set of voltages, since all the 
                     # dc lists are mapped to the same external trigger. 
-                    trigger_channel.play("trigger")
-                    align()
+                    if trigger_channel is not None:
+                        trigger_channel.play("trigger")
+                        align()
 
                     for x_qua_var, y_qua_var in self.scan_1d.scan(
                         x_vals=x_qua_values,
@@ -178,7 +182,8 @@ class HybridOPXQDACDataAcquirer(OPXDataAcquirer):
 
                 self.inner_loop_action.final_action()
 
-            num_points_total = self.x_axis.points * self.y_axis.points
+            y_pts = 1 if (self.y_axis is None or self._is_1d) else int(self.y_axis.points)
+            num_points_total = int(self.x_axis.points) * y_pts
             with stream_processing():
                 buffered_streams = {
                     var: qua_streams[var].buffer(num_points_total)

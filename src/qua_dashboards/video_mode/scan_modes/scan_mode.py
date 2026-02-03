@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Generator, Sequence, Tuple
+from typing import Generator, Sequence, Tuple, Callable
 
 import numpy as np
 from matplotlib import axes, figure, pyplot as plt
@@ -54,6 +54,6 @@ class ScanMode(BaseUpdatableComponent, ABC):
 
     @abstractmethod
     def scan(
-        self, x_vals: Sequence[float], y_vals: Sequence[float], x_mode: str = None, y_mode: str = None
+        self, x_vals: Sequence[float], y_vals: Sequence[float], x_mode: str = None, y_mode: str = None, compensation_pulse: Callable = None,
     ) -> Generator[Tuple[QuaVariableFloat, QuaVariableFloat], None, None]:
         pass

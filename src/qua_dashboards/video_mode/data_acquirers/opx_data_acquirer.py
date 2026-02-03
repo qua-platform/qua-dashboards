@@ -62,6 +62,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         inner_functions_dict: Optional[Dict] = None,
         apply_compensation_pulse: bool = True, 
         voltage_control_component: Optional["VoltageControlComponent"] = None,
+        mid_scan_compensation: bool = False, 
         buffer_frames: int = 20,
         **kwargs: Any,
     ):
@@ -119,6 +120,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         self._configure_readout()
         self._compiled_stream_vars: Optional[List[str]] = None
         self.inner_functions_dict = inner_functions_dict or {}
+        self.mid_scan_compensation = mid_scan_compensation
         self.buffer_frames = buffer_frames
         self._frame_queue = queue.Queue(maxsize=30)
         self._fetch_thread = None
@@ -277,6 +279,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                     y_vals=(y_qua_values if not self._is_1d else None),
                     x_mode=self.x_mode,
                     y_mode=(self.y_mode if not self._is_1d else None),  # type: ignore
+                    compensation_pulse = None if self.mid_scan_compensation is False else self.inner_loop_action.voltage_sequence.apply_compensation_pulse,
                 ):
                     measured_qua_values = self.inner_loop_action(
                         x_qua_var, y_qua_var

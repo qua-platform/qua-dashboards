@@ -43,7 +43,6 @@ class HybridOPXQDACDataAcquirer(OPXDataAcquirer):
         dc_set: The VirtualDCSet object containing the VoltageGate channels, and their DC virtualisation. 
         qdac: The qdac object. This class assumes the use of qcodes_contrib_drivers.drivers.QDevil.QDAC2.Qdac2
         qdac_dwell_time_us: The amount of time the qdac should dwell on each point. 
-    
     """
     
     def __init__(

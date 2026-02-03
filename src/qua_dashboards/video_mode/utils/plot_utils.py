@@ -588,7 +588,7 @@ def build_two_col_readout_grid(data_xr: xr.DataArray) -> go.Figure:
     for i, rname in enumerate(readouts):
         r = i // 2 + 1
         c = i % 2 + 1
-        z = data_xr.isel(readout=rname).values
+        z = data_xr.sel(readout=rname).values
 
         fig.add_trace(
             go.Heatmap(

@@ -390,6 +390,7 @@ def main():
         dc_set = machine.virtual_dc_sets["main_qpu"], 
         qdac_ext_trigger_input_port = 1,
         qdac = qdac,
+        mid_scan_compensation = True, 
     )
 
     video_mode_component = VideoModeComponent(

@@ -50,7 +50,8 @@ class HybridOPXQDACDataAcquirer(OPXDataAcquirer):
         dc_set: VirtualDCSet, 
         qdac,
         qdac_ext_trigger_input_port: int,
-        qdac_dwell_time_us:int = 1000,
+        qdac_dwell_time_us:int = 10,
+        qdac_settle_delay_ns = 10_000,
         *args, 
         **kwargs
     ) -> None:
@@ -61,6 +62,7 @@ class HybridOPXQDACDataAcquirer(OPXDataAcquirer):
 
         self.dc_set = dc_set
         self.qdac_dwell_time_us = qdac_dwell_time_us
+        self.qdac_settle_delay_ns = qdac_settle_delay_ns
 
         self.qdac = qdac
         self.qdac_ext_trigger_input_port = qdac_ext_trigger_input_port
@@ -154,6 +156,7 @@ class HybridOPXQDACDataAcquirer(OPXDataAcquirer):
                     # dc lists are mapped to the same external trigger. 
                     if trigger_channel is not None:
                         trigger_channel.play("trigger")
+                        wait(self.qdac_settle_delay_ns//4)
                         align()
 
                     for x_qua_var, y_qua_var in self.scan_1d.scan(
@@ -221,3 +224,16 @@ class HybridOPXQDACDataAcquirer(OPXDataAcquirer):
                     self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
             
             return super().perform_actual_acquisition()
+    
+    def update_parameters(self, params: dict):
+        super().update_parameters(params)
+        v = params.get(self.component_id, {}).get("total_pixel_duration_ns")
+        if v is not None:
+            self._total_pixel_duration_ns = int(v)
+
+            fast_sweep_ns = self._total_pixel_duration_ns * int(self.x_axis.points)
+            min_step_ns = int(max(self.qdac_dwell_time_us, 10) * 1000)
+            if fast_sweep_ns < min_step_ns:
+                raise ValueError(
+                    f"Fast axis too fast: {fast_sweep_ns/1000:.2f} µs < {min_step_ns/1000:.2f} µs (QDAC step time)."
+                )

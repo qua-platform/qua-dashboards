@@ -295,6 +295,8 @@ class SettingsTabController(BaseTabController):
                 if pre_meas_delay_vals[0] is not None: 
                     pre_meas_delay_vals[0] = int(pre_meas_delay_vals[0])
                 params_to_update.setdefault(comp_id, {})[param] = pre_meas_delay_vals[0]
+            if getattr(self, "_last_total_pixel_duration_ns", None) is not None:
+                params_to_update.setdefault(acq.component_id, {})["total_pixel_duration_ns"] = int(self._last_total_pixel_duration_ns)
 
             if not params_to_update:
                 return no_update, no_update
@@ -784,8 +786,8 @@ class SettingsTabController(BaseTabController):
             )
         )
         total_duration = total_duration + readout_overhead
+        self._last_total_pixel_duration_ns = int(total_duration)
         return html.Div([
             html.Div(blocks, style={"display": "flex", "alignItems": "center", "marginBottom": "8px", "overflowX": "auto",}),
             html.Div(f"Total pixel duration: {total_duration} ns", style={"fontSize": "12px", "color": "#aaa"}),
         ])
-

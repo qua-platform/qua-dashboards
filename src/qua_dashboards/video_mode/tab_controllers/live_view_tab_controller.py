@@ -485,11 +485,11 @@ class LiveViewTabController(BaseTabController):
             Output(self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX), "children", allow_duplicate=True), 
             Output(self._get_id(self._ACQUIRER_CONTROLS_DIV_ID_SUFFIX), "children", allow_duplicate=True),
             Input(self._data_acquirer_instance._get_id("x-mode"), "value"), 
-            State(self._data_acquirer_instance._get_id("y-mode"), "value"), 
+            Input(self._data_acquirer_instance._get_id("y-mode"), "value"), 
             prevent_initial_call = True
         )
 
-        def on_mode_select(x_mode, y_mode = None):
+        def on_mode_select(x_mode, y_mode):
             da = self._data_acquirer_instance
 
             da.x_mode = x_mode

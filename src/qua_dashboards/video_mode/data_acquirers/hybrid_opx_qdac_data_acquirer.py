@@ -56,6 +56,8 @@ class HybridOPXQDACDataAcquirer(OPXDataAcquirer):
     ) -> None:
         kwargs["_show_y_mode_selector"] = False
         super().__init__(*args, **kwargs)
+        self._y_mode_keys_override = ["Voltage"]
+        self.y_mode = "Voltage"
 
         self.dc_set = dc_set
         self.qdac_dwell_time_us = qdac_dwell_time_us

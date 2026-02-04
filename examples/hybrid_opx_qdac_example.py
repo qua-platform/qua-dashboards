@@ -204,7 +204,7 @@ def main():
 
     # Adjust the IP and cluster name here
     qm_ip = "172.16.33.115"
-    cluster_name = "CS_3"
+    cluster_name = "CS_4"
 
     # If connecting to qdac, set qdac_connect = True, and the qdac_ip.
     qdac_ip = "172.16.33.101"

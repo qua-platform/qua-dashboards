@@ -201,7 +201,7 @@ def main():
 
     # If connecting to qdac, set qdac_connect = True, and the qdac_ip.
     qdac_ip = "172.16.33.101"
-    qdac_connect = True
+    qdac_connect = False
 
     qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
     machine = BaseQuamQD()
@@ -326,12 +326,14 @@ def main():
     # Define the detuning axes for both QuantumDotPairs
     machine.quantum_dot_pairs["dot1_dot2_pair"].define_detuning_axis(
         matrix = [[1,-1]], 
-        detuning_axis_name = "dot1_dot2_pair_epsilon"
+        detuning_axis_name = "dot1_dot2_pair_epsilon",
+        set_dc_virtual_axis = qdac_connect
     )
 
     machine.quantum_dot_pairs["dot3_dot4_pair"].define_detuning_axis(
         matrix = [[1,-1]], 
-        detuning_axis_name = "dot3_dot4_pair_epsilon"
+        detuning_axis_name = "dot3_dot4_pair_epsilon",
+        set_dc_virtual_axis = qdac_connect
     )
 
     scan_mode_dict = {
@@ -341,7 +343,7 @@ def main():
     }
 
     virtual_gating_component = VirtualLayerEditor(
-        gateset=machine.virtual_gate_sets["main_qpu"], component_id="virtual-gates-ui", dc_set = machine.virtual_dc_sets["main_qpu"]
+        gateset=machine.virtual_gate_sets["main_qpu"], component_id="virtual-gates-ui", dc_set = machine.virtual_dc_sets["main_qpu"] if qdac_connect else None
     )
 
     voltage_control_tab, voltage_control_component = None, None
@@ -396,18 +398,25 @@ def main():
         T=50.0,
         algorithm="default",
         implementation="jax",
-        noise_model=WhiteNoise(amplitude=1.0e-2) + TelegraphNoise(
+        noise_model=WhiteNoise(amplitude=1.0e-4) + TelegraphNoise(
             amplitude=5e-4, p01=5e-3, p10=5e-3
         ),
         latching_model=LatchingModel(n_dots=6, p_leads=0.95, p_inter=0.005),
     )
     from qua_dashboards.video_mode.inner_loop_actions.simulators import QarraySimulator
+
+    sensor_plunger_bias_mv = [-5.0, -5.0]
+    base_point = {
+        "virtual_dot_7": sensor_plunger_bias_mv[0] / 1e3,
+        "virtual_dot_8": sensor_plunger_bias_mv[1] / 1e3,
+    }
+
     simulator = QarraySimulator(
         gate_set = machine.virtual_gate_sets["main_qpu"], 
-        dc_set = machine.virtual_dc_sets["main_qpu"],
+        dc_set = machine.virtual_dc_sets["main_qpu"] if qdac_connect else None,
         model = model,
-        sensor_gate_names = ("virtual_dot_1", "virtual_dot_2"), 
-        n_charges = [1, 3, 0, 0, 0, 0, 5, 5],
+        sensor_gate_names = ("virtual_dot_7", "virtual_dot_8"), 
+        base_point = base_point,
     )
 
 
@@ -428,6 +437,11 @@ def main():
         voltage_control_component=voltage_control_component,
         simulator = simulator,
     )
+
+    for axis in data_acquirer.sweep_axes["Voltage"]:
+        if axis.name in ("virtual_dot_1", "virtual_dot_2"):
+            axis.span = 0.1
+            axis.points = 101
 
     video_mode_component = VideoModeComponent(
         data_acquirer=data_acquirer,

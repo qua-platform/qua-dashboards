@@ -16,7 +16,6 @@ class QarraySimulator(BaseSimulator):
         model, 
         sensor_gate_names: Sequence[str],
         base_point: dict[str, float] | None = None, 
-        n_charges: Optional[Sequence[int]] = None,
         voltage_scale: float = 1e3,
     ):
         super().__init__(gate_set=gate_set)
@@ -32,11 +31,6 @@ class QarraySimulator(BaseSimulator):
         self.qarray_gate_order = self.infer_qarray_gate_order()
         if dc_set is not None:
             _ = dc_set.all_current_voltages
-
-        if n_charges is not None:
-            self.base_bias_mv = np.asarray(model.optimal_Vg(n_charges=n_charges), dtype=float)
-        else:
-            self.base_bias_mv = np.zeros(len(self.qarray_gate_order), dtype=float)
 
 
     def infer_qarray_gate_order(self) -> List[str]: 
@@ -80,7 +74,11 @@ class QarraySimulator(BaseSimulator):
 
     def get_physical_grid(self, x_axis_name, y_axis_name, x_vals, y_vals):
         """Vectorized version - much faster for large grids."""
-        base = dict(self.dc_set._current_levels)
+        base = dict(
+            self.dc_set._current_levels
+            if self.dc_set is not None
+            else zip(self.qarray_gate_order, np.zeros(len(self.qarray_gate_order)))
+        )
         base.update(self.base_point)
         
         x_vals = np.asarray(x_vals, float)
@@ -140,9 +138,9 @@ class QarraySimulator(BaseSimulator):
         slices = []
         for ix in range(x_pts):
             vg_slice = np.column_stack([g[:, ix] for g in grids])
-            vg_slice_mv = vg_slice * self.voltage_scale + self.base_bias_mv
+            vg_slice_mv = vg_slice * self.voltage_scale 
             
-            raw = self.model.charge_sensor_open(-vg_slice_mv)
+            raw = self.model.charge_sensor_open(vg_slice_mv)
             
             if isinstance(raw, tuple):
                 raw = raw[0]
@@ -164,10 +162,8 @@ class QarraySimulator(BaseSimulator):
             sensor_idx = ch_idx % n_sensors
             signal = z[sensor_idx]
             
-            gain = 1.0 + 0.05 * np.random.randn()
-            offset = 0.02 * np.random.randn()
-            I_ch = gain * signal + offset + 0.02 * np.random.randn(y_pts, x_pts)
-            Q_ch = 0.02 * np.random.randn(y_pts, x_pts)
+            I_ch = signal
+            Q_ch = np.zeros((y_pts, x_pts), dtype=signal.dtype)
             
             I_list.append(I_ch)
             Q_list.append(Q_ch)

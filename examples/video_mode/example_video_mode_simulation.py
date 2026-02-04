@@ -203,7 +203,7 @@ def main():
     qdac_ip = "172.16.33.101"
     qdac_connect = False
 
-    qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
+    # qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
     machine = BaseQuamQD()
 
     # Define your readout pulses here. Each pulse should be uniquely mapped to your readout elements.
@@ -247,6 +247,17 @@ def main():
 
     # Adjust or add your virtual gates here. This example assumes a single virtual gating layer, add more if necessary.
     logger.info("Creating VirtualGateSet")
+    # compensation_matrix = [  [1,0,0,0,0,0,-0.020406,-0.020406], 
+    #                         [0,1,0,0,0,0,-0.029189,-0.029189], 
+    #                         [0,0,1,0,0,0, -0.007986, -0.007986], 
+    #                         [0,0,0,1,0,0, -0.010645, -0.010645], 
+    #                         [0,0,0,0,1,0, -0.010643, -0.010643], 
+    #                         [0,0,0,0,0,1, -0.0905586, -0.0905586], 
+    #                         [-0.020406, -0.029189, -0.007986, -0.010645, -0.010643, -0.0905586, 1.0, 0.0], 
+    #                         [-0.020406, -0.029189, -0.007986, -0.010645, -0.010643, -0.0905586, 0.0, 1.0] ]
+    
+    compensation_matrix = np.eye(8).tolist()
+
     machine.create_virtual_gate_set(
         gate_set_id="main_qpu",
         virtual_channel_mapping={
@@ -260,6 +271,7 @@ def main():
             "virtual_sensor_2": s2,
         },
         adjust_for_attenuation=False,
+        compensation_matrix=compensation_matrix,
     )
 
     machine.register_channel_elements(
@@ -398,24 +410,26 @@ def main():
         T=50.0,
         algorithm="default",
         implementation="jax",
-        noise_model=WhiteNoise(amplitude=1.0e-4) + TelegraphNoise(
+        noise_model=WhiteNoise(amplitude=1.0e-5) + TelegraphNoise(
             amplitude=5e-4, p01=5e-3, p10=5e-3
         ),
         latching_model=LatchingModel(n_dots=6, p_leads=0.95, p_inter=0.005),
     )
     from qua_dashboards.video_mode.inner_loop_actions.simulators import QarraySimulator
 
-    sensor_plunger_bias_mv = [-5.0, -5.0]
+    sensor_plunger_bias_mv = [-5.0e-3, -5.0e-3]
     base_point = {
-        "virtual_dot_7": sensor_plunger_bias_mv[0] / 1e3,
-        "virtual_dot_8": sensor_plunger_bias_mv[1] / 1e3,
+        "virtual_dot_1": -5.0e-3,
+        "virtual_dot_2": -5.0e-3,
+        "virtual_sensor_1": sensor_plunger_bias_mv[0],
+        "virtual_sensor_2": sensor_plunger_bias_mv[1],
     }
 
     simulator = QarraySimulator(
         gate_set = machine.virtual_gate_sets["main_qpu"], 
         dc_set = machine.virtual_dc_sets["main_qpu"] if qdac_connect else None,
         model = model,
-        sensor_gate_names = ("virtual_dot_7", "virtual_dot_8"), 
+        sensor_gate_names = ("virtual_sensor_1", "virtual_sensor_2"), 
         base_point = base_point,
     )
 
@@ -441,7 +455,7 @@ def main():
     for axis in data_acquirer.sweep_axes["Voltage"]:
         if axis.name in ("virtual_dot_1", "virtual_dot_2"):
             axis.span = 0.1
-            axis.points = 101
+            axis.points = 151
 
     video_mode_component = VideoModeComponent(
         data_acquirer=data_acquirer,

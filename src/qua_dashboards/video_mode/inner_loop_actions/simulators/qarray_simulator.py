@@ -81,6 +81,9 @@ class QarraySimulator(BaseSimulator):
         )
         base.update(self.base_point)
         
+        print(base)
+        print(self.qarray_gate_order)
+        
         x_vals = np.asarray(x_vals, float)
         y_vals = np.asarray(y_vals, float)
         x_vals = x_vals - x_vals[len(x_vals)//2]

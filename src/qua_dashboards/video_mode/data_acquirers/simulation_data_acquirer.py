@@ -84,14 +84,11 @@ class SimulationDataAcquirer(BaseGateSetDataAcquirer):
             self._first_acquisition = False
         else:
             sleep(self.acquire_time)
-        logger.debug(
-            f"RandomDataAcquirer (ID: {self.component_id}): "
-            f"Generating random data for {self.y_axis.points}x{self.x_axis.points}"
-        )
+
         # Ensure y_axis.points and x_axis.points are positive integers
         if self.y_axis.points <= 0 or self.x_axis.points <= 0:
             logger.warning(
-                f"RandomDataAcquirer (ID: {self.component_id}): Invalid points "
+                f"{self.component_id} (ID: {self.component_id}): Invalid points "
                 f"({self.y_axis.points}x{self.x_axis.points}). Returning empty array."
             )
             return np.array([[]])  # Return a 2D empty array to avoid downstream errors

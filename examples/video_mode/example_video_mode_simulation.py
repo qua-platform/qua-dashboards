@@ -201,7 +201,7 @@ def main():
 
     # If connecting to qdac, set qdac_connect = True, and the qdac_ip.
     qdac_ip = "172.16.33.101"
-    qdac_connect = False
+    qdac_connect = True
 
     # qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
     machine = BaseQuamQD()
@@ -255,7 +255,7 @@ def main():
                             [0,0,0,0,0,1, 0.0905586, 0.0905586], 
                             [0.020406, 0.029189, 0.007986, 0.010645, 0.010643, 0.0905586, 1.0, 0.0], 
                             [0.020406, 0.029189, 0.007986, 0.010645, 0.010643, 0.0905586, 0.0, 1.0] ]
-    
+
     # compensation_matrix = np.eye(8).tolist()
 
     machine.create_virtual_gate_set(
@@ -336,17 +336,17 @@ def main():
     # )
 
     # Define the detuning axes for both QuantumDotPairs
-    machine.quantum_dot_pairs["dot1_dot2_pair"].define_detuning_axis(
-        matrix = [[1,-1]], 
-        detuning_axis_name = "dot1_dot2_pair_epsilon",
-        set_dc_virtual_axis = qdac_connect
-    )
+    # machine.quantum_dot_pairs["dot1_dot2_pair"].define_detuning_axis(
+    #     matrix = [[1,-1]], 
+    #     detuning_axis_name = "dot1_dot2_pair_epsilon",
+    #     set_dc_virtual_axis = qdac_connect
+    # )
 
-    machine.quantum_dot_pairs["dot3_dot4_pair"].define_detuning_axis(
-        matrix = [[1,-1]], 
-        detuning_axis_name = "dot3_dot4_pair_epsilon",
-        set_dc_virtual_axis = qdac_connect
-    )
+    # machine.quantum_dot_pairs["dot3_dot4_pair"].define_detuning_axis(
+    #     matrix = [[1,-1]], 
+    #     detuning_axis_name = "dot3_dot4_pair_epsilon",
+    #     set_dc_virtual_axis = qdac_connect
+    # )
 
     scan_mode_dict = {
         "Switch_Raster_Scan": scan_modes.SwitchRasterScan(),
@@ -410,10 +410,10 @@ def main():
         T=50.0,
         algorithm="default",
         implementation="jax",
-        noise_model=WhiteNoise(amplitude=1.0e-5) + TelegraphNoise(
-            amplitude=5e-4, p01=5e-3, p10=5e-3
-        ),
-        latching_model=LatchingModel(n_dots=6, p_leads=0.95, p_inter=0.005),
+        # noise_model=WhiteNoise(amplitude=1.0e-5) + TelegraphNoise(
+        #     amplitude=5e-4, p01=5e-3, p10=5e-3
+        # ),
+        # latching_model=LatchingModel(n_dots=6, p_leads=0.95, p_inter=0.005),
     )
     from qua_dashboards.video_mode.inner_loop_actions.simulators import QarraySimulator
 
@@ -454,8 +454,8 @@ def main():
 
     for axis in data_acquirer.sweep_axes["Voltage"]:
         if axis.name in ("virtual_dot_1", "virtual_dot_2"):
-            axis.span = 0.1
-            axis.points = 151
+            axis.span = 0.03
+            axis.points = 101
 
     video_mode_component = VideoModeComponent(
         data_acquirer=data_acquirer,

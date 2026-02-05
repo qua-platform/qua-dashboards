@@ -104,7 +104,6 @@ class QarraySimulator(BaseSimulator):
         base_vec = np.array([base_phys.get(g, 0.0) for g in self.qarray_gate_order])
         dx_vec = np.array([delta_x.get(g, 0.0) for g in self.qarray_gate_order])
         dy_vec = np.array([delta_y.get(g, 0.0) for g in self.qarray_gate_order])
-        
         X, Y = np.meshgrid(x_vals, y_vals)
         grids = (base_vec[None, None, :] 
                 + X[:, :, None] * dx_vec[None, None, :] 
@@ -118,6 +117,62 @@ class QarraySimulator(BaseSimulator):
         return vg
 
 
+    # def measure_data(
+    #     self,
+    #     x_axis_name: str,
+    #     y_axis_name: str,
+    #     x_vals: Sequence[float],
+    #     y_vals: Sequence[float],
+    #     n_readout_channels: int,
+    # ):
+    #     """
+    #     Run the qarray simulation and return I/Q data.
+        
+    #     Returns:
+    #         I: array of shape (n_readout_channels, y_pts, x_pts)
+    #         Q: array of shape (n_readout_channels, y_pts, x_pts)
+    #     """
+        
+    #     grids = self.get_physical_grid(x_axis_name, y_axis_name, x_vals, y_vals)
+    #     y_pts, x_pts = grids[0].shape
+        
+    #     slices = []
+    #     for ix in range(x_pts):
+    #         vg_slice = np.column_stack([g[:, ix] for g in grids])
+    #         vg_slice_mv = vg_slice * self.voltage_scale 
+            
+    #         raw = self.model.charge_sensor_open(vg_slice_mv)
+            
+    #         if isinstance(raw, tuple):
+    #             raw = raw[0]
+    #         slices.append(np.asarray(raw).squeeze())
+        
+
+    #     zs = np.asarray(slices)
+
+    #     z = zs.T
+        
+    #     if z.ndim == 2:
+    #         z = z[np.newaxis, ...]
+        
+    #     n_sensors = z.shape[0]
+        
+    #     I_list = []
+    #     Q_list = []
+    #     for ch_idx in range(n_readout_channels):
+    #         sensor_idx = ch_idx % n_sensors
+    #         signal = z[sensor_idx]
+            
+    #         I_ch = signal
+    #         Q_ch = np.zeros((y_pts, x_pts), dtype=signal.dtype)
+            
+    #         I_list.append(I_ch)
+    #         Q_list.append(Q_ch)
+        
+    #     return np.stack(I_list, axis=0), np.stack(Q_list, axis=0)
+    
+
+
     def measure_data(
         self,
         x_axis_name: str,
@@ -126,49 +181,27 @@ class QarraySimulator(BaseSimulator):
         y_vals: Sequence[float],
         n_readout_channels: int,
     ):
-        """
-        Run the qarray simulation and return I/Q data.
-        
-        Returns:
-            I: array of shape (n_readout_channels, y_pts, x_pts)
-            Q: array of shape (n_readout_channels, y_pts, x_pts)
-        """
-        
         grids = self.get_physical_grid(x_axis_name, y_axis_name, x_vals, y_vals)
-        
         y_pts, x_pts = grids[0].shape
         
-        slices = []
-        for ix in range(x_pts):
-            vg_slice = np.column_stack([g[:, ix] for g in grids])
-            vg_slice_mv = vg_slice * self.voltage_scale 
-            
-            raw = self.model.charge_sensor_open(vg_slice_mv)
-            
-            if isinstance(raw, tuple):
-                raw = raw[0]
-            slices.append(np.asarray(raw).squeeze())
+        vg = np.stack(grids, axis=-1).reshape(-1, len(grids)) * self.voltage_scale
         
-
-        zs = np.asarray(slices)
-
-        z = zs.T
+        raw = self.model.charge_sensor_open(vg)  # Model has NO noise
+        if isinstance(raw, tuple):
+            raw = raw[0]
+        raw = np.asarray(raw)
         
-        if z.ndim == 2:
-            z = z[np.newaxis, ...]
+        if raw.ndim == 1:
+            raw = raw[:, np.newaxis]
         
-        n_sensors = z.shape[0]
+        n_sensors = raw.shape[-1]
+        z = raw.reshape(y_pts, x_pts, n_sensors)
+        z = np.moveaxis(z, -1, 0)
         
-        I_list = []
-        Q_list = []
-        for ch_idx in range(n_readout_channels):
-            sensor_idx = ch_idx % n_sensors
-            signal = z[sensor_idx]
-            
-            I_ch = signal
-            Q_ch = np.zeros((y_pts, x_pts), dtype=signal.dtype)
-            
-            I_list.append(I_ch)
-            Q_list.append(Q_ch)
+        # Add noise HERE - no sequential artifacts
+        z = z + np.random.normal(0, 0.01, z.shape)
         
-        return np.stack(I_list, axis=0), np.stack(Q_list, axis=0)
+        I = np.stack([z[ch_idx % n_sensors] for ch_idx in range(n_readout_channels)])
+        Q = np.zeros_like(I)
+        
+        return I, Q

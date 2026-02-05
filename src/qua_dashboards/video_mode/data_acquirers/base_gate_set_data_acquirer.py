@@ -123,6 +123,37 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
         else:
             return self.scan_2d
         
+    @property
+    def x_axis(self) -> BaseSweepAxis:
+        inner_loop = getattr(self, "inner_loop_action", None)
+        if inner_loop is not None:
+            inner_loop.x_mode = self.x_mode
+        try:
+            axis = self.find_sweepaxis(self.x_axis_name, self.x_mode)
+            if inner_loop is not None:
+                inner_loop.x_axis = axis
+            return axis
+        except ValueError:
+            valid_axes = self._display_x_sweep_axes
+            self.x_axis_name = valid_axes[0].name
+            return valid_axes[0]
+
+    @property
+    def y_axis(self) -> BaseSweepAxis:
+        inner_loop = getattr(self, "inner_loop_action", None)
+        if self.y_axis_name is None:
+            return self._dummy_axis
+        if inner_loop is not None:
+            inner_loop.y_mode = self.y_mode
+            inner_loop.y_axis_name = self.y_axis_name
+        try:
+            axis = self.find_sweepaxis(self.y_axis_name, self.y_mode)
+            if inner_loop is not None:
+                inner_loop.y_axis = axis
+            return axis
+        except ValueError:
+            self.y_axis_name = None
+            return self._dummy_axis
     
     def get_scan_indices(self, x_pts:int, y_pts:int) -> Tuple[np.ndarray, np.ndarray]: 
         """

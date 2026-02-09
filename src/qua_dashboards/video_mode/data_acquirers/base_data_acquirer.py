@@ -50,6 +50,7 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
 
         self.num_software_averages: int = max(1, num_software_averages)
         self.acquisition_interval_s: float = acquisition_interval_s
+        self._latest_seq: int = 0
 
         self._data_history_raw: List[
             Any
@@ -130,6 +131,7 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
                         self._latest_processed_data = self._perform_averaging(
                             self._data_history_raw
                         )
+                        self._latest_seq = self._latest_seq + 1
 
                 try:  # Clear any previous error from the queue if successful this cycle
                     while not self._error_queue.empty():
@@ -218,7 +220,27 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
             "data": data_to_return,
             "error": error_from_queue,
             "status": self._acquisition_status,
+            "seq": self._latest_seq,
         }
+
+    def reset(self) -> None: 
+        """Reset the acquirer from the error state, allowing the user to continue with correct params"""
+        logger.info(f"Resetting {self.component_id} from error state")
+
+        if self._acquisition_thread is not None and self._acquisition_thread.is_alive(): 
+            self._stop_event.set()
+            self._acquisition_thread.join(timeout = 0.2)
+        self._stop_event.clear()
+        self._acquisition_thread = None
+        self._acquisition_status = "stopped"
+        while not self._error_queue.empty():
+            try:
+                self._error_queue.get_nowait()
+            except queue.Empty:
+                break
+        with self._data_lock:
+            self._data_history_raw.clear()
+            self._latest_processed_data = None
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
         flags = super().update_parameters(parameters)  # From BaseUpdatableComponent

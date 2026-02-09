@@ -1,6 +1,7 @@
 import logging
 import uuid
-from typing import Any, Dict, Union
+from typing import Any, Dict, Union, Optional
+import numpy as np
 
 import dash_bootstrap_components as dbc
 import dash
@@ -59,6 +60,10 @@ class LiveViewTabController(BaseTabController):
         super().__init__(component_id=component_id, is_active=is_active, **kwargs)
         self._data_acquirer_instance: BaseDataAcquirer = data_acquirer
         self._show_inner_loop_controls = show_inner_loop_controls
+        self._last_overlay_text: Optional[str] = None
+        self._last_overlay_version: Optional[str] = None
+        self._last_gridlines_state: Optional[str] = None
+
         logger.info(
             f"LiveViewTabController '{self.component_id}' initialized with "
             f"Data Acquirer '{self._data_acquirer_instance.component_id}'."
@@ -112,16 +117,25 @@ class LiveViewTabController(BaseTabController):
                         html.Div(
                             [
                                 dbc.Row(
-                                    dbc.Col(
+                                    [dbc.Col(
                                         dbc.Checklist(
                                             id=self._get_id("center-marker-toggle"),
-                                            options=[{"label": "Gridlines", "value": "on"}],
+                                            options=[{"label": "Crosshairs", "value": "on"}],
                                             value=[],
                                             switch=True,
                                         ),
                                         width="auto",
                                     ),
-                                    className="align-items-center g-1",
+                                    dbc.Col(
+                                        dbc.Checklist(
+                                            id=self._get_id("show-full-grid-toggle"),
+                                            options=[{"label": "Full grid", "value": "on"}],
+                                            value=[],
+                                            switch=True,
+                                        ),
+                                        width="auto",
+                                    )],
+                                    className="align-items-center g-2",
                                 ),
 
                                 dbc.Row(
@@ -243,11 +257,11 @@ class LiveViewTabController(BaseTabController):
         self._register_readoutparams_callback(app)
         self._register_mode_callback(app)
         if shared_viewer_graph_id is not None:
-            self._register_click_to_centre_callback(app, shared_viewer_graph_id)
+            self._register_click_to_centre_callback(app, shared_viewer_graph_id, tabs_id=orchestrator_stores.get("control-tabs"),)
 
     def _register_readoutparams_callback(self, app):
         @app.callback(
-            Output(f"{self._data_acquirer_instance.qua_inner_loop_action.component_id}-readout-params-container", "children"),
+            Output(f"{self._data_acquirer_instance.inner_loop_action.component_id}-readout-params-container", "children"),
             Input(self._data_acquirer_instance._get_id("readouts"), "value"),
             prevent_initial_call=True,
         )
@@ -261,14 +275,16 @@ class LiveViewTabController(BaseTabController):
                 for n in names
                 if n in self._data_acquirer_instance.available_readout_channels
             ]
-            self._data_acquirer_instance.qua_inner_loop_action.selected_readout_channels = self._data_acquirer_instance.selected_readout_channels
+            self._data_acquirer_instance.inner_loop_action.selected_readout_channels = self._data_acquirer_instance.selected_readout_channels
 
-            return self._data_acquirer_instance.qua_inner_loop_action.build_readout_controls()
+            return self._data_acquirer_instance.inner_loop_action.build_readout_controls()
         
     def _register_click_to_centre_callback(
             self, 
             app: Dash, 
             shared_viewer_graph_id: str,
+            *, 
+            tabs_id: str,
     ) -> None: 
 
         @app.callback(
@@ -280,9 +296,12 @@ class LiveViewTabController(BaseTabController):
             Input(
                 shared_viewer_graph_id, "clickData", 
             ), 
+            State(tabs_id, "value"),
             prevent_initial_call = True, 
         )
-        def _centre_on_click(click_data): 
+        def _centre_on_click(click_data, active_tab_value): 
+            if active_tab_value not in ("live-view-tab", "voltage-control-tab"):
+                return dash.no_update
             if not click_data or "points" not in click_data: 
                 return dash.no_update
 
@@ -293,21 +312,27 @@ class LiveViewTabController(BaseTabController):
                 return dash.no_update
             
             da = self._data_acquirer_instance
-            manager = getattr(da, "external_virtual_voltages_manager", None)
+            voltage_control = getattr(da, "voltage_control_component", None)
 
-            if manager is None: 
+            if voltage_control is None or voltage_control.dc_set is None: 
                 return dash.no_update
 
-            if x_val is not None and da.x_axis_name in manager._virtual_names: 
-                idx_x = manager._virtual_names.index(da.x_axis_name)
-                manager.set_virtual_voltage_from_opx(idx_x, float(x_val))
+            dc_set = voltage_control.dc_set
+            voltages_to_set = {}
+
+
+            if x_val is not None and da.x_axis_name in dc_set.valid_channel_names: 
+                voltages_to_set[da.x_axis_name] = float(x_val)
             if (
                 y_val is not None
                 and da.y_axis_name is not None
-                and da.y_axis_name in manager._virtual_names
+                and da.y_axis_name in dc_set.valid_channel_names
             ):
-                idx_y = manager._virtual_names.index(da.y_axis_name)
-                manager.set_virtual_voltage_from_opx(idx_y, float(y_val))
+                voltages_to_set[da.y_axis_name] = float(y_val)
+
+            if voltages_to_set: 
+                dc_set.set_voltages(voltages_to_set)
+
             return ""
             
     def _register_gridlines_callback(
@@ -318,51 +343,113 @@ class LiveViewTabController(BaseTabController):
         @app.callback(
             Output(shared_viewer_store_ids["layout_config_store"], "data", allow_duplicate = True),
             Input(self._get_id("center-marker-toggle"), "value"),
+            Input(self._get_id("show-full-grid-toggle"), "value"),
             Input(self._get_id("grid_opacity"), "value"),
             State(shared_viewer_store_ids["layout_config_store"], "data"),
             prevent_initial_call=True,
         )
-        def _toggle_gridlines(toggle_val, opacity, existing_layout):
+        def _toggle_gridlines(toggle_val, full_val, opacity, existing_layout):
             layout = existing_layout or {}
             show = "on" in toggle_val
+            show_full = "on" in (full_val or [])
             shapes = []
             alpha = float(opacity)/100
             n_subplots = max(1, len(self._data_acquirer_instance.selected_readout_channels))
 
-            if show: 
-                def ax_suffix(i):  # i = 1..N
+            da = self._data_acquirer_instance
+            is_1d = da.y_axis_name is None
+
+            cache_key = (show, show_full, opacity, tuple(self._data_acquirer_instance.x_axis.sweep_values_with_offset),
+                tuple(self._data_acquirer_instance.y_axis.sweep_values_with_offset),
+                len(self._data_acquirer_instance.selected_readout_channels))
+            if cache_key == self._last_gridlines_state:
+                return dash.no_update
+            self._last_gridlines_state = cache_key
+
+            if show or show_full:
+                def ax_suffix(i):
                     return "" if i == 1 else str(i)
 
                 xr = list(self._data_acquirer_instance.x_axis.sweep_values_with_offset)
-                yr = list(self._data_acquirer_instance.y_axis.sweep_values_with_offset)
-                xs = np.linspace(xr[0], xr[-1], 15).tolist() 
-                ys = np.linspace(yr[0], yr[-1], 15).tolist() 
+                x_centre = float(xr[len(xr) // 2])
+                xs = np.linspace(xr[0], xr[-1], 15).tolist()
+
+                if not is_1d:
+                    yr = list(self._data_acquirer_instance.y_axis.sweep_values_with_offset)
+                    y_centre = float(yr[len(yr) // 2])
+                    ys = np.linspace(yr[0], yr[-1], 15).tolist()
 
                 for i in range(1, n_subplots + 1):
                     sfx = ax_suffix(i)
                     xref = f"x{sfx}"
-                    yref = f"y{sfx}"
-                    for xv in xs:
-                        #0 grid line has 3x higher alpha
-                        grid_color = f"rgba(0,0,0,{alpha*3})" if xv == 0 else f"rgba(0,0,0,{alpha})"
-                        shapes.append({
-                            "type": "line",
-                            "xref": xref, "yref": yref,
-                            "x0": xv, "x1": xv, "y0": min(ys), "y1": max(ys),
-                            "line": {"width": 4, "color": grid_color},
-                            "layer": "above",
-                            "name": "grid-x",
-                        })
-                    for yv in ys:
-                        grid_color = f"rgba(0,0,0,{alpha*3})" if yv == 0 else f"rgba(0,0,0,{alpha})"
-                        shapes.append({
-                            "type": "line",
-                            "xref": xref, "yref": yref,
-                            "x0": min(xs), "x1": max(xs), "y0": yv, "y1": yv,
-                            "line": {"width": 4, "color": grid_color},
-                            "layer": "above",
-                            "name": "grid-y",
-                        })
+                    grid_color = f"rgba(0,0,0,{alpha})"
+                    grid_color_1d = f"rgba(255,255,255,{alpha})"
+
+                    if show:
+                        if is_1d:
+                            shapes.append({
+                                "type": "line",
+                                "xref": xref,
+                                "yref": "paper",
+                                "x0": x_centre, "x1": x_centre,
+                                "y0": 0, "y1": 1,
+                                "line": {"width": 5, "color": grid_color_1d},
+                                "layer": "above",
+                                "name": "crosshair-x",
+                            })
+                        else:
+                            yref = f"y{sfx}"
+                            shapes.append({
+                                "type": "line",
+                                "xref": xref, "yref": yref,
+                                "x0": x_centre, "x1": x_centre, "y0": min(ys), "y1": max(ys),
+                                "line": {"width": 5, "color": grid_color},
+                                "layer": "above",
+                                "name": "crosshair-x",
+                            })
+                            shapes.append({
+                                "type": "line",
+                                "xref": xref, "yref": yref,
+                                "x0": min(xs), "x1": max(xs), "y0": y_centre, "y1": y_centre,
+                                "line": {"width": 5, "color": grid_color},
+                                "layer": "above",
+                                "name": "crosshair-y",
+                            })
+
+                    if show_full:
+                        if is_1d:
+                            for xv in xs:
+                                shapes.append({
+                                    "type": "line",
+                                    "xref": xref,
+                                    "yref": "paper",
+                                    "x0": xv, "x1": xv,
+                                    "y0": 0, "y1": 1,
+                                    "line": {"width": 2, "color": grid_color_1d},
+                                    "layer": "above",
+                                    "name": "grid-x",
+                                })
+                        else:
+                            yref = f"y{sfx}"
+                            for xv in xs:
+                                shapes.append({
+                                    "type": "line",
+                                    "xref": xref, "yref": yref,
+                                    "x0": xv, "x1": xv, "y0": min(ys), "y1": max(ys),
+                                    "line": {"width": 2, "color": grid_color},
+                                    "layer": "above",
+                                    "name": "grid-x",
+                                })
+                            for yv in ys:
+                                shapes.append({
+                                    "type": "line",
+                                    "xref": xref, "yref": yref,
+                                    "x0": min(xs), "x1": max(xs), "y0": yv, "y1": yv,
+                                    "line": {"width": 2, "color": grid_color},
+                                    "layer": "above",
+                                    "name": "grid-y",
+                                })
+
             layout["shapes"] = shapes
             return layout
 
@@ -502,6 +589,8 @@ class LiveViewTabController(BaseTabController):
                         f"Attempting to start acquisition for "
                         f"'{self._data_acquirer_instance.component_id}'"
                     )
+                    if current_status == "ERROR":
+                        self._data_acquirer_instance.reset()
                     self._data_acquirer_instance.start_acquisition()
                     button_text, button_color = "Stop Acquisition", "danger"
                     status_text, status_color = "RUNNING", "success"
@@ -661,4 +750,3 @@ class LiveViewTabController(BaseTabController):
                     f"{param_id_dict} of type {component_id}"
                 )
         return current_type_params
-

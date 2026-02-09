@@ -33,12 +33,12 @@ def make_readout_subplots_with_profile(
         except ValueError:
             target_idx = 0
 
-    fig = make_subplots(
-        rows=1,
-        cols=n,
-        subplot_titles=labels,
-        horizontal_spacing=min(0.06, 1.0 / (max(n - 1, 1)) - 1e-6),
-    )
+    # fig = make_subplots(
+    #     rows=1,
+    #     cols=n,
+    #     subplot_titles=labels,
+    #     horizontal_spacing=min(0.06, 1.0 / (max(n - 1, 1)) - 1e-6),
+    # )
 
     cols = 2 if n > 2 else n
     rows = 1 if n <= 2 else ceil(n / 2)
@@ -90,7 +90,8 @@ def make_readout_subplots_with_profile(
                 try:
                     z = np.asarray(tr["z"])
                     rows, cols = z.shape
-                    tr["customdata"] = [[i + 1] * cols for _ in range(rows)]
+                    #tr["customdata"] = [[i + 1] * cols for _ in range(rows)]
+                    tr["customdata"] = np.full((rows, cols), i + 1, dtype=np.int16)
                 except Exception:
                     pass
                 fig.add_trace(tr, row=r, col=c)
@@ -261,7 +262,8 @@ def make_readout_subplots(da: xr.DataArray) -> go.Figure:
         try:
             z = np.asarray(tr["z"])
             rows, cols = z.shape
-            tr["customdata"] = [[i + 1] * cols for _ in range(rows)]
+            #tr["customdata"] = [[i + 1] * cols for _ in range(rows)]
+            tr["customdata"] = np.full((rows, cols), i + 1, dtype=np.int16)
         except Exception:
             pass
         fig.add_trace(tr, row=1, col=i + 1)
@@ -282,7 +284,7 @@ def build_live_figure(data_object: dict) -> go.Figure:
         base = data_object.get("base_image_data")
         if base is None:
             base = data_object.get("data")
-    return figure_from_data(base)
+    return figure_from_data(base).update_layout(clickmode="event+select")
 
 def build_static_figure(static_obj: dict, ui_state: dict | None) -> go.Figure:
     """
@@ -328,8 +330,34 @@ def figure_from_data(da: xr.DataArray | None) -> go.Figure:
         u = c.attrs.get("units") if c is not None else None
         if u:
             xlabel = f"{xlabel} [{u}]"
+
+        # Invisible 2D grid under the 1D plot, so that click to jump works. 
+        y = np.asarray(d.values).ravel()
+        ymin = float(np.nanmin(y)) if np.size(y) else 0.0
+        ymax = float(np.nanmax(y)) if np.size(y) else 1.0
+        span = (ymax - ymin) if (ymax > ymin) else 1.0
+        pad = 0.05 * span
+        cap_y = [ymin - pad, ymax + pad]
+        cap_z = np.zeros((2, len(x)), dtype=float)
+
+
         fig = go.Figure()
+        # Visible 1D line.
         fig.add_trace(go.Scatter(x=x, y=np.asarray(d.values).ravel(), mode="lines"))
+
+        fig.add_trace(
+            go.Heatmap(
+                x=x,
+                y=cap_y,
+                z=cap_z,
+                showscale=False,
+                name="_click_capture_1d",
+                colorscale=[[0, "rgba(128,128,128,0.001)"], [1, "rgba(128,128,128,0.001)"]],
+                zmin=0, zmax=1,
+                hoverongaps=False
+            )
+        )
+        
         return fig.update_layout(
             template="plotly_dark", xaxis_title=xlabel, yaxis_title="Value"
         )

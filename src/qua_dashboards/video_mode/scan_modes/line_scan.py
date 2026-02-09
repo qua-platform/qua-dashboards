@@ -1,4 +1,4 @@
-from typing import Generator, Sequence, Tuple
+from typing import Generator, Sequence, Tuple, Callable
 import numpy as np
 from qm.qua import declare, fixed, for_each_
 from qua_dashboards.video_mode.scan_modes import ScanMode
@@ -18,7 +18,7 @@ class LineScan(ScanMode):
         return x_idxs, y_idxs
 
     def scan(
-        self, x_vals: Sequence[float], y_vals: Sequence[float], x_mode: str = None, y_mode: str = None
+        self, x_vals: Sequence[float], y_vals: Sequence[float], x_mode: str = None, y_mode: str = None, compensation_pulse: Callable = None,
     ) -> Generator[Tuple[QuaVariableFloat], None, None]:
 
         x_list = list(x_vals)

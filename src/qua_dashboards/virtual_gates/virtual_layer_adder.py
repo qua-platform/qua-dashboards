@@ -10,12 +10,13 @@ class VirtualLayerAdder:
     An apply button calls gateset.add_layer(..) internally. 
     """
 
-    def __init__(self, gateset, component_id: str, layer_names: list):
+    def __init__(self, gateset, component_id: str, layer_names: list, dc_set = None):
         """
         gateset: your VirtualGateSet instance
         component_id: a unique string to namespace this editor
         """
         self.gateset = gateset
+        self.dc_set = dc_set
         self.component_id = component_id
         self.apply_button_id = f"{self.component_id}-apply-button"
         self.layout_columns = 9
@@ -28,20 +29,24 @@ class VirtualLayerAdder:
         """
         K = len(source_gates)
         M = len(target_gates)
-        col_width = 12 // (K + 1)
+        col_width = 12 // (M + 1)
 
         header = [ dbc.Col(html.B("→ / ↓"), width = col_width) ] + [
-            dbc.Col(dcc.Input(
-                id = {"type":"vg-source-column", "index":self.component_id, "col": j}, 
-                value = source_gates[j], style = {"width":"auto", "textAlign":"center"}
-            ), width = col_width) for j in range(K)
-        ]
+            dbc.Col(html.B(target_gates[j]), width=col_width) for j in range(M)
+            ]
+        
 
         rows = []
-        for i, row_name in enumerate(target_gates):
-            cells = [dbc.Col(html.B(row_name), width = col_width)] 
-            for j in range(K):
-                default_value = 1.0 if (i==j) else 0.0
+
+        for i in range(K):
+            cells = [dbc.Col(dcc.Input(
+                id={"type":"vg-source-column", "index":self.component_id, "col": i},
+                value=source_gates[i],
+                style={"width":"auto", "textAlign":"center"},
+            ), width=col_width)]
+            for j in range(M):
+                default_value = 1.0 if (i == j) else 0.0
+
                 cells.append(
                     dbc.Col(dcc.Input(
                         id = {"type":"vg-layer-cell", 
@@ -145,6 +150,13 @@ class VirtualLayerAdder:
                     matrix=mat, 
                     layer_id = layer_name,
                 )
+                if self.dc_set is not None:
+                    self.dc_set.add_layer(
+                        source_gates=source_names,
+                        target_gates=target_list,
+                        matrix=mat,
+                        layer_id=layer_name,
+                    )
                 app.logger.info(f"Added layer {source_names} -> {target_list}")
             except Exception as e:
                 app.logger.error(f"add_layer failed: {e}")

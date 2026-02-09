@@ -6,16 +6,18 @@ from qualang_tools.units.units import unit
 from qua_dashboards.video_mode.inner_loop_actions.inner_loop_action import (
     InnerLoopAction,
 )
+import numpy as np
 from qua_dashboards.utils.qua_types import QuaVariableFloat
 from quam_builder.architecture.quantum_dots.components import GateSet
 from qua_dashboards.video_mode.sweep_axis import BaseSweepAxis, VoltageSweepAxis
-
+from qua_dashboards.video_mode.inner_loop_actions.simulators import BaseSimulator
 from qm import qua
 
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple, Optional, Sequence
 
+__all__ = ["SimulatedInnerLoopAction"]
 
-class BasicInnerLoopAction(InnerLoopAction):
+class SimulatedInnerLoopAction(InnerLoopAction):
     """Inner loop action for the video mode: set voltages and measure using GateSet.
 
     Args:
@@ -32,26 +34,23 @@ class BasicInnerLoopAction(InnerLoopAction):
         gate_set: GateSet,
         x_axis: BaseSweepAxis,
         y_axis: BaseSweepAxis,
+        simulator: BaseSimulator,
         pre_measurement_delay: int = 0,
-        track_integrated_voltage: bool = True,
         use_dBm=False,
-        apply_compensation: bool = True
     ):
         super().__init__()
         self.gate_set = gate_set
         self.x_axis = x_axis
         self.y_axis = y_axis
         self.pre_measurement_delay = pre_measurement_delay
-        self.track_integrated_voltage = track_integrated_voltage
         self.use_dBm = use_dBm
-        self.voltage_sequence = None
         self.ramp_duration = 16
         self.selected_readout_channels = []
         self.readout_pulse_mapping = {}
         self.x_mode = "Voltage"
         self.y_mode = "Voltage"
-        self.apply_compensation = apply_compensation
         self.point_duration = 1000
+        self.simulator = simulator
 
     def _pulse_for(self, ch):
         if ch.name not in self.readout_pulse_mapping.keys():
@@ -74,73 +73,14 @@ class BasicInnerLoopAction(InnerLoopAction):
         pass
 
     def __call__(
-        self, x: QuaVariableFloat, y: QuaVariableFloat
-    ) -> List[QuaVariableFloat]:
-    
-        # Initial action
-        self.pre_loop_action(self)
-
-        # Apply functions
-        # For FrequencySweepAxis, applies update_frequency and returns empty dict.
-        # For VoltageSweepAxis, supplies a dict component to be fed into voltage_sequence
-        # For AmplitudeSweepAxis, calculates amplitude scale and returns the scale as a dict component {element: scale}.
-        # Add functionalities to existing BaseSweepAxis objects in their respective apply commands
-        # For new SweepAxis objects (e.g. QubitSweepAxis), simply have an apply command that returns an empty dict.
-
-        x_apply = self.x_axis.apply(x)
-        y_apply = self.y_axis.apply(y) if (self.y_axis and y is not None) else None
-
-        voltage_coordinates = {
-            **x_apply.get("voltage", {}),
-            **(y_apply.get("voltage", {}) or {}),
-        } if y_apply is not None else {**x_apply.get("voltage", {})}
-        self.voltage_sequence.ramp_to_voltages(voltage_coordinates, duration = self.point_duration, ramp_duration = self.ramp_duration)
-
-        self.loop_action(self)
-
-        amplitude_scales = {
-            **x_apply.get("amplitude_scales", {}),
-            **(y_apply.get("amplitude_scales", {}) or {}),
-        } if y_apply is not None else {**x_apply.get("amplitude_scales", {})}
-
-        qua.align()
-        readout_duration = max(
-            self._pulse_for(op).length for op in self.selected_readout_channels
-        )
-        if self.pre_measurement_delay > 0: 
-            qua.wait(self.pre_measurement_delay//4)
-        qua.align()
+        self, x: Sequence[float], y: Sequence[float]
+    ) -> None:
+        n = len(self.selected_readout_channels)
+        I, Q = self.simulator.measure_data(self.x_axis.name, self.y_axis.name, x, y, n)
         result = []
-        for channel in self.selected_readout_channels:
-            elem = channel.name
-            scale = 1
-            if elem in amplitude_scales:
-                scale = amplitude_scales.get(elem, 1)
-            I, Q = channel.measure(self._pulse_for(channel).id, amplitude_scale=scale)
-            result.extend([I, Q])
-        qua.align()
-
+        for i in range(n): 
+            result.extend([I[i], Q[i]])
         return result
-
-    def initial_action(self):
-        # Create VoltageSequence within QUA program context
-        self.voltage_sequence = self.gate_set.new_sequence(
-            track_integrated_voltage=self.track_integrated_voltage, enforce_qua_calcs=True
-        )
-        self.x_axis.declare_vars()
-        self.y_axis.declare_vars()
-
-        # Initialize all channels to zero
-        self.voltage_sequence.ramp_to_zero()
-
-    def final_action(self):
-        # Apply conditional compensation pulse
-        if self.apply_compensation: 
-            self.voltage_sequence.apply_compensation_pulse()
-
-        # Use GateSet's built-in ramp to zero, in-case it is not handled by the compensation pulse
-        self.voltage_sequence.ramp_to_zero()
-        
 
     def build_readout_controls(self, channels=None):
         """

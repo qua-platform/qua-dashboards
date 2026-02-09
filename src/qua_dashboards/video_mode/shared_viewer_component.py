@@ -36,6 +36,7 @@ class SharedViewerComponent(BaseComponent):
             self._get_default_figure()
         )  # Start with an empty dark figure
         self._last_layout_update: Optional[Dict] = None
+        self._last_layout_shapes: List[Dict] = []
         logger.info(f"SharedViewerComponent '{self.component_id}' initialized.")
 
     def _get_default_figure(self) -> go.Figure:
@@ -57,7 +58,7 @@ class SharedViewerComponent(BaseComponent):
                     id=self._get_id(self._MAIN_GRAPH_ID_SUFFIX),
                     figure=self._current_figure,
                     style={"height": "100%", "width": "100%"},
-                    config={"scrollZoom": True, "displaylogo": False},
+                    config={"scrollZoom": True, "displaylogo": False, "displayModeBar": False},
                 )
             ],
         )
@@ -196,13 +197,20 @@ class SharedViewerComponent(BaseComponent):
 
             # Apply layout updates from the dedicated store
             if isinstance(layout_updates_input, dict):
-                if layout_updates_input != self._last_layout_update:
+                if "shapes" in layout_updates_input:
+                    self._last_layout_shapes = layout_updates_input["shapes"]
+                non_shape_updates = {k: v for k, v in layout_updates_input.items() if k != "shapes"}
+                if non_shape_updates:
                     logger.debug(
                         f"SharedViewer ({self.component_id}): Applying layout updates: "
                         f"{layout_updates_input}"
                     )
-                    fig_to_display.update_layout(layout_updates_input)
-                    self._last_layout_update = layout_updates_input
+                    fig_to_display.update_layout(non_shape_updates)
+                # if layout_updates_input != self._last_layout_update:
+                #     fig_to_display.update_layout(layout_updates_input)
+                #     self._last_layout_update = layout_updates_input
+            if self._last_layout_shapes:
+                fig_to_display.update_layout(shapes=self._last_layout_shapes)
 
             # Commented out because it causes annotation points to become barely visible
             # Preserve zoom/pan state (uirevision)

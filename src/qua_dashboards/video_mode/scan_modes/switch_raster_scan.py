@@ -7,7 +7,7 @@ from qm.qua import declare, fixed, for_, for_each_
 from qualang_tools.loops import from_array
 
 
-from typing import Generator, Sequence, Tuple
+from typing import Generator, Sequence, Tuple, Callable
 
 
 class SwitchRasterScan(ScanMode):
@@ -54,13 +54,14 @@ class SwitchRasterScan(ScanMode):
         return x_idxs, y_idxs
 
     def scan(
-        self, x_vals: Sequence[float], y_vals: Sequence[float], x_mode: str = None, y_mode: str = None
+        self, x_vals: Sequence[float], y_vals: Sequence[float], x_mode: str = None, y_mode: str = None, compensation_pulse:Callable = None,
     ) -> Generator[Tuple[QuaVariableFloat, QuaVariableFloat], None, None]:
         voltages = {"x": declare(int) if x_mode == "Frequency" else declare(fixed), "y": declare(int) if y_mode == "Frequency" else declare(fixed)}
-
         with for_each_(
             voltages["y"],
             self.interleave_arr(y_vals, start_from_middle=self.start_from_middle),
         ):  # type: ignore
             with for_(*from_array(voltages["x"], x_vals)):  # type: ignore
                 yield voltages["x"], voltages["y"]
+            if compensation_pulse is not None: 
+                compensation_pulse()

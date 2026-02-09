@@ -174,9 +174,11 @@ class VirtualLayerEditor(BaseComponent):
             State(f"{self.component_id}-target-switch", "value") if self.dc_set else State(f"{self.component_id}-layer-dropdown", "value"),
             State(f"{self.component_id}-edit-both", "value") if self.dc_set else State(f"{self.component_id}-layer-dropdown", "value"),
             State({'type': 'edit-matrix-cell', 'layer': ALL, 'row': ALL, 'col': ALL}, 'value'),
+            State({'type': 'edit-matrix-cell', 'layer': ALL, 'row': ALL, 'col': ALL}, 'id'),
+            State("vg-layer-refresh-trigger", "data"),
             prevent_initial_call=True
         )
-        def apply_layer_changes(n_clicks, layer_idx, use_dc, edit_both, matrix_flat):
+        def apply_layer_changes(n_clicks, layer_idx, use_dc, edit_both, matrix_flat, cell_ids, vg_val):
             if not n_clicks:
                 raise dash.exceptions.PreventUpdate
             if self.dc_set is None:
@@ -187,15 +189,19 @@ class VirtualLayerEditor(BaseComponent):
             layer = target_set.layers[layer_idx]
             num_sources = len(layer.source_gates)
             num_targets = len(layer.target_gates)
-            M = np.reshape(np.array(matrix_flat), (num_sources, num_targets)).tolist()
+            coord_vals = {(cid["row"], cid["col"]): v for cid, v in zip(cell_ids, matrix_flat)}
+            M = [
+                [float(coord_vals.get((i, j), 0.0) or 0.0) for j in range(num_targets)]
+                for i in range(num_sources)
+            ]
             if edit_both:
                 if layer_idx < len(self.gateset.layers):
                     self.gateset.layers[layer_idx].matrix = [row[:] for row in M]
-                if layer_idx < len(self.dc_set.layers):
+                if self.dc_set is not None and layer_idx < len(self.dc_set.layers):
                     self.dc_set.layers[layer_idx].matrix = [row[:] for row in M]
             else:
                 target_set.layers[layer_idx].matrix = M
-            return "Updated!", dash.no_update if False else 1
+            return "Updated!", (vg_val or 0) + 1
         
         @app.callback(
             Output(f"{self.component_id}-layer-matrix-editor", "children", allow_duplicate=True),
@@ -228,4 +234,4 @@ class VirtualLayerEditor(BaseComponent):
             else:
                 target_set.layers[layer_idx].matrix = identity
             
-            return self._render_matrix_editor(layer_idx), (vg_val or 0) + 1
+            return self._render_matrix_editor(layer_idx, use_dc), (vg_val or 0) + 1

@@ -10,7 +10,7 @@ import numpy as np
 from qua_dashboards.utils.qua_types import QuaVariableFloat
 from quam_builder.architecture.quantum_dots.components import GateSet
 from qua_dashboards.video_mode.sweep_axis import BaseSweepAxis, VoltageSweepAxis
-
+from qua_dashboards.video_mode.inner_loop_actions.simulators import BaseSimulator
 from qm import qua
 
 from typing import Any, Dict, List, Tuple, Optional, Sequence
@@ -34,6 +34,7 @@ class SimulatedInnerLoopAction(InnerLoopAction):
         gate_set: GateSet,
         x_axis: BaseSweepAxis,
         y_axis: BaseSweepAxis,
+        simulator: BaseSimulator,
         pre_measurement_delay: int = 0,
         use_dBm=False,
     ):
@@ -49,6 +50,7 @@ class SimulatedInnerLoopAction(InnerLoopAction):
         self.x_mode = "Voltage"
         self.y_mode = "Voltage"
         self.point_duration = 1000
+        self.simulator = simulator
 
     def _pulse_for(self, ch):
         if ch.name not in self.readout_pulse_mapping.keys():
@@ -73,10 +75,11 @@ class SimulatedInnerLoopAction(InnerLoopAction):
     def __call__(
         self, x: Sequence[float], y: Sequence[float]
     ) -> None:
+        n = len(self.selected_readout_channels)
+        I, Q = self.simulator.measure_data(self.x_axis.name, self.y_axis.name, x, y, n)
         result = []
-        for channel in self.selected_readout_channels: 
-            I, Q = np.random.rand(len(x), len(y)), np.random.rand(len(x), len(y))
-            result.extend([I, Q])
+        for i in range(n): 
+            result.extend([I[i], Q[i]])
         return result
 
     def build_readout_controls(self, channels=None):

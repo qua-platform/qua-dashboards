@@ -46,7 +46,7 @@ An illustrative script can be found at [examples/data_dashboard/example_data_das
 Video Mode enables continuous, rapid 2D parameter scans with real-time visualization, which is ideal for characterizing quantum devices like spin qubits.
 It supports both simulated data for testing purposes and live data acquisition with an OPX.
 Further information is available in the [Video Mode README](./examples/video_mode/README.md).
-Example scripts include [examples/video_mode/example_video_mode_random.py(examples/video_mode/example_video_mode_random.py)] for simulation and [examples/video_mode/example_video_mode_opx.py](examples/video_mode/example_video_mode_opx.py) for OPX integration.
+Example scripts include [examples/video_mode/simulated_examples/example_video_mode_random.py](examples/video_mode/example_video_mode_random.py) for simulated random data and [examples/video_mode/example_video_mode_opx.py](examples/video_mode/example_video_mode_opx.py) for an example OPX integration.
 
 ### Voltage Control
 
@@ -59,18 +59,12 @@ Examples are provided for simulated channels ([examples/voltage_control/example_
 
 The Virtual Gates component is a GUI to add and edit virtual gating matrix layers, in conjunction with quam_builder's VirtualGateSet. 
 This is particularly useful when correcting for cross-capacitance, defining arbitrary axes along the charge stability diagram, or rotating the frame of the stability diagram. 
-An example, with an example quam machine is provided in ([examples/virtual_gating/example_virtual_gating.py](examples/virtual_gates/example_virtual_gates.py))
+An example, with an example quam machine is provided in ([examples/virtual_gates/example_virtual_gates.py](examples/virtual_gates/example_virtual_gates.py))
 
 ## Combining Components
 
 A powerful feature of `qua-dashboards` is the ability to combine different components into a single, cohesive dashboard.
-The script [examples/combined_video_mode_voltage_control.py](examples/combined_video_mode_voltage_control.py) demonstrates this by integrating the `VideoModeComponent` and `VoltageControlComponent`.
+The script [examples/example_video_mode_full.py](examples/example_video_mode_full.py) demonstrates this by integrating the `VideoModeComponent` and `VoltageControlComponent`.
 This allows for use cases such as interactively tuning DC voltage offsets for a 2D scan in Video Mode while observing the results in real-time.
 
 Please explore the individual example folders and their READMEs for comprehensive guides on how to run and customize each dashboard.
-
-## Full example with Video Mode, Virtual Gates, and Voltage Control
-
-This example script, found in [examples/full_video_mode_example_qdac.py](examples/full_video_mode_example_qdac.py) shows an example using VideoModeComponent, VirtualGatesComponent and VoltageControlComponent to give the user full control over live calibrations of their quantum dot device. This example script combines AC control of the OPX with DC control using the QDAC via `VoltageGate` channels. 
-
-

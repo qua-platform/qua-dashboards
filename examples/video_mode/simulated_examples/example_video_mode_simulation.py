@@ -73,124 +73,7 @@ from quam_builder.architecture.quantum_dots.components import (
 from quam_builder.architecture.quantum_dots.qpu import BaseQuamQD
 from qua_dashboards.virtual_gates import VirtualLayerEditor, ui_update
 from qua_dashboards.voltage_control import VoltageControlComponent
-
-
-def setup_DC_channel(
-    name: str, opx_output_port: int, qdac_port: int, con="con1", fem: int = None
-):
-    """
-    Set up a DC Channel
-
-    Args:
-        name: The channel name in your Quam.
-        opx_ouput_port: The integer output port of your OPX.
-        qdac_port: Integer Qdac output port.
-        con: QM cluster controller, defaults to "con1".
-        fem: If using an OPX1000, add integer FEM number. Defaults to None for OPX+.
-    """
-    if fem is None:
-        opx_output = OPXPlusAnalogOutputPort(
-            controller_id=con,
-            port_id=opx_output_port,
-        )
-    else:
-        opx_output = LFFEMAnalogOutputPort(
-            controller_id=con,
-            fem_id=fem,
-            port_id=opx_output_port,
-            upsampling_mode="pulse",
-        )
-
-    channel = VoltageGate(
-        id=name,
-        opx_output=opx_output,  # Output for channel
-        sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
-        attenuation = 10,
-    )
-    qdac_spec = QdacSpec(qdac_output_port = qdac_port)
-    channel.qdac_spec = qdac_spec
-    if qdac_port is None:
-        channel.offset_parameter = None
-    return channel
-
-
-def setup_readout_channel(
-    name: str,
-    readout_pulse: pulses.ReadoutPulse,
-    opx_output_port: int,
-    opx_input_port: int,
-    IF: float,
-    con="con1",
-    fem: int = None,
-):
-    """
-    Set up a Readout Channel
-
-    Args:
-        name: The channel name in your Quam.
-        readout_pulse: The Readout Pulse object to be passed to the OPXDataAcquirer.
-        opx_ouput_port: The integer output port of your OPX.
-        opx_input_port: The integer input port of your OPX.
-        IF: The intermediate frequency of your Readout channel.
-        con: QM cluster controller, defaults to "con1".
-        fem: If using an OPX1000, add integer FEM number. Defaults to None for OPX+. Assumed same FEM for output and input channels.
-    """
-
-    if fem is None:
-        opx_output = OPXPlusAnalogOutputPort(
-            controller_id=con,
-            port_id=opx_output_port,
-        )
-        opx_input = OPXPlusAnalogInputPort(
-            controller_id=con,
-            port_id=opx_input_port,
-        )
-    else:
-        opx_output = LFFEMAnalogOutputPort(
-            controller_id=con,
-            fem_id=fem,
-            port_id=opx_output_port,
-            upsampling_mode="mw",
-        )
-        opx_input = LFFEMAnalogInputPort(
-            controller_id=con,
-            fem_id=fem,
-            port_id=opx_input_port,
-        )
-
-    channel = ReadoutResonatorSingle(
-        id=name,
-        opx_output=opx_output,  # Output for the readout pulse
-        opx_input=opx_input,  # Input for acquiring the measurement signal
-        intermediate_frequency=IF,  # Set IF for the readout channel
-        operations={
-            "readout": readout_pulse
-        },  # Assign the readout pulse to this channel
-        time_of_flight=28,
-    )
-    return channel
-
-
-def define_DC_params(machine: QuamRoot, gate_names: List[str]):
-    """
-    Defines gates using QDAC and a channel mapping dict. Provide a list of channel names existing in your Quam object instance.
-
-    Currently assumes VoltageGate objects, using 'offset_parameter" attribute.
-    """
-    from qcodes.parameters import DelegateParameter
-
-    voltage_parameters = []
-    for ch_name in gate_names:
-        ch = machine.physical_channels[ch_name]
-        parameter = getattr(ch, "offset_parameter", None)
-        if parameter is not None:
-            voltage_parameters.append(
-                DelegateParameter(
-                    name=ch_name, label=ch_name, source=ch.offset_parameter
-                )
-            )
-    return voltage_parameters
-
+from qua_dashboards.utils import setup_readout_channel, setup_DC_channel, define_DC_params, connect_to_qdac
 
 def main():
     logger = setup_logging(__name__)
@@ -220,12 +103,8 @@ def main():
     # Set up the DC channels
     p1 = setup_DC_channel(name="plunger_1", opx_output_port=1, qdac_port=1, fem=fem)
     p2 = setup_DC_channel(name="plunger_2", opx_output_port=2, qdac_port=2, fem=fem)
-    p3 = setup_DC_channel(name="plunger_3", opx_output_port=3, qdac_port=3, fem=fem)
-    p4 = setup_DC_channel(name="plunger_4", opx_output_port=8, qdac_port=8, fem=fem)
     s1 = setup_DC_channel(name="sensor_1", opx_output_port=4, qdac_port=4, fem=fem)
     s2 = setup_DC_channel(name="sensor_2", opx_output_port=5, qdac_port=5, fem=fem)
-    b1 = setup_DC_channel(name="barrier_1", opx_output_port=6, qdac_port=6, fem=fem)
-    b2 = setup_DC_channel(name="barrier_2", opx_output_port=7, qdac_port=7, fem=fem)
 
     # Set up the readout channels
     sensor_readout_channel_1 = setup_readout_channel(
@@ -247,26 +126,16 @@ def main():
 
     # Adjust or add your virtual gates here. This example assumes a single virtual gating layer, add more if necessary.
     logger.info("Creating VirtualGateSet")
-    compensation_matrix = [  [1,0,0,0,0,0, 0.020406, 0.020406], 
-                            [0,1,0,0,0,0, 0.029189, 0.029189], 
-                            [0,0,1,0,0,0, 0.007986, 0.007986], 
-                            [0,0,0,1,0,0, 0.010645, 0.010645], 
-                            [0,0,0,0,1,0, 0.010643, 0.010643], 
-                            [0,0,0,0,0,1, 0.0905586, 0.0905586], 
-                            [0.020406, 0.029189, 0.007986, 0.010645, 0.010643, 0.0905586, 1.0, 0.0], 
-                            [0.020406, 0.029189, 0.007986, 0.010645, 0.010643, 0.0905586, 0.0, 1.0] ]
-
-    # compensation_matrix = np.eye(8).tolist()
+    compensation_matrix = [[     1.0,      0.0, 0.020406, 0.020406], 
+                        [     0.0,      1.0, 0.029189, 0.029189], 
+                        [0.020406, 0.029189,      1.0,      0.0], 
+                        [0.020406, 0.029189,      0.0,      1.0],]
 
     machine.create_virtual_gate_set(
         gate_set_id="main_qpu",
         virtual_channel_mapping={
             "virtual_dot_1": p1,
             "virtual_dot_2": p2,
-            "virtual_dot_3": p3,
-            "virtual_dot_4": p4,
-            "virtual_barrier_1": b1,
-            "virtual_barrier_2": b2,
             "virtual_sensor_1": s1,
             "virtual_sensor_2": s2,
         },
@@ -275,27 +144,12 @@ def main():
     )
 
     machine.register_channel_elements(
-        plunger_channels = [p1, p2, p3, p4],
-        barrier_channels = [b1, b2],
+        plunger_channels = [p1, p2],
+        barrier_channels = [],
         sensor_resonator_mappings = {
             s1: sensor_readout_channel_1, 
             s2: sensor_readout_channel_2,
         },
-    )
-
-    # Register the quantum dot pairs
-    machine.register_quantum_dot_pair(
-        id = "dot1_dot2_pair",
-        quantum_dot_ids = ["virtual_dot_1", "virtual_dot_2"], 
-        sensor_dot_ids = ["virtual_sensor_1"], 
-        barrier_gate_id = "virtual_barrier_1"
-    )
-
-    machine.register_quantum_dot_pair(
-        id = "dot3_dot4_pair",
-        quantum_dot_ids = ["virtual_dot_3", "virtual_dot_4"], 
-        sensor_dot_ids = ["virtual_sensor_1"],
-        barrier_gate_id = "virtual_barrier_2"
     )
 
     if qdac_connect:
@@ -303,50 +157,6 @@ def main():
         machine.network.update({"qdac_ip": qdac_ip})
         machine.connect_to_external_source(external_qdac=True)
         machine.create_virtual_dc_set("main_qpu")
-
-    # Update Cross Capacitance matrix values
-    # machine.update_cross_compensation_submatrix(
-    #     virtual_names=["virtual_barrier_1", "virtual_barrier_2"],
-    #     channels=[p3],
-    #     matrix=[[0.05, 0.05]],
-    #     target = "both"
-    # )
-
-    # machine.update_cross_compensation_submatrix(
-    #     virtual_names=["virtual_dot_1", "virtual_dot_2", "virtual_dot_3"],
-    #     channels=[p1, p2, p3],
-    #     matrix=[
-    #         [1, 0.1, 0.0],
-    #         [0.1, 1, 0.1],
-    #         [0.0, 0.1, 1],
-    #     ],
-    #     target = "both"
-    # )
-
-    # machine.update_cross_compensation_submatrix(
-    #     virtual_names=["virtual_dot_1", "virtual_dot_2", "virtual_dot_3"],
-    #     channels=[b1, b2, s1, s2],
-    #     matrix=[
-    #         [0.08, 0.04, 0.00 ],
-    #         [0.00 , 0.04, 0.08 ],
-    #         [-0.4 , -0.4, -0.4],
-    #         [-0.5 , -0.4, -0.4],
-    #     ],
-    #     target = "both"
-    # )
-
-    # Define the detuning axes for both QuantumDotPairs
-    # machine.quantum_dot_pairs["dot1_dot2_pair"].define_detuning_axis(
-    #     matrix = [[1,-1]], 
-    #     detuning_axis_name = "dot1_dot2_pair_epsilon",
-    #     set_dc_virtual_axis = qdac_connect
-    # )
-
-    # machine.quantum_dot_pairs["dot3_dot4_pair"].define_detuning_axis(
-    #     matrix = [[1,-1]], 
-    #     detuning_axis_name = "dot3_dot4_pair_epsilon",
-    #     set_dc_virtual_axis = qdac_connect
-    # )
 
     scan_mode_dict = {
         "Switch_Raster_Scan": scan_modes.SwitchRasterScan(),
@@ -374,32 +184,22 @@ def main():
             voltage_control_component=voltage_control_component
         )
 
-
-
-    from qarray import ChargeSensedDotArray, WhiteNoise, TelegraphNoise, LatchingModel
+    from qarray import ChargeSensedDotArray
     Cdd = [
-        [0.12, 0.08, 0.00, 0.00, 0.00, 0.00],
-        [0.08, 0.13, 0.08, 0.00, 0.00, 0.00],
-        [0.00, 0.08, 0.12, 0.08, 0.00, 0.00],
-        [0.00, 0.00, 0.08, 0.12, 0.08, 0.00],
-        [0.00, 0.00, 0.00, 0.08, 0.12, 0.08],
-        [0.00, 0.00, 0.00, 0.00, 0.08, 0.11],
+        [0.12, 0.08],
+        [0.08, 0.13],
     ]
     Cgd = [
-        [0.13, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00],
-        [0.00, 0.11, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00],
-        [0.00, 0.00, 0.09, 0.00, 0.00, 0.00, 0.00, 0.00],
-        [0.00, 0.00, 0.00, 0.13, 0.00, 0.00, 0.00, 0.00],
-        [0.00, 0.00, 0.00, 0.00, 0.13, 0.00, 0.00, 0.00],
-        [0.00, 0.00, 0.00, 0.00, 0.00, 0.10, 0.00, 0.00],
+        [0.13, 0.00, 0.00, 0.00],
+        [0.00, 0.11, 0.00, 0.00],
     ]
     Cds = [
-        [0.002, 0.002, 0.002, 0.002, 0.002, 0.002],
-        [0.002, 0.002, 0.002, 0.002, 0.002, 0.002],
+        [0.002, 0.002],
+        [0.002, 0.002],
     ]
     Cgs = [
-        [0.001, 0.002, 0.000, 0.000, 0.000, 0.000, 0.100, 0.000],
-        [0.001, 0.002, 0.000, 0.000, 0.000, 0.000, 0.000, 0.100],
+        [0.001, 0.002, 0.100, 0.000],
+        [0.001, 0.002, 0.000, 0.100],
     ]
     model = ChargeSensedDotArray(
         Cdd=Cdd,
@@ -410,10 +210,6 @@ def main():
         T=50.0,
         algorithm="default",
         implementation="jax",
-        # noise_model=WhiteNoise(amplitude=1.0e-5) + TelegraphNoise(
-        #     amplitude=5e-4, p01=5e-3, p10=5e-3
-        # ),
-        # latching_model=LatchingModel(n_dots=6, p_leads=0.95, p_inter=0.005),
     )
     from qua_dashboards.video_mode.inner_loop_actions.simulators import QarraySimulator
 
@@ -424,6 +220,8 @@ def main():
         "virtual_sensor_1": sensor_plunger_bias_mv[0],
         "virtual_sensor_2": sensor_plunger_bias_mv[1],
     }
+    if qdac_connect: 
+        machine.virtual_dc_sets["main_qpu"].set_voltages(base_point)
 
     simulator = QarraySimulator(
         gate_set = machine.virtual_gate_sets["main_qpu"], 

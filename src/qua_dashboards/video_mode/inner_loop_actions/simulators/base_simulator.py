@@ -17,13 +17,23 @@ class BaseSimulator(ABC):
         self.gate_set = gate_set
 
     @abstractmethod
-    def measure_data(self, x_vals: Sequence[float], y_vals: Sequence[float]): 
+    def measure_data(        
+        self,
+        x_axis_name: str,
+        y_axis_name: str,
+        x_vals: Sequence[float],
+        y_vals: Sequence[float],
+        n_readout_channels: int,
+        ): 
         """
         The measure function. By default takes the x and y sweeps, and returns a 2D map of simulated data.
         
         Args: 
+            x_axis_name: The name of the x axis element
+            y_axis_name: The name of the y axis element
             x_vals: The x-axis sweep values
             y_vals: The y-axis sweep values
+            n_readout_channels: The number of readout channels 
 
         Returns: 
             I and Q 2D plots, both of dimensions (len(x_vals), len(y_vals))

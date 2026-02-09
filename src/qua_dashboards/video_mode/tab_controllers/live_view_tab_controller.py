@@ -325,6 +325,16 @@ class LiveViewTabController(BaseTabController):
             if voltages_to_set: 
                 dc_set.set_voltages(voltages_to_set)
                 
+            if voltages_to_set: 
+                # DEBUG — print before/after
+                before = {n: dc_set.get_voltage(n) for n in voltages_to_set}
+                print(f"CLICK: coords=({x_val}, {y_val})")
+                print(f"CLICK: before={before}")
+                dc_set.set_voltages(voltages_to_set)
+                after = {n: dc_set.get_voltage(n) for n in voltages_to_set}
+                print(f"CLICK: after={after}")
+                print(f"CLICK: sweep_x_center={da.x_axis.sweep_values_with_offset[len(da.x_axis.sweep_values_with_offset)//2]}")
+                print(f"CLICK: sweep_y_center={da.y_axis.sweep_values_with_offset[len(da.y_axis.sweep_values_with_offset)//2]}")
             return ""
             
     def _register_gridlines_callback(

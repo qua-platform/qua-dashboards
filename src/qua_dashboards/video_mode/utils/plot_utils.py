@@ -282,7 +282,7 @@ def build_live_figure(data_object: dict) -> go.Figure:
         base = data_object.get("base_image_data")
         if base is None:
             base = data_object.get("data")
-    return figure_from_data(base)
+    return figure_from_data(base).update_layout(clickmode="event+select")
 
 def build_static_figure(static_obj: dict, ui_state: dict | None) -> go.Figure:
     """

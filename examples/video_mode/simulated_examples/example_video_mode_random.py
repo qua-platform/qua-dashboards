@@ -45,13 +45,9 @@ if you only intend to run the live dashboard.
 from qm import QuantumMachinesManager
 from quam.components import (
     BasicQuam,
-    InOutSingleChannel,
     pulses,
-    StickyChannelAddon,
 )
-from quam.core import QuamRoot
-from quam.components.ports import LFFEMAnalogOutputPort, LFFEMAnalogInputPort, OPXPlusAnalogOutputPort, OPXPlusAnalogInputPort
-from typing import List, Optional
+
 from qua_dashboards.core import build_dashboard
 from qua_dashboards.utils import setup_logging
 from qua_dashboards.video_mode import (
@@ -59,119 +55,11 @@ from qua_dashboards.video_mode import (
     scan_modes,
     VideoModeComponent,
 )
-from quam_builder.architecture.quantum_dots.components import VoltageGate
 from quam_builder.architecture.quantum_dots.components import VirtualGateSet
 from quam_builder.architecture.quantum_dots.components import VirtualDCSet
 from qua_dashboards.virtual_gates import VirtualLayerEditor, ui_update
 from qua_dashboards.voltage_control import VoltageControlComponent
-
-
-
-def connect_to_qdac(address): 
-    from qcodes_contrib_drivers.drivers.QDevil import QDAC2
-    qdac = QDAC2.QDac2('QDAC', visalib='@py', address=f'TCPIP::{address}::5025::SOCKET')
-    return qdac
-
-def setup_DC_channel(machine: QuamRoot, name: str, opx_output_port: int, qdac_port: int, qdac = None, con = "con1", fem: int = None): 
-    """
-    Set up a DC Channel 
-
-    Args: 
-        machine: Your Quam machine instance.
-        name: The channel name in your Quam.
-        opx_ouput_port: The integer output port of your OPX.
-        qdac_port: Integer Qdac output port.
-        qdac: your QCodes Qdac instance. Replace with external source object (with its typing) if desired.
-        con: QM cluster controller, defaults to "con1". 
-        fem: If using an OPX1000, add integer FEM number. Defaults to None for OPX+. 
-    """
-    if fem is None:
-        opx_output = OPXPlusAnalogOutputPort(
-            controller_id=con,
-            port_id=opx_output_port,
-        )
-    else:
-        opx_output = LFFEMAnalogOutputPort(
-            controller_id=con,
-            fem_id=fem,
-            port_id=opx_output_port,
-            upsampling_mode="pulse",
-        )
-
-    machine.channels[name] = VoltageGate(
-        opx_output = opx_output, # Output for channel
-        sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
-        operations={"half_max_square": pulses.SquarePulse(amplitude=0.25, length=1000)}, # This operation is necessary - although OPXDataAcquirer ensures this too
-    )
-    if qdac is not None:
-        machine.channels[name].offset_parameter = qdac.channel(qdac_port).dc_constant_V
-    else: 
-        machine.channels[name].offset_parameter = None
-    return machine.channels[name].get_reference()
-
-
-def setup_readout_channel(machine: QuamRoot, name: str, readout_pulse: pulses.ReadoutPulse, opx_output_port: int, opx_input_port: int, IF: float, con = "con1", fem: int = None):
-    """
-    Set up a Readout Channel 
-
-    Args: 
-        machine: Your Quam machine instance.
-        name: The channel name in your Quam.
-        readout_pulse: The Readout Pulse object to be passed to the OPXDataAcquirer.
-        opx_ouput_port: The integer output port of your OPX.
-        opx_input_port: The integer input port of your OPX.
-        IF: The intermediate frequency of your Readout channel.
-        con: QM cluster controller, defaults to "con1". 
-        fem: If using an OPX1000, add integer FEM number. Defaults to None for OPX+. Assumed same FEM for output and input channels.
-    """
-    
-    if fem is None:
-        opx_output = OPXPlusAnalogOutputPort(
-            controller_id=con,
-            port_id=opx_output_port,
-        )
-        opx_input = OPXPlusAnalogInputPort(
-            controller_id=con,
-            port_id=opx_input_port,
-        )
-    else:
-        opx_output = LFFEMAnalogOutputPort(
-            controller_id=con,
-            fem_id=fem,
-            port_id=opx_output_port,
-            upsampling_mode="mw",
-        )
-        opx_input = LFFEMAnalogInputPort(
-            controller_id=con,
-            fem_id=fem,
-            port_id=opx_input_port,
-        )
-    
-    machine.channels[name] = InOutSingleChannel(
-        opx_output=opx_output,  # Output for the readout pulse
-        opx_input=opx_input,  # Input for acquiring the measurement signal
-        intermediate_frequency=IF,  # Set IF for the readout channel
-        operations={"readout": readout_pulse},  # Assign the readout pulse to this channel
-        time_of_flight = 28
-    )
-    return machine.channels[name].get_reference()
-
-def define_DC_params(machine: QuamRoot, gate_names: List[str]):
-    """
-    Defines gates using QDAC and a channel mapping dict. Provide a list of channel names existing in your Quam object instance.
-
-    Currently assumes VoltageGate objects, using 'offset_parameter" attribute.
-    """
-    from qcodes.parameters import DelegateParameter
-    voltage_parameters = []
-    for ch_name in gate_names:
-        ch = machine.channels[ch_name]
-        parameter = getattr(ch, "offset_parameter", None)
-        if parameter is not None: 
-            voltage_parameters.append(DelegateParameter(
-                name = ch_name, label = ch_name, source = ch.offset_parameter
-            ))
-    return voltage_parameters
+from qua_dashboards.utils import setup_DC_channel, setup_readout_channel, connect_to_qdac
 
 def main():
     logger = setup_logging(__name__)
@@ -193,20 +81,23 @@ def main():
     fem = 5
 
     # Set up the readout channels
-    setup_readout_channel(machine, name = "ch1_readout", readout_pulse=readout_pulse_ch1, opx_output_port = 6, opx_input_port = 1, IF = 150e6, fem = fem)
-    setup_readout_channel(machine, name = "ch2_readout", readout_pulse=readout_pulse_ch2, opx_output_port = 6, opx_input_port = 1, IF = 250e6, fem = fem)
+    machine.channels["ch1_readout"] = setup_readout_channel(name = "ch1_readout", readout_pulse=readout_pulse_ch1, opx_output_port = 6, opx_input_port = 1, IF = 150e6, fem = fem)
+    machine.channels["ch2_readout"] = setup_readout_channel(name = "ch2_readout", readout_pulse=readout_pulse_ch2, opx_output_port = 6, opx_input_port = 1, IF = 250e6, fem = fem)
 
     channel_mapping = {
-        "ch1": setup_DC_channel(machine, name = "ch1", opx_output_port = 1, qdac_port = 1, qdac = qdac, fem = fem), 
-        "ch2": setup_DC_channel(machine, name = "ch2", opx_output_port = 2, qdac_port = 2, qdac = qdac, fem = fem), 
-        "ch3": setup_DC_channel(machine, name = "ch3", opx_output_port = 3, qdac_port = 3, qdac = qdac, fem = fem), 
-        "ch1_readout_DC": setup_DC_channel(machine, name = "ch1_readout_DC", opx_output_port = 4, qdac_port = 3, qdac = qdac, fem = fem), 
-        "ch2_readout_DC": setup_DC_channel(machine, name = "ch2_readout_DC", opx_output_port = 5, qdac_port = 3, qdac = qdac, fem = fem), 
+        "ch1": setup_DC_channel(name = "ch1", opx_output_port = 1, qdac_port = 1, fem = fem), 
+        "ch2": setup_DC_channel(name = "ch2", opx_output_port = 2, qdac_port = 2, fem = fem), 
+        "ch3": setup_DC_channel(name = "ch3", opx_output_port = 3, qdac_port = 3, fem = fem), 
+        "ch1_readout_DC": setup_DC_channel(name = "ch1_readout_DC", opx_output_port = 4, qdac_port = 3, fem = fem), 
+        "ch2_readout_DC": setup_DC_channel(name = "ch2_readout_DC", opx_output_port = 5, qdac_port = 3, fem = fem), 
     }
+
+    for ch_name, ch in channel_mapping.items(): 
+        machine.channels[ch_name] = ch
 
     # Adjust or add your virtual gates here. This example assumes a single virtual gating layer, add more if necessary. 
     logger.info("Creating VirtualGateSet")
-    virtual_gate_set = VirtualGateSet(id = "Plungers", channels = channel_mapping)
+    virtual_gate_set = VirtualGateSet(id = "Plungers", channels = {ch_name: ch.get_reference() for ch_name, ch in channel_mapping.items()})
 
     virtual_gate_set.add_layer(
         source_gates = ["V1", "V2"], # Pick the virtual gate names here 
@@ -220,13 +111,14 @@ def main():
         "Spiral_Scan": scan_modes.SpiralScan(),
     }
 
-
     # Set up the DC controller
     voltage_control_tab, voltage_control_component, dc_gate_set = None, None, None
     if qdac is not None: 
+        for ch_name, ch in channel_mapping.items(): 
+            ch.offset_parameter = qdac.channel(ch.qdac_spec.qdac_output_port).dc_constant_V
         dc_gate_set = VirtualDCSet(
             id = "Plungers", 
-            channels = channel_mapping
+            channels = {ch_name: ch.get_reference() for ch_name, ch in channel_mapping.items()}
         )
         dc_gate_set.add_layer(
             source_gates = ["V1", "V2"], 
@@ -281,7 +173,7 @@ def main():
     ui_update(app, video_mode_component, voltage_control_component)
 
     logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
-    app.run(debug=True, host="0.0.0.0", port=8040, use_reloader=False)
+    app.run(debug=True, host="0.0.0.0", port=8050, use_reloader=False)
 
 
 if __name__ == "__main__":

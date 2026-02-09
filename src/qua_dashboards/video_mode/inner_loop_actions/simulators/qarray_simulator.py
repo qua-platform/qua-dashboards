@@ -74,12 +74,15 @@ class QarraySimulator(BaseSimulator):
 
     def get_physical_grid(self, x_axis_name, y_axis_name, x_vals, y_vals):
         """Vectorized version - much faster for large grids."""
-        base = dict(
-            self.dc_set._current_levels
-            if self.dc_set is not None
-            else zip(self.qarray_gate_order, np.zeros(len(self.qarray_gate_order)))
-        )
-        base.update(self.base_point)
+        # base = dict(
+        #     self.dc_set._current_levels
+        #     if self.dc_set is not None
+        #     else zip(self.qarray_gate_order, np.zeros(len(self.qarray_gate_order)))
+        # )
+        if self.dc_set is not None:
+            base = dict(self.dc_set._current_levels)
+        else:
+            base = dict(self.base_point)
         
         print(base)
         print(self.qarray_gate_order)
@@ -89,7 +92,7 @@ class QarraySimulator(BaseSimulator):
         x_vals = x_vals - x_vals[len(x_vals)//2]
         y_vals = y_vals - y_vals[len(y_vals)//2]
         
-        base_phys = self.gate_set.resolve_voltages(base, allow_extra_entries=True)
+        base_phys = {name: base.get(name, 0.0) for name in self.qarray_gate_order}
         
         delta_x = self.gate_set.resolve_voltages(
             {**{k: 0.0 for k in base}, x_axis_name: 1.0}, 

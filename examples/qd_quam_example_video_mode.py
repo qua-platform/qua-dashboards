@@ -1,24 +1,26 @@
 """
-Example Script: Video Mode with OPX with Virtual Gating
+Example Script: Video Mode with OPX with Virtual Gating using BaseQuamQD
 
-This script demonstrates how to use the VideoModeComponent with an OPXDataAcquirer
-to perform live 2D scans on a quantum device. It sets up a QUA program to sweep
-two DC voltage channels and measure a readout signal, displaying the results in a
-real-time dashboard.
+BaseQuamQD is a Quam infrastructure provided by Quantum Machines to aid in the calibration
+of quantum dot devices. This script demonstrates how to use this infrastructure to create an
+instance of video mode with the correct parameters, to perform live 2D scans on a quantum dot 
+device. 
 
 Quick How-to-Use:
 1.  **Configure Hardware**:
-    * Update `qmm = QuantumMachinesManager(...)` with your OPX host and cluster_name.
-    * Currently, a BasicQuam() machine is defined.
-        Modify the `machine = BasicQuam()` section to define the QUA elements.
+    * Update the `host_ip` and `cluster_name` with your OPX IP and cluster name. 
+    * Currently, this example defines an entirely new BaseQuamQD and populates it. If you 
+    already have a quam_state you intend to use, then simply load that Quam state. 
+        Modify the `machine = BaseQuamQD()` section to define the QUA elements.
         (channels, pulses) that match your experimental setup.
-        Ensure `ch1`, `ch2` etc (for sweeping) and `ch1_readout` (or your measurement
+        Ensure `plunger_1`, `plunger_2` etc (for sweeping) and `sensor_1` (or your measurement
         channel) are correctly defined.
 2.  **Add/Adjust your virtual gates**:
-    * This script assumes a single layer of virtual gates. Adjust and add virtual gates
-        as necessary.
-    * Be sure to adjust the virtual gating matrices to suit your experimental needs.
-        This can be adjusted via the UI.
+    * This script adds two virtualization layers. The first is the cross-compensation layer, which 
+    includes all the channels in your machine. The goal of this layer is to create an orthogonalized 
+    voltage space for the device components (quantum dots, barrier gates, sensor dots). The matrix
+    can be updated sub-matrix-wise using the command `update_cross_compensation_submatrix()`.
+    * An optional second layer is defined as the detuning axes of the QuantumDot components. 
 3.  **Configure the DC Control**
     * Adjust the VoltageControlComponent to suit your experiment
     * Ensure that each Quam channel is mapped to the correct output in the VoltageControlComponent.
@@ -44,18 +46,8 @@ if you only intend to run the live dashboard.
 # %% Imports
 from qm import QuantumMachinesManager
 from quam.components import (
-    InOutSingleChannel,
     pulses,
-    StickyChannelAddon,
 )
-from quam.components.ports import (
-    LFFEMAnalogOutputPort,
-    LFFEMAnalogInputPort,
-    OPXPlusAnalogOutputPort,
-    OPXPlusAnalogInputPort,
-)
-from quam.core import QuamRoot
-from typing import List, Optional
 from qua_dashboards.core import build_dashboard
 from qua_dashboards.utils import setup_logging
 from qua_dashboards.video_mode import (
@@ -63,136 +55,20 @@ from qua_dashboards.video_mode import (
     scan_modes,
     VideoModeComponent,
 )
-from quam_builder.architecture.quantum_dots.components import (
-    VoltageGate,
-    VirtualGateSet,
-    ReadoutResonatorSingle,
-    QdacSpec,
-)
 from quam_builder.architecture.quantum_dots.qpu import BaseQuamQD
 from qua_dashboards.virtual_gates import VirtualLayerEditor, ui_update
 from qua_dashboards.voltage_control import VoltageControlComponent
-
-
-def setup_DC_channel(
-    name: str, opx_output_port: int, qdac_port: int, con="con1", fem: int = None
-):
-    """
-    Set up a DC Channel
-
-    Args:
-        name: The channel name in your Quam.
-        opx_ouput_port: The integer output port of your OPX.
-        qdac_port: Integer Qdac output port.
-        con: QM cluster controller, defaults to "con1".
-        fem: If using an OPX1000, add integer FEM number. Defaults to None for OPX+.
-    """
-    if fem is None:
-        opx_output = OPXPlusAnalogOutputPort(
-            controller_id=con,
-            port_id=opx_output_port,
-        )
-    else:
-        opx_output = LFFEMAnalogOutputPort(
-            controller_id=con,
-            fem_id=fem,
-            port_id=opx_output_port,
-            upsampling_mode="pulse",
-        )
-
-    channel = VoltageGate(
-        id=name,
-        opx_output=opx_output,  # Output for channel
-        sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
-        attenuation = 10,
-    )
-    qdac_spec = QdacSpec(qdac_output_port = qdac_port)
-    channel.qdac_spec = qdac_spec
-    if qdac_port is None:
-        channel.offset_parameter = None
-    return channel
-
-
-def setup_readout_channel(
-    name: str,
-    readout_pulse: pulses.ReadoutPulse,
-    opx_output_port: int,
-    opx_input_port: int,
-    IF: float,
-    con="con1",
-    fem: int = None,
-):
-    """
-    Set up a Readout Channel
-
-    Args:
-        name: The channel name in your Quam.
-        readout_pulse: The Readout Pulse object to be passed to the OPXDataAcquirer.
-        opx_ouput_port: The integer output port of your OPX.
-        opx_input_port: The integer input port of your OPX.
-        IF: The intermediate frequency of your Readout channel.
-        con: QM cluster controller, defaults to "con1".
-        fem: If using an OPX1000, add integer FEM number. Defaults to None for OPX+. Assumed same FEM for output and input channels.
-    """
-
-    if fem is None:
-        opx_output = OPXPlusAnalogOutputPort(
-            controller_id=con,
-            port_id=opx_output_port,
-        )
-        opx_input = OPXPlusAnalogInputPort(
-            controller_id=con,
-            port_id=opx_input_port,
-        )
-    else:
-        opx_output = LFFEMAnalogOutputPort(
-            controller_id=con,
-            fem_id=fem,
-            port_id=opx_output_port,
-            upsampling_mode="mw",
-        )
-        opx_input = LFFEMAnalogInputPort(
-            controller_id=con,
-            fem_id=fem,
-            port_id=opx_input_port,
-        )
-
-    channel = ReadoutResonatorSingle(
-        id=name,
-        opx_output=opx_output,  # Output for the readout pulse
-        opx_input=opx_input,  # Input for acquiring the measurement signal
-        intermediate_frequency=IF,  # Set IF for the readout channel
-        operations={
-            "readout": readout_pulse
-        },  # Assign the readout pulse to this channel
-        time_of_flight=28,
-    )
-    return channel
-
-
-def define_DC_params(machine: QuamRoot, gate_names: List[str]):
-    """
-    Defines gates using QDAC and a channel mapping dict. Provide a list of channel names existing in your Quam object instance.
-
-    Currently assumes VoltageGate objects, using 'offset_parameter" attribute.
-    """
-    from qcodes.parameters import DelegateParameter
-
-    voltage_parameters = []
-    for ch_name in gate_names:
-        ch = machine.physical_channels[ch_name]
-        parameter = getattr(ch, "offset_parameter", None)
-        if parameter is not None:
-            voltage_parameters.append(
-                DelegateParameter(
-                    name=ch_name, label=ch_name, source=ch.offset_parameter
-                )
-            )
-    return voltage_parameters
-
+from qua_dashboards.utils import setup_DC_channel, setup_readout_channel
 
 def main():
     logger = setup_logging(__name__)
+
+    ###########################################################################
+    ############ CREATE QUAM MACHINE (SKIP IF EXISTING QUAM STATE) ############
+    ###########################################################################
+
+    # ### If Quam state exists, instead simply load it below: 
+    # machine = BaseQuamQD.load()
 
     # Adjust the IP and cluster name here
     qm_ip = "172.16.33.115"
@@ -264,7 +140,7 @@ def main():
     machine.register_channel_elements(
         plunger_channels = [p1, p2, p3, p4],
         barrier_channels = [b1, b2],
-        sensor_readout_mappings = {
+        sensor_resonator_mappings = {
             s1: sensor_readout_channel_1, 
             s2: sensor_readout_channel_2,
         },
@@ -333,6 +209,10 @@ def main():
         detuning_axis_name = "dot3_dot4_pair_epsilon"
     )
 
+    ################################################
+    ############ INSTANTIATE VIDEO MODE ############
+    ################################################
+
     scan_mode_dict = {
         "Switch_Raster_Scan": scan_modes.SwitchRasterScan(),
         "Raster_Scan": scan_modes.RasterScan(),
@@ -343,6 +223,7 @@ def main():
         gateset=machine.virtual_gate_sets["main_qpu"], component_id="virtual-gates-ui", dc_set = machine.virtual_dc_sets["main_qpu"]
     )
 
+    # External Voltage Control Component, if qdac_connect = True
     voltage_control_tab, voltage_control_component = None, None
     if qdac_connect:
         voltage_control_component = VoltageControlComponent(

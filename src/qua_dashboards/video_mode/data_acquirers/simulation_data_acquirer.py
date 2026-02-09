@@ -8,11 +8,12 @@ import numpy as np
 from qua_dashboards.video_mode.data_acquirers.base_gate_set_data_acquirer import BaseGateSetDataAcquirer
 from qua_dashboards.voltage_control.voltage_control_component import VoltageControlComponent
 from qua_dashboards.video_mode.inner_loop_actions import InnerLoopAction, SimulatedInnerLoopAction
-
+from qua_dashboards.video_mode.inner_loop_actions.simulators import BaseSimulator
+from qua_dashboards.core import ModifiedFlags
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["SimulationDataAcquirer"]
+__all__ = ["SimulationDataAcquirer", "SimulationDataAcquirerOPXOutput"]
 
 
 class SimulationDataAcquirer(BaseGateSetDataAcquirer):
@@ -25,11 +26,12 @@ class SimulationDataAcquirer(BaseGateSetDataAcquirer):
     def __init__(
         self,
         machine,
+        simulator: BaseSimulator,
         acquire_time: float = 0.1,
         *,
         inner_loop_action: Optional[InnerLoopAction] = None,
-        inner_loop_action_cls: Optional[Type[InnerLoopAction]] = None,
-        inner_loop_action_kwargs: Optional[Dict[str, Any]] = None,
+        # inner_loop_action_cls: Optional[Type[InnerLoopAction]] = None,
+        # inner_loop_action_kwargs: Optional[Dict[str, Any]] = None,
         voltage_control_component: Optional[VoltageControlComponent] = None,
         **kwargs: Any,
 
@@ -46,6 +48,7 @@ class SimulationDataAcquirer(BaseGateSetDataAcquirer):
                 num_software_averages and acquisition_interval_s for
                 BaseDataAcquirer.
         """
+        self.voltage_control_component = voltage_control_component
         super().__init__(
             **kwargs,
         )
@@ -55,18 +58,14 @@ class SimulationDataAcquirer(BaseGateSetDataAcquirer):
             f"Initializing SimulationDataAcquirer (ID: {self.component_id}) with "
             f"acquire_time: {self.acquire_time}s"
         )
-        self.voltage_control_component = voltage_control_component
+        
 
         if inner_loop_action is None:
-            if inner_loop_action_cls is None:
-                inner_loop_action_cls = SimulatedInnerLoopAction
-            if inner_loop_action_kwargs is None:
-                inner_loop_action_kwargs = {}
-            inner_loop_action = inner_loop_action_cls(
+            inner_loop_action = SimulatedInnerLoopAction(
                 gate_set=self.gate_set,
                 x_axis=self.x_axis,
                 y_axis=self.y_axis,
-                **inner_loop_action_kwargs,
+                simulator = simulator
             )
         self.inner_loop_action = inner_loop_action
         self._configure_readout()
@@ -85,14 +84,11 @@ class SimulationDataAcquirer(BaseGateSetDataAcquirer):
             self._first_acquisition = False
         else:
             sleep(self.acquire_time)
-        logger.debug(
-            f"RandomDataAcquirer (ID: {self.component_id}): "
-            f"Generating random data for {self.y_axis.points}x{self.x_axis.points}"
-        )
+
         # Ensure y_axis.points and x_axis.points are positive integers
         if self.y_axis.points <= 0 or self.x_axis.points <= 0:
             logger.warning(
-                f"RandomDataAcquirer (ID: {self.component_id}): Invalid points "
+                f"{self.component_id} (ID: {self.component_id}): Invalid points "
                 f"({self.y_axis.points}x{self.x_axis.points}). Returning empty array."
             )
             return np.array([[]])  # Return a 2D empty array to avoid downstream errors
@@ -224,3 +220,91 @@ class SimulationDataAcquirer(BaseGateSetDataAcquirer):
                 output_layers.append(layer)
 
             return np.stack(output_layers, axis=0)
+
+
+from .opx_data_acquirer import OPXDataAcquirer
+class SimulationDataAcquirerOPXOutput(OPXDataAcquirer):
+    def __init__(self, simulator, *args, **kwargs): 
+        super().__init__(*args, **kwargs)
+        self.simulator = simulator
+        self._first_acquisition = True 
+        self.acquire_time = 10e-3
+    
+    def perform_actual_acquisition(self) -> np.ndarray:
+        """Simulates data acquisition by sleeping and returning random data.
+
+        This method is called by the background thread in BaseDataAcquirer.
+
+        Returns:
+            A 2D numpy array of random float values between 0 and 1, with
+            dimensions (y_axis.points, x_axis.points).
+        """
+        if self._acquisition_status == "stopped":
+            return np.full((self.y_axis.points, self.x_axis.points), np.nan)
+        cur = (int(self.x_axis.points), 1 if self._is_1d else int(self.y_axis.points), self._is_1d)
+        if self._compiled_xy is not None and cur != self._compiled_xy:
+            logger.info(f"Scan shape changed {self._compiled_xy} -> {cur}. Forcing recompile.")
+            self._halt_acquisition()
+            self._compiled_stream_vars = None
+            self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
+        if self._compiled_stream_vars is not None:
+            if len(self.selected_readout_channels) <= 1:
+                expected_vars = self.stream_vars_default.copy()
+            else:
+                expected_vars = []
+                for channel in self.selected_readout_channels:
+                    expected_vars.extend([f"I:{channel.name}", f"Q:{channel.name}"])
+            if self._compiled_stream_vars != expected_vars:
+                logger.warning(f"Stream vars mismatch! Compiled: {self._compiled_stream_vars}, Expected: {expected_vars}. Regenerating program.")
+                self._halt_acquisition()
+                self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
+        if self._compilation_flags & ModifiedFlags.CONFIG_MODIFIED:
+            logger.info(f"Config regeneration triggered for {self.component_id}.")
+            self._regenerate_config_and_reopen_qm()
+            self._compilation_flags = ModifiedFlags.NONE
+        elif self._compilation_flags & ModifiedFlags.PROGRAM_MODIFIED:
+            self._halt_acquisition()
+            self.execute_program()
+            self._compilation_flags = ModifiedFlags.NONE
+
+        if self.qm_job is None or self.qm_job.status != "running":
+            if self._acquisition_status != "stopped":
+                logger.warning(
+                    f"QM job for {self.component_id} is not running or None. Attempting to re-initialize."
+                )
+                self.initialize_qm()
+                self.execute_program()
+                if self.qm_job is None:
+                    raise RuntimeError(
+                        f"Failed to initialize QM job for {self.component_id}."
+                    )
+            else:
+                return np.full((self.y_axis.points, self.x_axis.points), np.nan)
+
+
+        if self._first_acquisition:
+            self._first_acquisition = False
+        else:
+            sleep(self.acquire_time)
+        logger.debug(
+            f"RandomDataAcquirer (ID: {self.component_id}): "
+            f"Generating random data for {self.y_axis.points}x{self.x_axis.points}"
+        )
+        # Ensure y_axis.points and x_axis.points are positive integers
+        if self.y_axis.points <= 0 or self.x_axis.points <= 0:
+            logger.warning(
+                f"RandomDataAcquirer (ID: {self.component_id}): Invalid points "
+                f"({self.y_axis.points}x{self.x_axis.points}). Returning empty array."
+            )
+            return np.array([[]])  # Return a 2D empty array to avoid downstream errors
+        
+        num_readouts = len(self.selected_readout_channels)
+
+        x_axis_vals = self.x_axis.sweep_values_with_offset
+        y_axis_vals = self.y_axis.sweep_values_with_offset
+
+        I, Q = self.simulator.measure_data(self.x_axis.name, self.y_axis.name, x_axis_vals, y_axis_vals, num_readouts)
+        result = []
+        for i in range(num_readouts): 
+            result.extend([I[i], Q[i]])
+        return self._process_fetched_results(result)

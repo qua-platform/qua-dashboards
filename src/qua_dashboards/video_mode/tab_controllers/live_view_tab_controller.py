@@ -332,7 +332,7 @@ class LiveViewTabController(BaseTabController):
 
             if voltages_to_set: 
                 dc_set.set_voltages(voltages_to_set)
-                
+
             return ""
             
     def _register_gridlines_callback(

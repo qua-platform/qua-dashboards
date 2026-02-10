@@ -26,3 +26,6 @@ class LineScan(ScanMode):
         qx = declare(int) if x_mode == "Frequency" else declare(fixed)
         with for_each_((qx), (x_list)):
             yield qx, None
+
+        if compensation_pulse is not None: 
+            compensation_pulse()

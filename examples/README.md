@@ -1,27 +1,30 @@
 # Examples
 
-This document summarizes the main examples included in this folder, and how they differ. 
+Quick guide to every example shipped in this repo. Use the "When to use" blurb to pick the closest starting point; each bullet links to the script.
 
-## Main examples
+## Full dashboards (top-level)
+- [`example_video_mode_full.py`](example_video_mode_full.py) – End-to-end OPX video-mode dashboard with optional QDAC DC control, virtual gates, and live plotting. When to use: you want the complete stack (VideoModeComponent + VirtualLayerEditor + VoltageControl) running on lab hardware.
+- [`hybrid_opx_qdac_example.py`](hybrid_opx_qdac_example.py) – Hybrid sweeps where X is OPX-driven and Y is stepped on the QDAC (triggered by OPX). When to use: bias-tee setups or experiments needing long dwell on one axis while still streaming frames.
+- [`qd_quam_example_video_mode.py`](qd_quam_example_video_mode.py) – Same video-mode flow built on `BaseQuamQD` with cross-compensation and detuning layers ready-made. When to use: you already structure devices with the QUAM quantum-dot template and want video mode + voltage control without rebuilding gatesets.
 
-The main examples combine the various components together to create a dashboard which gives you full control over your device. There are three examples: 
+## Video mode (OPX-based)
+- [`video_mode/example_video_mode_opx.py`](video_mode/example_video_mode_opx.py) – Minimal OPX-only video mode. You plug in your own `GateSet`; ideal smoke test for OPX connectivity and QUA generation.
+- [`video_mode/example_video_mode_2_opx.py`](video_mode/example_video_mode_2_opx.py) – OPX video mode using `BasicQuam` + `VirtualGateSet` boilerplate. Leaner than the full example but already wires up sweep axes and readout pulses.
 
-### example_video_mode_full.py
+## Video mode (simulated backends)
+- [`video_mode/simulated_examples/example_video_mode_random.py`](video_mode/simulated_examples/example_video_mode_random.py) – UI/data-path smoke test with `SimulationDataAcquirer` + `RandomSimulator`; runs fully offline, optional QDAC offsets if available.
+- [`video_mode/simulated_examples/example_video_mode_simulation.py`](video_mode/simulated_examples/example_video_mode_simulation.py) – More realistic simulated scan using `QarraySimulator` + `BaseQuamQD` virtual gates. Great for developing scan logic and UI without booking hardware time.
 
-This example is a basic, full implementation of video mode, integrating the VideoModeComponent with the VirtualGatesComponent and the VoltageControlComponent. It assumes the use of a QDACII controller, although this can be replaced by any external source to be used with quam-builder's VirtualDCSet. 
+## Data dashboard
+- [`data_dashboard/example_data_dashboard.py`](data_dashboard/example_data_dashboard.py) – Demonstrates sending scalars, dicts, `xarray` arrays/datasets, and Matplotlib figures to the Data Dashboard client, including short real-time loops.
 
-### hybrid_opx_qdac_example.py
+## Virtual gates
+- [`virtual_gates/example_virtual_gates.py`](virtual_gates/example_virtual_gates.py) – Stand-alone `VirtualLayerEditor` UI over simulated channels; practice adding/editing virtual layers before touching hardware or embedding in a larger dashboard.
 
-This hybrid example sets up a version of VideoMode, where the Y axis is stepped via the QDAC, while the X axis is swept via the OPX. This is particularly useful for experiments which require a long time-scale, and use a bias tee. The example requires the setup of a QCoDeS QDACII, and a trigger to be sent from the OPX to a single external trigger port of the QDACII. The basic functionality is otherwise identical to the fully OPX video mode. 
+## Voltage control
+- [`voltage_control/example_voltage_control_simulated.py`](voltage_control/example_voltage_control_simulated.py) – Simulated voltage sources wired to `VoltageControlComponent`; quick way to test-drive the GUI and polling cadence with no instruments.
+- [`voltage_control/example_voltage_control_qdac.py`](voltage_control/example_voltage_control_qdac.py) – QCoDeS-backed QDAC control dashboard; template for real gate-bias tuning and integration with other components.
 
-### qd_quam_example_video_mode.py
-
-Quantum Machines provides a detailed Quam structure specific for use with quantum dot expeirments. This example covers the instantiation of such a Quam state, and its use with Video Mode. While the script currently creates a Quam from scratch, if an existing Quam state exists, the user can simply load this Quam state instead of creating one from scratch. 
-
-## examples/video_mode
-
-The examples/video_mode folder contains examples unique to VideoMode, which do not use the VoltageControlComponent. Here, you will find [example_video_mode_opx.py](video_mode/example_video_mode_opx.py) and [example_video_mode_2_opx.py](video_mode/example_video_mode_2_opx.py). These are two ways to instantiate VideoMode, providing a thorough preview of the requirements. 
-
-## examples/video_mode/simulated_examples
-
-In this directory, we integrate video mode with various simulations. In [example_video_mode_random.py](video_mode/simulated_examples/example_video_mode_random.py), a RandomSimulator is instantiated to collect random data to display in Video Mode. One also has the options to instantiate a simulator, as in the example shown in [example_video_mode_simulation.py](video_mode/simulated_examples/example_video_mode_simulation.py), which integrates a Qarray simulation. To implement your own simulation, simply subclass the BaseSimulator in [../src/qua_dashboards/video_mode/inner_loop_actions/simulators/base_simulator.py](../src/qua_dashboards/video_mode/inner_loop_actions/simulators/base_simulator.py), ensuring that the measure_data function returns the data in the correct format. 
+## Debug helpers
+- [`debug/qarray_model_mwe.py`](debug/qarray_model_mwe.py) – Minimal `qarray` model to generate and plot a single frame (plus 1D slices) straight from the analytical charge-sensor model.
+- [`debug/qarray_simulator_mwe.py`](debug/qarray_simulator_mwe.py) – Minimal `QarraySimulator` usage: builds a virtual gate set and grabs one simulated frame for plotting; handy for understanding simulator outputs.

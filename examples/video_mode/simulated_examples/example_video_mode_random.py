@@ -8,7 +8,6 @@ displaying the results in a real-time dashboard.
 
 Quick How-to-Use:
 1.  **Configure Hardware**:
-    * Update `qmm = QuantumMachinesManager(...)` with your OPX host and cluster_name.
     * Currently, a BasicQuam() machine is defined. 
         Modify the `machine = BasicQuam()` section to define the QUA elements.
         (channels, pulses) that match your experimental setup.
@@ -35,14 +34,9 @@ Quick How-to-Use:
 7.  **Run the Script**: Execute this Python file.
 8.  **Open Dashboard**: Navigate to `http://localhost:8050` (or the address shown
     in your terminal) in a web browser to view the live video mode dashboard.
-
-Note: The sections for "(Optional) Run program and acquire data" and "DEBUG: Generate QUA script"
-and "Test simulation" are for direct execution/debugging and can be commented out
-if you only intend to run the live dashboard.
 """
 
 # %% Imports
-from qm import QuantumMachinesManager
 from quam.components import (
     BasicQuam,
     pulses,

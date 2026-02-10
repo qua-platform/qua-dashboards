@@ -164,6 +164,7 @@ class HybridOPXQDACDataAcquirer(OPXDataAcquirer):
                         y_vals=None,
                         x_mode=self.x_mode,
                         y_mode=None,  # type: ignore
+                        compensation_pulse = self.inner_loop_action.voltage_sequence.apply_compensation_pulse if self.mid_scan_compensation else None, 
                     ):
                         measured_qua_values = self.inner_loop_action(
                             x_qua_var, None

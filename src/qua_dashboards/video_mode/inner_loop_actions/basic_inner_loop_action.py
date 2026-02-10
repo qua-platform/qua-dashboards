@@ -104,11 +104,8 @@ class BasicInnerLoopAction(InnerLoopAction):
         } if y_apply is not None else {**x_apply.get("amplitude_scales", {})}
 
         qua.align()
-        readout_duration = max(
-            self._pulse_for(op).length for op in self.selected_readout_channels
-        )
         if self.pre_measurement_delay > 0: 
-            qua.wait(self.pre_measurement_delay//4)
+            self.voltage_sequence.step_to_voltages({}, duration = self.pre_measurement_delay)
         qua.align()
         result = []
         for channel in self.selected_readout_channels:

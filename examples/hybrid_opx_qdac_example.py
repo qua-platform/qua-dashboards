@@ -121,19 +121,19 @@ def main():
 
     # Set up the DC channels
     p1 = setup_DC_channel_with_trigger(name="plunger_1", opx_output_port=1, qdac_port=1, fem=fem, opx_trigger_out = 1)
-    p2 = setup_DC_channel_with_trigger(name="plunger_2", opx_output_port=2, qdac_port=2, fem=fem, opx_trigger_out = 1)
+    p2 = setup_DC_channel_with_trigger(name="plunger_2", opx_output_port=6, qdac_port=2, fem=fem, opx_trigger_out = 1)
     p3 = setup_DC_channel_with_trigger(name="plunger_3", opx_output_port=3, qdac_port=3, fem=fem, opx_trigger_out = 1)
     p4 = setup_DC_channel_with_trigger(name="plunger_4", opx_output_port=8, qdac_port=8, fem=fem, opx_trigger_out = 1)
     s1 = setup_DC_channel_with_trigger(name="sensor_1", opx_output_port=4, qdac_port=4, fem=fem, opx_trigger_out = 1)
     s2 = setup_DC_channel_with_trigger(name="sensor_2", opx_output_port=5, qdac_port=5, fem=fem, opx_trigger_out = 1)
-    b1 = setup_DC_channel_with_trigger(name="barrier_1", opx_output_port=6, qdac_port=6, fem=fem, opx_trigger_out = 1)
+    b1 = setup_DC_channel_with_trigger(name="barrier_1", opx_output_port=2, qdac_port=6, fem=fem, opx_trigger_out = 1)
     b2 = setup_DC_channel_with_trigger(name="barrier_2", opx_output_port=7, qdac_port=7, fem=fem, opx_trigger_out = 1)
 
     # Set up the readout channels
     sensor_readout_channel_1 = setup_readout_channel(
         name="readout_resonator_1",
         readout_pulse=readout_pulse_ch1,
-        opx_output_port=6,
+        opx_output_port=2,
         opx_input_port=1,
         IF=150e6,
         fem=fem,
@@ -141,7 +141,7 @@ def main():
     sensor_readout_channel_2 = setup_readout_channel(
         name="readout_resonator_2",
         readout_pulse=readout_pulse_ch2,
-        opx_output_port=6,
+        opx_output_port=2,
         opx_input_port=1,
         IF=250e6,
         fem=fem,
@@ -287,6 +287,7 @@ def main():
         qdac_ext_trigger_input_port = 1,
         qdac = qdac,
         mid_scan_compensation = True, 
+        qdac_settle_delay_ns = 200_000,
     )
 
     video_mode_component = VideoModeComponent(

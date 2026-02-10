@@ -1,22 +1,22 @@
 """
-Example Script: Video Mode with OPX with Virtual Gating
+Example Script: Simulated Video Mode with OPX output and Virtual Gating
 
-This script demonstrates how to use the VideoModeComponent with an OPXDataAcquirer
-to perform live 2D scans on a quantum device. It sets up a QUA program to sweep
-two DC voltage channels and measure a readout signal, displaying the results in a
-real-time dashboard.
+This script demonstrates how to use the VideoModeComponent with a SimulationDataAcquirerOPXOutput
+to perform simulated 2D scans on a quantum device, while outputting a real OPX signal to inspect
+on the scope. It sets up a QUA program to sweep two DC voltage channels and measure a readout signal, 
+displaying the results in a real-time dashboard.
 
 Quick How-to-Use:
 1.  **Configure Hardware**:
     * Update `qmm = QuantumMachinesManager(...)` with your OPX host and cluster_name.
-    * Currently, a BasicQuam() machine is defined.
-        Modify the `machine = BasicQuam()` section to define the QUA elements.
+    * Currently, a BaseQuamQD() machine is defined.
+        Modify the `machine = BaseQuamQD()` section to define the QUA elements.
         (channels, pulses) that match your experimental setup.
-        Ensure `ch1`, `ch2` etc (for sweeping) and `ch1_readout` (or your measurement
+        Ensure `plunger_1`, `plunger_2` etc (for sweeping) and `sensor_1` (or your measurement
         channel) are correctly defined.
 2.  **Add/Adjust your virtual gates**:
-    * This script assumes a single layer of virtual gates. Adjust and add virtual gates
-        as necessary.
+    * This script uses `BaseQuamQD`, which assumes a first, cross-compensation layer 
+        of virtual gates, and an optional second layer of detuning axes. 
     * Be sure to adjust the virtual gating matrices to suit your experimental needs.
         This can be adjusted via the UI.
 3.  **Configure the DC Control**
@@ -30,7 +30,7 @@ Quick How-to-Use:
     * Pass the readout pulses to the data_acquirer instance as a list.
 5.  **Adjust Scan Parameters**:
     * Select a `scan_mode` (e.g., `SwitchRasterScan`, `RasterScan`).
-    * Set `result_type` in `OPXDataAcquirer` (e.g., "I", "Q", "amplitude", "phase").
+    * Set `result_type` in `SimulationDataAcquirerOPXOutput` (e.g., "I", "Q", "amplitude", "phase").
 6.  **Set a save_path to save Quam State JSON in the right directory**
 7.  **Run the Script**: Execute this Python file.
 8.  **Open Dashboard**: Navigate to `http://localhost:8050` (or the address shown
@@ -44,37 +44,19 @@ if you only intend to run the live dashboard.
 # %% Imports
 from qm import QuantumMachinesManager
 from quam.components import (
-    InOutSingleChannel,
     pulses,
-    StickyChannelAddon,
 )
-from quam.components.ports import (
-    LFFEMAnalogOutputPort,
-    LFFEMAnalogInputPort,
-    OPXPlusAnalogOutputPort,
-    OPXPlusAnalogInputPort,
-)
-from quam.core import QuamRoot
-from typing import List, Optional
 from qua_dashboards.core import build_dashboard
 from qua_dashboards.utils import setup_logging
 from qua_dashboards.video_mode import (
-    OPXDataAcquirer,
     scan_modes,
     VideoModeComponent,
-    SimulationDataAcquirer,
 )
 from qua_dashboards.video_mode.data_acquirers.simulation_data_acquirer import SimulationDataAcquirerOPXOutput
-from quam_builder.architecture.quantum_dots.components import (
-    VoltageGate,
-    VirtualGateSet,
-    ReadoutResonatorSingle,
-    QdacSpec,
-)
 from quam_builder.architecture.quantum_dots.qpu import BaseQuamQD
 from qua_dashboards.virtual_gates import VirtualLayerEditor, ui_update
 from qua_dashboards.voltage_control import VoltageControlComponent
-from qua_dashboards.utils import define_DC_params, setup_DC_channel, setup_readout_channel, connect_to_qdac
+from qua_dashboards.utils import define_DC_params, setup_DC_channel, setup_readout_channel
 
 def main():
     logger = setup_logging(__name__)

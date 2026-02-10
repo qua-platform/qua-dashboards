@@ -30,34 +30,20 @@ Quick How-to-Use:
     * Pass the readout pulses to the data_acquirer instance as a list.
 5.  **Adjust Scan Parameters**:
     * Select a `scan_mode` (e.g., `SwitchRasterScan`, `RasterScan`).
-    * Set `result_type` in `OPXDataAcquirer` (e.g., "I", "Q", "amplitude", "phase").
+    * Set `result_type` in `HybridOPXQDACDataAcquirer` (e.g., "I", "Q", "amplitude", "phase").
 6.  **Set a save_path to save Quam State JSON in the right directory**
 7.  **Run the Script**: Execute this Python file.
 8.  **Open Dashboard**: Navigate to `http://localhost:8050` (or the address shown
     in your terminal) in a web browser to view the live video mode dashboard.
-
-Note: The sections for "(Optional) Run program and acquire data" and "DEBUG: Generate QUA script"
-and "Test simulation" are for direct execution/debugging and can be commented out
-if you only intend to run the live dashboard.
 """
 
 # %% Imports
 from qm import QuantumMachinesManager
 from quam.components import (
-    InOutSingleChannel,
     pulses,
-    StickyChannelAddon,
     Channel, 
     DigitalOutputChannel
 )
-from quam.components.ports import (
-    LFFEMAnalogOutputPort,
-    LFFEMAnalogInputPort,
-    OPXPlusAnalogOutputPort,
-    OPXPlusAnalogInputPort,
-)
-from quam.core import QuamRoot
-from typing import List, Optional
 from qua_dashboards.core import build_dashboard
 from qua_dashboards.utils import setup_logging
 from qua_dashboards.video_mode import (
@@ -65,16 +51,10 @@ from qua_dashboards.video_mode import (
     scan_modes,
     VideoModeComponent,
 )
-from quam_builder.architecture.quantum_dots.components import (
-    VoltageGate,
-    VirtualGateSet,
-    ReadoutResonatorSingle,
-    QdacSpec,
-)
 from quam_builder.architecture.quantum_dots.qpu import BaseQuamQD
 from qua_dashboards.virtual_gates import VirtualLayerEditor, ui_update
 from qua_dashboards.voltage_control import VoltageControlComponent
-from qua_dashboards.utils import setup_DC_channel, setup_readout_channel, connect_to_qdac
+from qua_dashboards.utils import setup_DC_channel, setup_readout_channel
 
 def setup_DC_channel_with_trigger(
     name: str, opx_output_port: int, qdac_port: int, opx_trigger_out: int, con="con1", fem: int = None,
@@ -287,7 +267,7 @@ def main():
         qdac_ext_trigger_input_port = 1,
         qdac = qdac,
         mid_scan_compensation = True, 
-        qdac_settle_delay_ns = 200_000,
+        qdac_settle_delay_ns = 200_000
     )
 
     video_mode_component = VideoModeComponent(

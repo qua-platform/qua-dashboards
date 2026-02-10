@@ -35,10 +35,6 @@ Quick How-to-Use:
 7.  **Run the Script**: Execute this Python file.
 8.  **Open Dashboard**: Navigate to `http://localhost:8050` (or the address shown
     in your terminal) in a web browser to view the live video mode dashboard.
-
-Note: The sections for "(Optional) Run program and acquire data" and "DEBUG: Generate QUA script"
-and "Test simulation" are for direct execution/debugging and can be commented out
-if you only intend to run the live dashboard.
 """
 
 # %% Imports

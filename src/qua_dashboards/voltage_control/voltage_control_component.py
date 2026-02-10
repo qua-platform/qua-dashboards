@@ -165,6 +165,7 @@ class VoltageControlComponent(BaseComponent):
                     data={
                         "input_ids": input_ids,
                         "step_size": self.step_size,
+                        "dummy_store_id": self._get_id("keyboard-dummy"),
                     }
                 ),
                 dcc.Store(id=self._get_id("keyboard-dummy")),  # Changed from html.Div
@@ -239,7 +240,7 @@ class VoltageControlComponent(BaseComponent):
             rows = [self._row_components[name].get_layout() for name in selected_names]
             input_ids = [{"type": self._get_id_type_str("input"), "index": name} for name in selected_names]
 
-            return rows, {"input_ids": input_ids, "step_size": self.step_size}
+            return rows, {"input_ids": input_ids, "step_size": self.step_size, "dummy_store_id": self._get_id("keyboard-dummy")}
         
         @app.callback(
             Output({"type": input_id_type_str, "index": MATCH}, "value", allow_duplicate=True), 
@@ -272,6 +273,41 @@ class VoltageControlComponent(BaseComponent):
             except Exception as e:
                 logger.error(f"Error during set for {param_name}: {e}", exc_info=True)
                 return dash.no_update
+            
+        @app.callback(
+            Output({"type": input_id_type_str, "index": ALL}, "value", allow_duplicate=True),
+            Input(self._get_id("keyboard-dummy"), "data"),
+            State({"type": input_id_type_str, "index": ALL}, "id"),
+            prevent_initial_call=True,
+        )
+        def handle_arrow_key_change(store_data, input_ids):
+            if not store_data or "param_name" not in store_data:
+                raise dash.exceptions.PreventUpdate
+            
+            param_name = store_data["param_name"]
+            new_value_str = store_data["value"]
+            
+            param = next((p for p in self.voltage_parameters if p.name == param_name), None)
+            control_row = self._row_components.get(param_name)
+            
+            if param is None or control_row is None:
+                raise dash.exceptions.PreventUpdate
+            
+            try:
+                float_value = float(new_value_str)
+                param.set(float_value)
+                formatted = format_voltage(float_value)
+                control_row.current_input_text = formatted
+                control_row.last_committed_text = formatted
+            except (ValueError, Exception) as e:
+                logger.error(f"Arrow key set error for {param_name}: {e}")
+                raise dash.exceptions.PreventUpdate
+            
+            # Return updated value for the matching input, no_update for the rest
+            return [
+                formatted if iid["index"] == param_name else dash.no_update
+                for iid in input_ids
+            ]
 
         @app.callback(
             Output({"type": input_id_type_str, "index": MATCH}, "value", allow_duplicate=True),
@@ -297,12 +333,10 @@ class VoltageControlComponent(BaseComponent):
         app.clientside_callback(
             r"""
             function(config) {
-                // If nothing configured yet, don't do anything
                 if (!config || !config.input_ids) {
                     return null;
                 }
 
-                // Only attach once per page load
                 if (window._voltageKeyboardListenerAttached) {
                     return null;
                 }
@@ -326,9 +360,7 @@ class VoltageControlComponent(BaseComponent):
                             if (parsed && parsed.type === id.type && parsed.index === id.index) {
                                 return el;
                             }
-                        } catch (e) {
-                            // Ignore non-JSON ids
-                        }
+                        } catch (e) {}
                     }
                     return null;
                 }
@@ -355,7 +387,6 @@ class VoltageControlComponent(BaseComponent):
                     var isInInput = (tagName === 'input' || tagName === 'textarea');
                     var isInVoltageInput = isInInput && isVoltageInputElement(activeEl);
 
-                    // QWERTY hotkeys: q-p, a-l, z-m
                     var shortcuts = [
                         'q','w','e','r','t','y','u','i','o','p',
                         'a','s','d','f','g','h','j','k','l',
@@ -364,7 +395,6 @@ class VoltageControlComponent(BaseComponent):
                     var key = (e.key || '').toLowerCase();
                     var idx = shortcuts.indexOf(key);
 
-                    // Focus nth voltage input
                     if (idx !== -1 && (!isInInput || isInVoltageInput)) {
                         var targetEl = findVoltageInput(idx);
                         if (targetEl) {
@@ -379,7 +409,6 @@ class VoltageControlComponent(BaseComponent):
                         }
                     }
 
-                    // Arrow up/down: increment/decrement current voltage input
                     if (isInVoltageInput && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
                         e.preventDefault();
 
@@ -395,27 +424,15 @@ class VoltageControlComponent(BaseComponent):
                         var newVal = currentVal + delta;
                         var newValStr = newVal.toFixed(9).replace(/\.?0+$/, '');
 
-                        try {
-                            var desc = Object.getOwnPropertyDescriptor(
-                                window.HTMLInputElement.prototype,
-                                'value'
-                            );
-                            if (desc && typeof desc.set === 'function') {
-                                desc.set.call(activeEl, newValStr);
-                            } else {
-                                activeEl.value = newValStr;
-                            }
-                        } catch (err) {
-                            activeEl.value = newValStr;
-                        }
-
-                        activeEl.dispatchEvent(new Event('input', { bubbles: true }));
+                        activeEl.value = newValStr;
+                        var parsedId = JSON.parse(activeEl.id);
+                        dash_clientside.set_props(
+                            config.dummy_store_id,
+                            {data: {param_name: parsedId.index, value: newValStr, ts: Date.now()}}
+                        );
                     }
-
-                    // Do not intercept Enter – Dash needs it for n_submit
                 });
 
-                // We don't actually use the store value; null is fine
                 return null;
             }
             """,

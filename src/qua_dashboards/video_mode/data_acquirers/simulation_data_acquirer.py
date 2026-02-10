@@ -120,7 +120,7 @@ class SimulationDataAcquirer(BaseGateSetDataAcquirer):
                 return data.ravel()
 
             y_pts, x_pts = int(self.y_axis.points), int(self.x_axis.points)
-            if data.shape == (x_pts, y_pts):
+            if x_pts != y_pts and data.shape == (x_pts, y_pts):
                 data = data.T
             elif data.shape != (y_pts, x_pts):
                 return data.ravel()

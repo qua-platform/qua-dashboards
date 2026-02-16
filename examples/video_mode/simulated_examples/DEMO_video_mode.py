@@ -76,35 +76,54 @@ def main():
     readout_pulse_ch1 = pulses.SquareReadoutPulse(
         id="readout", length=100, amplitude=0.1
     )
+    readout_pulse_ch2 = pulses.SquareReadoutPulse(
+        id="readout", length=100, amplitude=0.1
+    )
 
     # Choose the FEM. For OPX+, keep fem = None.
     fem = 5
 
     # Set up the DC channels
-    p1 = setup_DC_channel(name="plunger_1", opx_output_port=6, qdac_port=1, fem=fem)
+    p1 = setup_DC_channel(name="plunger_1", opx_output_port=1, qdac_port=1, fem=fem)
     p2 = setup_DC_channel(name="plunger_2", opx_output_port=2, qdac_port=2, fem=fem)
     s1 = setup_DC_channel(name="sensor_1", opx_output_port=4, qdac_port=4, fem=fem)
+    s2 = setup_DC_channel(name="sensor_2", opx_output_port=5, qdac_port=5, fem=fem)
 
     # Set up the readout channels
     sensor_readout_channel_1 = setup_readout_channel(
         name="readout_resonator_1",
         readout_pulse=readout_pulse_ch1,
-        opx_output_port=3,
+        opx_output_port=6,
         opx_input_port=1,
         IF=150e6,
+        fem=fem,
+    )
+    sensor_readout_channel_2 = setup_readout_channel(
+        name="readout_resonator_2",
+        readout_pulse=readout_pulse_ch2,
+        opx_output_port=6,
+        opx_input_port=1,
+        IF=250e6,
         fem=fem,
     )
 
     # Adjust or add your virtual gates here. This example assumes a single virtual gating layer, add more if necessary.
     logger.info("Creating VirtualGateSet")
+    compensation_matrix = [[     1.0,      0.0, 0.020406, 0.020406], 
+                           [     0.0,      1.0, 0.029189, 0.029189], 
+                           [0.020406, 0.029189,      1.0,      0.0], 
+                           [0.020406, 0.029189,      0.0,      1.0],]
+
     machine.create_virtual_gate_set(
         gate_set_id="main_qpu",
         virtual_channel_mapping={
             "virtual_dot_1": p1,
             "virtual_dot_2": p2,
             "virtual_sensor_1": s1,
+            "virtual_sensor_2": s2,
         },
         adjust_for_attenuation=False,
+        compensation_matrix=compensation_matrix,
     )
 
     machine.register_channel_elements(
@@ -112,15 +131,8 @@ def main():
         barrier_channels = [],
         sensor_resonator_mappings = {
             s1: sensor_readout_channel_1, 
+            s2: sensor_readout_channel_2,
         },
-    )
-
-    # Register the quantum dot pairs
-    machine.register_quantum_dot_pair(
-        id = "dot1_dot2_pair",
-        quantum_dot_ids = ["virtual_dot_1", "virtual_dot_2"], 
-        sensor_dot_ids = ["virtual_sensor_1"], 
-        barrier_gate_id = None
     )
 
     if qdac_connect:
@@ -129,12 +141,6 @@ def main():
         machine.connect_to_external_source(external_qdac=True)
         machine.create_virtual_dc_set("main_qpu")
 
-    # Define the detuning axes for both QuantumDotPairs
-    machine.quantum_dot_pairs["dot1_dot2_pair"].define_detuning_axis(
-        matrix = [[1,-1]], 
-        detuning_axis_name = "dot1_dot2_pair_epsilon"
-    )
-
     scan_mode_dict = {
         "Switch_Raster_Scan": scan_modes.SwitchRasterScan(),
         "Raster_Scan": scan_modes.RasterScan(),
@@ -142,7 +148,7 @@ def main():
     }
 
     virtual_gating_component = VirtualLayerEditor(
-        gateset=machine.virtual_gate_sets["main_qpu"], component_id="virtual-gates-ui", dc_set = machine.virtual_dc_sets["main_qpu"]
+        gateset=machine.virtual_gate_sets["main_qpu"], component_id="virtual-gates-ui", dc_set = machine.virtual_dc_sets["main_qpu"] if qdac_connect else None
     )
 
     voltage_control_tab, voltage_control_component = None, None
@@ -161,59 +167,51 @@ def main():
             voltage_control_component=voltage_control_component
         )
 
-
-    matrix = [
-    [0.12, 0.02, 0.005], 
-    [0.02, 0.11, 0.005],
-
-    ]
-    import numpy as np
-    machine.update_cross_compensation_submatrix(
-        virtual_names = ["virtual_dot_1", "virtual_dot_2"], 
-        channels = [p1, p2, s1], 
-        matrix = np.linalg.pinv(matrix).tolist()
-    )
-    from qarray import ChargeSensedDotArray, WhiteNoise, TelegraphNoise, LatchingModel
+    from qarray import ChargeSensedDotArray
     Cdd = [
-        [0.10, 0.04],
-        [0.04, 0.10],
+        [0.12, 0.08],
+        [0.08, 0.13],
     ]
-    Cgd = matrix   
+    Cgd = [
+        [0.13, 0.00, 0.00, 0.00],
+        [0.00, 0.11, 0.00, 0.00],
+    ]
     Cds = [
-        [0.015, 0.012], 
+        [0.002, 0.002],
+        [0.002, 0.002],
     ]
-
     Cgs = [
-        [0.002, 0.002, 0.10],
+        [0.001, 0.002, 0.100, 0.000],
+        [0.001, 0.002, 0.000, 0.100],
     ]
-
     model = ChargeSensedDotArray(
         Cdd=Cdd,
         Cgd=Cgd,
         Cds=Cds,
         Cgs=Cgs,
-        coulomb_peak_width=0.05,
-        T=50,
+        coulomb_peak_width=0.9,
+        T=50.0,
         algorithm="default",
-        implementation="jax", 
-        noise_model=WhiteNoise(amplitude=5e-3) + TelegraphNoise(
-            amplitude=2e-3, 
-            p01=1e-3, 
-            p10=1e-3 
-        ),
-        latching_model=LatchingModel(
-            n_dots=2, 
-            p_leads=0.98,
-            p_inter=0.01 
-        ),
+        implementation="jax",
     )
     from qua_dashboards.video_mode.inner_loop_actions.simulators import QarraySimulator
+
+    sensor_plunger_bias_mv = [-5.0e-3, -5.0e-3]
+    base_point = {
+        "virtual_dot_1": -5.0e-3,
+        "virtual_dot_2": -5.0e-3,
+        "virtual_sensor_1": sensor_plunger_bias_mv[0],
+        "virtual_sensor_2": sensor_plunger_bias_mv[1],
+    }
+    if qdac_connect: 
+        machine.virtual_dc_sets["main_qpu"].set_voltages(base_point)
+
     simulator = QarraySimulator(
         gate_set = machine.virtual_gate_sets["main_qpu"], 
-        dc_set = machine.virtual_dc_sets["main_qpu"],
+        dc_set = machine.virtual_dc_sets["main_qpu"] if qdac_connect else None,
         model = model,
-        sensor_gate_names = ("virtual_dot_1", "virtual_dot_2"), 
-        n_charges = [1, 1, 3],
+        sensor_gate_names = ("virtual_sensor_1", "virtual_sensor_2"), 
+        base_point = base_point,
     )
 
 

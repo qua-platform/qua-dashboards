@@ -7,7 +7,7 @@ readme = "README.md"
 requires-python = ">=3.9,<3.13"
 dependencies = [
     "dash-bootstrap-components>=1.6.0",
-    "dash>=2.18.2",
+    "dash>=2.18.2,<4.0.0",
     "pandas>=2.2.3",
     "xarray==2024.07.0",
     "ipykernel>=6.29.5",

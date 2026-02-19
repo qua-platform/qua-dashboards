@@ -1671,6 +1671,18 @@ class AnnotationTabController(BaseTabController):
                         if d2 <= tol*tol and (best_d2 is None or d2 < best_d2):
                             best_id, best_d2 = p["id"], d2
                     clicked_annotation_point_id = best_id 
+                if mode == "point" and clicked_annotation_point_id is None and not self._selected_point_to_move.get("is_moving"):
+                    pts = annotations_copy.get("points", [])
+                    if self._is_subplot_mode():
+                        pts = [p for p in pts if int(p.get("subplot_col", 1)) == int(subplot_col)]
+                    tol = self._absolute_click_tolerance
+                    best_id, best_d2 = None, None
+                    for p in pts:
+                        dx, dy = float(p["x"]) - x, float(p["y"]) - y
+                        d2 = dx*dx + dy*dy
+                        if d2 <= tol*tol and (best_d2 is None or d2 < best_d2):
+                            best_id, best_d2 = p["id"], d2
+                    clicked_annotation_point_id = best_id
                 if mode == "point":
                     interaction_changed_data = self._handle_point_mode_interaction(
                         x, y, clicked_annotation_point_id, annotations_copy, subplot_col

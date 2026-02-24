@@ -1,7 +1,7 @@
 [project]
 name = "qua-dashboards"
 authors = [{ name = "Quantum Machines", email = "info@quantum-machines.co" }]
-version = "0.3.0"
+version = "0.3.1"
 description = "Collection of dashboards for the QUA platform"
 readme = "README.md"
 requires-python = ">=3.9,<3.13"
@@ -17,7 +17,7 @@ dependencies = [
     "dash-dynamic-grid-layout>=0.1.3",
     "qualibrate-core>=0.3.1",
     "numpy>=1.25.2,<2.0.0",
-    "quam-builder @ git+https://github.com/qua-platform/quam-builder.git@main",
+    "quam-builder",
 ]
 
 [project.urls]

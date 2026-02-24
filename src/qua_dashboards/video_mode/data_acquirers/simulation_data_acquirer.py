@@ -308,3 +308,122 @@ class SimulationDataAcquirerOPXOutput(OPXDataAcquirer):
         for i in range(num_readouts): 
             result.extend([I[i], Q[i]])
         return self._process_fetched_results(result)
+
+    def _process_fetched_results(self, fetched_results: Tuple) -> np.ndarray:
+        """
+        Processes the raw tuple from QUA's fetch_all into a dictionary of named arrays,
+        then derives the final 2D array based on self.result_type.
+        """
+        if fetched_results is None:
+            return np.full((self.y_axis.points, self.x_axis.points), np.nan)
+        num_sel = len(self.selected_readout_channels)
+        is_multi_readout = num_sel > 1
+        expected_points = self.x_axis.points * self.y_axis.points
+
+        def _to_scan_flat(data: np.ndarray) -> np.ndarray:
+            """Convert a 2D frame into a 1D stream that follows the scan order."""
+            data = np.asarray(data)
+            if data.ndim != 2:
+                return data.ravel()
+
+            y_pts, x_pts = int(self.y_axis.points), int(self.x_axis.points)
+            if x_pts != y_pts and data.shape == (x_pts, y_pts):
+                data = data.T
+            elif data.shape != (y_pts, x_pts):
+                return data.ravel()
+
+            x_indices, y_indices = self.get_scan_indices(x_pts=x_pts, y_pts=y_pts)
+            return data[y_indices, x_indices]
+
+        def _normalize_flat(flat: np.ndarray) -> np.ndarray:
+            """
+            Trim or pad a 1D stream of samples to exactly one 2D frame and reshape.
+            - If more than one frame is concatenated, then keep only the most recent full frame
+            - If fewer samples are available than a full frame, returns a 2D array filled with NaNs
+            - Otherwise, reshape samples into the appropriate dimensions
+            """
+            flat = _to_scan_flat(flat)
+            flat = np.asarray(flat).ravel()
+            # keep last full frame if concatenated
+            if flat.size > expected_points:
+                flat = np.asarray(flat)[-expected_points:]
+            # if not enough, return placeholder (so viewer waits gracefully)
+            if flat.size < expected_points:
+                return np.full(
+                    (self.y_axis.points, self.x_axis.points),
+                    np.nan,
+                    dtype=np.asarray(flat).dtype,
+                )
+            return self._flat_to_2d(flat)
+
+        if not is_multi_readout:
+            I, Q = fetched_results[0], fetched_results[1]
+            if self.result_type == "I":
+                flat = I
+            elif self.result_type == "Q":
+                flat = Q
+            elif self.result_type == "amplitude":
+                flat = np.abs(
+                    I + 1j * Q
+                )
+            elif self.result_type == "phase":
+                flat = np.angle(
+                    I + 1j * Q
+                )
+            else:
+                raise ValueError(
+                    f"Invalid result_type: '{self.result_type}'.")
+            return _normalize_flat(flat)
+
+        else:
+            channel_names = [ch.name for ch in self.selected_readout_channels]
+            # Multi-readout: return (R, X) in 1D, (R, Y, X) in 2D
+            is_1d = self._is_1d
+            expected_points = self.x_axis.points * (1 if is_1d else self.y_axis.points)
+
+            output_layers = []
+            #names = [ch.name for ch in self.selected_readout_channels]
+            for i in range(num_sel):
+                I = fetched_results[2 * i]
+                Q = fetched_results[2 * i + 1]
+                if self.result_type == "I":
+                    flat = np.asarray(I)
+                elif self.result_type == "Q":
+                    flat = np.asarray(Q)
+                elif self.result_type == "amplitude":
+                    flat = np.abs(
+                        np.asarray(I)
+                        + 1j * np.asarray(Q)
+                    )
+                elif self.result_type == "phase":
+                    flat = np.angle(
+                        np.asarray(I)
+                        + 1j * np.asarray(Q)
+                    )
+                else:
+                    raise ValueError(f"Invalid result_type '{self.result_type}'.")
+
+                # trim/pad per-layer, similar to _normalize_flat
+                flat = _to_scan_flat(flat)
+                if flat.size > expected_points:
+                    flat = flat[-expected_points:]
+                if flat.size < expected_points:
+                    if is_1d:
+                        return np.full(
+                            (len(channel_names), self.x_axis.points), np.nan, dtype=flat.dtype
+                        )
+                    else:
+                        return np.full(
+                            (len(channel_names), self.y_axis.points, self.x_axis.points),
+                            np.nan,
+                            dtype=flat.dtype,
+                        )
+
+                # shape per-layer
+                if is_1d:
+                    layer = flat.reshape(self.x_axis.points)
+                else:
+                    layer = self._flat_to_2d(flat)
+                output_layers.append(layer)
+
+            return np.stack(output_layers, axis=0)

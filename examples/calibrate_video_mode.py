@@ -1,4 +1,22 @@
 """
+Video Mode Buffer Calibration
+=============================
+
+This script builds a 2D calibration map of ideal buffer_frames values across
+a grid of (nx, ny) resolutions.  Run it once; the results are saved to JSON
+and can be loaded in subsequent sessions so the OPXDataAcquirer automatically
+picks the right buffer size for each resolution.
+
+Usage
+-----
+1. Run this script with your normal machine/acquirer setup.
+2. The calibration sweeps every (nx, ny) in the grid, recompiling the QUA
+   program each time, then saves the results to CALIBRATION_PATH.
+3. In your main video-mode script, load the calibration and pass it to the
+   acquirer (see "Normal session" section at the bottom).
+"""
+
+"""
 Example Script: Video Mode with OPX with Virtual Gating
 
 This script demonstrates how to use the VideoModeComponent with an OPXDataAcquirer
@@ -43,31 +61,22 @@ from quam.components import (
     BasicQuam,
     pulses,
 )
-from qua_dashboards.core import build_dashboard
+import numpy as np
 from qua_dashboards.utils import setup_logging
 from qua_dashboards.video_mode import (
     OPXDataAcquirer,
     scan_modes,
-    VideoModeComponent,
 )
-from quam_builder.architecture.quantum_dots.components import VoltageGate
 from quam_builder.architecture.quantum_dots.components import VirtualGateSet
 from quam_builder.architecture.quantum_dots.components import VirtualDCSet
-from qua_dashboards.virtual_gates import VirtualLayerEditor, ui_update
 from qua_dashboards.voltage_control import VoltageControlComponent
 
 from qua_dashboards.utils import setup_DC_channel, setup_readout_channel, connect_to_qdac 
 
+from qua_dashboards.video_mode.calibrations import Calibrations
+
 def main():
     logger = setup_logging(__name__)
-
-    qdac_connect = True
-    qdac = None
-    if qdac_connect:
-        qdac_ip = "172.16.33.101"
-        logger.info("Connecting to QDAC")
-        qdac = connect_to_qdac(qdac_ip)
-
 
     ###########################################################################
     ############ CREATE QUAM MACHINE (SKIP IF EXISTING QUAM STATE) ############
@@ -120,30 +129,6 @@ def main():
         "Spiral_Scan": scan_modes.SpiralScan(),
     }
 
-    # Set up the DC controller
-    voltage_control_tab, voltage_control_component, dc_gate_set = None, None, None
-    if qdac is not None: 
-        for ch_name, ch in channel_mapping.items(): 
-            ch.offset_parameter = qdac.channel(ch.qdac_spec.qdac_output_port).dc_constant_V
-        dc_gate_set = VirtualDCSet(
-            id = "Plungers", 
-            channels = {ch_name: ch.get_reference() for ch_name, ch in channel_mapping.items()}
-            )
-        dc_gate_set.add_layer(
-            source_gates = ["V1", "V2"], 
-            target_gates = ["ch1", "ch2"],
-            matrix = [[1, 0.2], [0.2, 1]]
-        )
-        voltage_control_component = VoltageControlComponent(
-            component_id="DC_Voltage_Control",
-            dc_set = dc_gate_set,
-            # voltage_parameters=voltage_parameters,
-            update_interval_ms=1000,
-        )
-        from qua_dashboards.video_mode.tab_controllers import VoltageControlTabController
-        voltage_control_tab = VoltageControlTabController(voltage_control_component = voltage_control_component)
-
-
     # Instantiate the OPXDataAcquirer.
     # This component handles the QUA program generation, execution, and data fetching.
     data_acquirer = OPXDataAcquirer(    
@@ -155,29 +140,97 @@ def main():
         scan_modes=scan_mode_dict,
         result_type="I",  # "I", "Q", "amplitude", or "phase"
         available_readout_pulses=[readout_pulse_ch1, readout_pulse_ch2], # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI. 
-        acquisition_interval_s=0.05,
-        voltage_control_component=voltage_control_component, 
+        acquisition_interval_s=0.05, 
+        voltage_control_component=None, 
     )
 
-    virtual_gating_component = VirtualLayerEditor(gateset = virtual_gate_set, component_id = 'virtual-gates-ui', dc_set = dc_gate_set)
 
-    video_mode_component = VideoModeComponent(
-        data_acquirer=data_acquirer,
-        data_polling_interval_s=0.05,  # Keep this >= acquisition_interval_s for stable cadence
-        voltage_control_tab = voltage_control_tab,
-        save_path = r"C:\Users\..."
+    # ---------------------------------------------------------------------------
+    # 1. Where to save the calibration
+    # ---------------------------------------------------------------------------
+    CALIBRATION_PATH = "video_mode_calibration.json"
+
+    # ---------------------------------------------------------------------------
+    # 2. Run calibration
+    # ---------------------------------------------------------------------------
+    # The grid runs nx and ny independently from 20 to 460 in steps of 40,
+    # giving an 12×12 = 144-point grid.
+    # Total time ≈ n_points × (warmup_s + n_fetch_samples × fetch_time + tiny plot overhead)
+    # With warmup_s=3 and ~1 s fetch at 200×200 that is roughly 20–40 min.
+    # Reduce the grid or increase the step for a faster (coarser) calibration.
+
+    cal = Calibrations(
+        acquirer=data_acquirer,
+        nx_vals=np.arange(20, 461, 40),   # 12 values: 20, 60, ..., 460
+        ny_vals=np.arange(20, 461, 40),
     )
-    components = [video_mode_component, virtual_gating_component]
-
-    app = build_dashboard(
-        components = components,
-        title = "OPX Video Mode Dashboard",  # Title for the web page
+    cal.run(
+        n_fetch_samples=5,       # fresh-frame intervals per repeat
+        n_plot_samples=10,       # figure_from_data() calls per repeat
+        n_repeats=3,             # valid repeats per (nx, ny) point
+        fetch_max_s=4.0,         # retry if fetch exceeds this (seconds/frame)
+        max_retry_per_repeat=3,  # max retry budget per repeat target
     )
-    # Helper function to keep UI updated with Virtual Layer changes
-    ui_update(app, video_mode_component, voltage_control_component=voltage_control_component)
+    cal.save(CALIBRATION_PATH)
 
-    logger.info("Dashboard built. Starting Dash server on http://localhost:8050")
-    app.run(debug=True, host="0.0.0.0", port=8050, use_reloader=False)
+    # ---------------------------------------------------------------------------
+    # 3. Inspect results (optional)
+    # ---------------------------------------------------------------------------
+    cal = Calibrations.load(CALIBRATION_PATH)
+
+    import matplotlib.pyplot as plt
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+    for ax, data, title in zip(
+        axes,
+        [cal.fetch_times * 1e3, cal.plot_times * 1e3, cal.ideal_buffers],
+        ["Fetch time (ms)", "Plot time (ms)", "Ideal buffer_frames"],
+    ):
+        finite = np.asarray(data, dtype=float)
+        finite = finite[np.isfinite(finite)]
+        if finite.size > 0:
+            vmin = np.percentile(finite, 5)
+            vmax = np.percentile(finite, 95)
+            if not np.isfinite(vmin) or not np.isfinite(vmax) or vmin >= vmax:
+                vmin = None
+                vmax = None
+        else:
+            vmin = None
+            vmax = None
+        im = ax.imshow(
+            data,
+            origin="lower",
+            extent=[cal.ny_vals[0], cal.ny_vals[-1], cal.nx_vals[0], cal.nx_vals[-1]],
+            aspect="auto",
+            vmin=vmin,
+            vmax=vmax,
+        )
+        ax.set_xlabel("ny")
+        ax.set_ylabel("nx")
+        ax.set_title(title)
+        plt.colorbar(im, ax=ax)
+    plt.tight_layout()
+    plt.show()
+
+    # # ---------------------------------------------------------------------------
+    # # 4. Normal session — load calibration and pass to the acquirer
+    # # ---------------------------------------------------------------------------
+    # cal = Calibrations.load(CALIBRATION_PATH)
+
+    # acquirer = OPXDataAcquirer(
+    #     qmm=qmm,
+    #     machine=machine,
+    #     x_axis_name="P1",
+    #     y_axis_name="P2",
+    #     scan_modes={"Raster": RasterScan()}, # pyright: ignore[reportUndefinedVariable]
+    #     gate_set=machine.gate_set,
+    #     calibrations=cal.to_dict(),   # <-- pass the dict here
+    #     buffer_frames=20,             # fallback if calibration lookup fails
+    #     ...
+    # )
+
+# The acquirer will automatically interpolate the calibration map and use the
+# ideal buffer_frames whenever it (re)compiles the QUA program.
 
 if __name__ == "__main__":
     main()

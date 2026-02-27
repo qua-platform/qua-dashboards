@@ -123,8 +123,16 @@ class VideoModeComponent(BaseComponent):
         )
         self.shutdown_callback = shutdown_callback
         self._last_pushed_seq: Optional[int] = None
-        if hasattr(self.data_acquirer, "_plot_time_ms"): 
-            self.data_acquirer._plot_time_ms = data_polling_interval_s*1000
+        min_poll_s = 0.05
+        if data_polling_interval_s < min_poll_s:
+            logger.warning(
+                "data_polling_interval_s=%.4f too low; clamping to %.3f s for stability.",
+                data_polling_interval_s,
+                min_poll_s,
+            )
+            data_polling_interval_s = min_poll_s
+        if hasattr(self.data_acquirer, "_plot_time_ms"):
+            self.data_acquirer._plot_time_ms = data_polling_interval_s * 1000
 
         if tab_controllers is None:
             logger.info(
@@ -640,12 +648,15 @@ class VideoModeComponent(BaseComponent):
                 )
 
             if data_object is not None and status == "running":
-                if seq is None or self._last_pushed_seq != seq: 
+                if seq is None or self._last_pushed_seq != seq:
                     self._last_pushed_seq = seq
 
-                    current_poll_ms = (current_poll_config or {}).get("poll_ms", self.data_polling_interval_ms)
-                    if current_poll_ms != 150:
-                        auto_poll_store_update = {"poll_ms": 150}
+                    # Keep a stable polling cadence (no adaptive interval hopping)
+                    current_poll_ms = (current_poll_config or {}).get(
+                        "poll_ms", self.data_polling_interval_ms
+                    )
+                    if current_poll_ms != self.data_polling_interval_ms:
+                        auto_poll_store_update = {"poll_ms": self.data_polling_interval_ms}
 
                     new_version = data_registry.set_data(
                         data_registry.LIVE_DATA_KEY,
@@ -668,11 +679,13 @@ class VideoModeComponent(BaseComponent):
 
                         if tab_controller.get_tab_value() == active_tab_value:
                             viewer_primary_data_ref_update = data_reference
-            else: 
-                    # When it has not updated, we can add a 'downtime', which reduces overhead
-                    current_poll_ms = (current_poll_config or {}).get("poll_ms", self.data_polling_interval_ms)
-                    downtime_ms = min(current_poll_ms*2, 2000)
-                    auto_poll_store_update = {"poll_ms": downtime_ms}
+            else:
+                    # Keep cadence fixed even when there is no new data to avoid jitter.
+                    current_poll_ms = (current_poll_config or {}).get(
+                        "poll_ms", self.data_polling_interval_ms
+                    )
+                    if current_poll_ms != self.data_polling_interval_ms:
+                        auto_poll_store_update = {"poll_ms": self.data_polling_interval_ms}
                     
             return (
                 latest_processed_data_ref_for_store,

@@ -64,6 +64,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         voltage_control_component: Optional["VoltageControlComponent"] = None,
         mid_scan_compensation: bool = False, 
         buffer_frames: int = 20,
+        calibrations: Optional[Dict] = None,
         **kwargs: Any,
     ):
         """
@@ -122,10 +123,16 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         self.inner_functions_dict = inner_functions_dict or {}
         self.mid_scan_compensation = mid_scan_compensation
         self.buffer_frames = buffer_frames
+        self.calibrations: Optional[Dict] = calibrations
         self._frame_queue = queue.Queue(maxsize=30)
         self._fetch_thread = None
-        self._fetch_running = False
+        self._fetch_event = threading.Event()  # set = fetch thread running
+        # Number of times UI actually displayed fallback single-frame output.
+        # Used to skip duplicated leading frames when buffered batches start arriving.
+        self._single_frames_shown = 0
         self._last_frame = None
+        # Counts only truly fresh frames consumed from the queue (not repeated last_frame).
+        self._fresh_frame_seq = 0
 
     def _ensure_pulse_names(self) -> None:
         """
@@ -272,8 +279,8 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                     )  # type: ignore
 
                 combined_qua_stream.save("latest_frame")  # Unbuffered - first frame fast
-                combined_qua_stream.buffer(self.buffer_frames).save("all_streams_combined")
-                # combined_qua_stream.buffer(self.buffer_frames).save("all_streams_combined")
+                active_buffer = self._resolve_buffer_frames(int(self.x_axis.points), int(self.y_axis.points))
+                combined_qua_stream.buffer(active_buffer).save("all_streams_combined")
 
         self.qua_program = prog
         return prog
@@ -447,6 +454,31 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
 
             return np.stack(output_layers, axis=0)
 
+    def _resolve_buffer_frames(self, nx: int, ny: int) -> int:
+        """Return the ideal buffer_frames for (nx, ny) via calibration interpolation.
+
+        Falls back to self.buffer_frames if no calibration data is loaded.
+        """
+        if self.calibrations is None:
+            return self.buffer_frames
+        try:
+            from scipy.interpolate import RegularGridInterpolator
+            nx_vals = np.array(self.calibrations["nx_vals"])
+            ny_vals = np.array(self.calibrations["ny_vals"])
+            ideal_buffers = np.array(self.calibrations["ideal_buffers"], dtype=float)
+            interp = RegularGridInterpolator(
+                (nx_vals, ny_vals),
+                ideal_buffers,
+                method="linear",
+                bounds_error=False,
+                fill_value=None,  # nearest-edge extrapolation outside the grid
+            )
+            val = float(interp([[float(nx), float(ny)]])[0])
+            return max(1, int(round(val)))
+        except Exception as e:
+            logger.warning(f"Calibration lookup failed: {e}. Using default buffer_frames={self.buffer_frames}.")
+            return self.buffer_frames
+
     def _calculate_optimal_buffer_frames(self) -> int:
         if self._fetch_time_ms is None:
             return self.buffer_frames
@@ -454,8 +486,14 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         return max(self._min_buffer_frames, min(self._max_buffer_frames, optimal))
     
     def _fetch_loop(self):
-        """Continuous background fetcher, with a 2 stream system."""
-        while self._fetch_running:
+        """Continuous background fetcher using two QM streams.
+
+        Uses latest_frame (unbuffered) for fast single-frame updates while the
+        OPX fills its buffer.  Once all_streams_combined delivers a full batch,
+        we skip any frames the user has already seen via the single-frame path
+        (_single_frames_shown), then serve only the new frames.
+        """
+        while self._fetch_event.is_set():
             try:
                 if self.qm_job is None or self.qm_job.status != "running":
                     time.sleep(0.01)
@@ -470,42 +508,48 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                     continue
 
                 buffered_results = buffered_handle.fetch_all()
-                
+
                 if buffered_results is not None and len(buffered_results) > 0:
-                    for frame_idx in range(len(buffered_results)):
-                        if not self._fetch_running:
+                    # Skip frames the user already saw via the single-frame path.
+                    # Clamp to len(batch)-1 so we always pass at least one frame from
+                    # the first buffered batch and avoid a visible freeze.
+                    start_idx = min(self._single_frames_shown, max(len(buffered_results) - 1, 0))
+                    self._single_frames_shown = 0  # reset; subsequent batches shown in full
+                    for frame_idx in range(start_idx, len(buffered_results)):
+                        if not self._fetch_event.is_set():
                             break
                         frame = buffered_results[frame_idx]
-                        single_frame = tuple(frame)
-                        processed = self._process_fetched_results(single_frame)
+                        processed = self._process_fetched_results(tuple(frame))
                         try:
                             self._frame_queue.put(processed, timeout=0.1)
                         except queue.Full:
                             pass
                 else:
+                    # Buffer not yet full — show individual frames as they arrive.
                     latest_result = latest_handle.fetch_all()
                     if latest_result is not None:
-                        single_frame = tuple(latest_result)
-                        processed = self._process_fetched_results(single_frame)
+                        processed = self._process_fetched_results(tuple(latest_result))
                         try:
                             self._frame_queue.put(processed, timeout=0.1)
                         except queue.Full:
                             pass
                     else:
                         time.sleep(0.01)
-                        
+
             except Exception as e:
                 logger.warning(f"Fetch loop error: {e}")
                 time.sleep(0.1)
         
-    def _clear_queue(self) -> None: 
-        """Clear all frames from queue and reset last frame."""
+    def _clear_queue(self) -> None:
+        """Clear all frames from the queue and reset tracking state."""
         while not self._frame_queue.empty():
             try:
                 self._frame_queue.get_nowait()
             except queue.Empty:
                 break
         self._last_frame = None
+        self._single_frames_shown = 0
+        self._fresh_frame_seq = 0
 
     def perform_actual_acquisition(self) -> np.ndarray:
         if self._acquisition_status == "stopped":
@@ -528,13 +572,13 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                 self._halt_acquisition()
                 self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
         if self._compilation_flags & ModifiedFlags.CONFIG_MODIFIED:
-            self._fetch_running = False
+            self._fetch_event.clear()
             self._clear_queue()
             logger.info(f"Config regeneration triggered for {self.component_id}.")
             self._regenerate_config_and_reopen_qm()
             self._compilation_flags = ModifiedFlags.NONE
         elif self._compilation_flags & ModifiedFlags.PROGRAM_MODIFIED:
-            self._fetch_running = False
+            self._fetch_event.clear()
             self._clear_queue()
             self._halt_acquisition()
             self.execute_program()
@@ -556,18 +600,36 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
             
         
         if self._fetch_thread is None or not self._fetch_thread.is_alive():
-            self._fetch_running = True
+            self._fetch_event.set()
             self._fetch_thread = threading.Thread(target=self._fetch_loop, daemon=True)
             self._fetch_thread.start()
 
         try:
             frame = self._frame_queue.get_nowait()
             self._last_frame = frame
+            # Fresh queued frame is now visible; any previous fallback-display count
+            # should no longer be applied.
+            self._single_frames_shown = 0
+            self._fresh_frame_seq += 1
             return frame
         except queue.Empty:
             if self._last_frame is not None:
+                # Count only frames that were actually displayed as fallback.
+                self._single_frames_shown += 1
                 return self._last_frame
             return np.full((self.y_axis.points, self.x_axis.points), np.nan)
+
+    def get_latest_data(self) -> Dict[str, Any]:
+        """
+        Return latest data plus a fresh-frame sequence.
+
+        Base 2D/GateSet wrappers can drop `seq` during xarray conversion. For
+        smooth plotting cadence we expose a monotonic sequence that advances only
+        when a genuinely new frame is consumed from the queue.
+        """
+        out = super().get_latest_data()
+        out["seq"] = int(self._fresh_frame_seq)
+        return out
 
     def _regenerate_config_and_reopen_qm(self) -> None:
         logger.info(f"Regenerating QUA config for {self.component_id} from machine.")
@@ -591,7 +653,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         self.qua_program = None
 
     def stop_acquisition(self) -> None:
-        self._fetch_running = False
+        self._fetch_event.clear()
         logger.info(f"OPXDataAcquirer ({self.component_id}) attempting to halt QM job.")
         super().stop_acquisition()
         if self.qm_job and self.qm_job.status == "running":

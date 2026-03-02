@@ -161,8 +161,8 @@ def main():
 
     cal = Calibrations(
         acquirer=data_acquirer,
-        nx_vals=np.arange(20, 461, 40),   # 12 values: 20, 60, ..., 460
-        ny_vals=np.arange(20, 461, 40),
+        nx_vals=np.arange(20, 461, 60),   # 12 values: 20, 60, ..., 460
+        ny_vals=np.arange(20, 461, 60),
     )
     cal.run(
         n_fetch_samples=5,       # fresh-frame intervals per repeat

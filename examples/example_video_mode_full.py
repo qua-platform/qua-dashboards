@@ -77,8 +77,8 @@ def main():
     # machine = BasicQuam.load()
 
     # Adjust the IP and cluster name here
-    qm_ip = "172.16.33.101"
-    cluster_name = "CS_2"
+    qm_ip = "172.16.33.115"
+    cluster_name = "CS_3"
 
     qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
     machine = BasicQuam()
@@ -88,7 +88,7 @@ def main():
     readout_pulse_ch2 = pulses.SquareReadoutPulse(id="readout", length=30000, amplitude=0.1)
 
     # Choose the FEM. For OPX+, keep fem = None. 
-    fem = None
+    fem = 5
 
     # Set up the readout channels
     machine.channels["ch1_readout"] = setup_readout_channel(name = "ch1_readout", readout_pulse=readout_pulse_ch1, opx_output_port = 6, opx_input_port = 1, IF = 150e6, fem = fem)

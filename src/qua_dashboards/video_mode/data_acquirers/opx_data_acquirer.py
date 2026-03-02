@@ -1,6 +1,7 @@
 import logging
 import time
 from typing import Any, Dict, List, Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import threading
 import queue
@@ -64,6 +65,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         voltage_control_component: Optional["VoltageControlComponent"] = None,
         mid_scan_compensation: bool = False, 
         buffer_frames: int = 20,
+        calibrations: Optional[Dict] = None,
         **kwargs: Any,
     ):
         """
@@ -122,10 +124,15 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         self.inner_functions_dict = inner_functions_dict or {}
         self.mid_scan_compensation = mid_scan_compensation
         self.buffer_frames = buffer_frames
-        self._frame_queue = queue.Queue(maxsize=30)
+        self.calibrations: Optional[Dict] = calibrations
+        self._frame_queue = queue.Queue(maxsize=64)
+        self._fetch_event = threading.Event()
         self._fetch_thread = None
-        self._fetch_running = False
         self._last_frame = None
+        self._single_frames_shown = 0
+        self._fresh_frame_seq = 0
+        self._job_status_cache = None
+        self._job_status_time = 0.0
 
     def _ensure_pulse_names(self) -> None:
         """
@@ -272,8 +279,8 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                     )  # type: ignore
 
                 combined_qua_stream.save("latest_frame")  # Unbuffered - first frame fast
-                combined_qua_stream.buffer(self.buffer_frames).save("all_streams_combined")
-                # combined_qua_stream.buffer(self.buffer_frames).save("all_streams_combined")
+                active_buffer = self._resolve_buffer_frames(int(self.x_axis.points), int(self.y_axis.points))
+                combined_qua_stream.buffer(active_buffer).save("all_streams_combined")
 
         self.qua_program = prog
         return prog
@@ -447,69 +454,191 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
 
             return np.stack(output_layers, axis=0)
 
+    def _resolve_buffer_frames(self, nx: int, ny: int) -> int:
+        """Return the ideal buffer_frames for (nx, ny) via calibration interpolation.
+
+        Falls back to self.buffer_frames if no calibration data is loaded.
+        """
+        if self.calibrations is None:
+            return self.buffer_frames
+        try:
+            from scipy.interpolate import RegularGridInterpolator
+            nx_vals = np.array(self.calibrations["nx_vals"])
+            ny_vals = np.array(self.calibrations["ny_vals"])
+            ideal_buffers = np.array(self.calibrations["ideal_buffers"], dtype=float)
+            interp = RegularGridInterpolator(
+                (nx_vals, ny_vals),
+                ideal_buffers,
+                method="linear",
+                bounds_error=False,
+                fill_value=None,  # nearest-edge extrapolation outside the grid
+            )
+            val = float(interp([[float(nx), float(ny)]])[0])
+            return max(1, int(round(val)))
+        except Exception as e:
+            logger.warning(f"Calibration lookup failed: {e}. Using default buffer_frames={self.buffer_frames}.")
+            return self.buffer_frames
+
     def _calculate_optimal_buffer_frames(self) -> int:
         if self._fetch_time_ms is None:
             return self.buffer_frames
         optimal = int(self._fetch_time_ms / self._plot_time_ms)
         return max(self._min_buffer_frames, min(self._max_buffer_frames, optimal))
     
-    def _fetch_loop(self):
-        """Continuous background fetcher, with a 2 stream system."""
-        while self._fetch_running:
+    @staticmethod
+    def _frame_signature(raw) -> bytes:
+        """Fast dedup signature: sample start + end bytes of payload."""
+        try:
+            b = raw.tobytes() if isinstance(raw, np.void) else np.asarray(raw).tobytes()
+            return b[:64] + b[-64:] if len(b) > 128 else b
+        except Exception:
+            return b""
+
+    def _enqueue(self, frame: np.ndarray) -> None:
+        """Non-blocking enqueue; drops oldest frame if full."""
+        try:
+            self._frame_queue.put_nowait(frame)
+        except queue.Full:
             try:
-                if self.qm_job is None or self.qm_job.status != "running":
-                    time.sleep(0.01)
-                    continue
+                self._frame_queue.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                self._frame_queue.put_nowait(frame)
+            except queue.Full:
+                pass
 
-                buffered_handle = self.qm_job.result_handles.get("all_streams_combined")
-                latest_handle = self.qm_job.result_handles.get("latest_frame")
+    def _fetch_loop(self):
+        """Background fetcher: latest_frame primary, buffer non-blocking.
 
-                if buffered_handle is None or latest_handle is None:
-                    logger.debug("Result handles not available yet")
-                    time.sleep(0.05)
-                    continue
+        Polls latest_frame continuously (~500ms per RPC over VPN).
+        Buffer fetch (bh.fetch_all) runs in a background ThreadPoolExecutor
+        so it NEVER blocks the latest_frame polling loop.  When a buffer
+        batch completes, new frames are processed and enqueued immediately.
+        """
+        executor = ThreadPoolExecutor(max_workers=1)
+        buffer_future = None
+        bh = None
+        lh = None
+        last_batch_sig = b""
+        last_latest_sig = b""
+        first_data_received = False
 
-                buffered_results = buffered_handle.fetch_all()
-                
-                if buffered_results is not None and len(buffered_results) > 0:
-                    for frame_idx in range(len(buffered_results)):
-                        if not self._fetch_running:
-                            break
-                        frame = buffered_results[frame_idx]
-                        single_frame = tuple(frame)
-                        processed = self._process_fetched_results(single_frame)
+        try:
+            while self._fetch_event.is_set():
+                try:
+                    if self.qm_job is None:
+                        time.sleep(0.05)
+                        continue
+                    if self._check_job_status_cached() != "running":
+                        time.sleep(0.05)
+                        continue
+
+                    if bh is None or lh is None:
                         try:
-                            self._frame_queue.put(processed, timeout=0.1)
-                        except queue.Full:
-                            pass
-                else:
-                    latest_result = latest_handle.fetch_all()
-                    if latest_result is not None:
-                        single_frame = tuple(latest_result)
-                        processed = self._process_fetched_results(single_frame)
+                            bh = self.qm_job.result_handles.get("all_streams_combined")
+                            lh = self.qm_job.result_handles.get("latest_frame")
+                        except Exception:
+                            bh = lh = None
+                            time.sleep(0.1)
+                            continue
+                        if bh is None or lh is None:
+                            time.sleep(0.1)
+                            continue
+
+                    # --- Check buffer future (non-blocking) ---
+                    if buffer_future is not None and buffer_future.done():
                         try:
-                            self._frame_queue.put(processed, timeout=0.1)
-                        except queue.Full:
-                            pass
+                            batch = buffer_future.result()
+                            if batch is not None and len(batch) > 0:
+                                bsig = self._frame_signature(batch[-1])
+                                if bsig != last_batch_sig:
+                                    last_batch_sig = bsig
+                                    n = len(batch)
+                                    skip = min(self._single_frames_shown, n - 1)
+                                    self._single_frames_shown = 0
+                                    enqueued = 0
+                                    for i in range(skip, n):
+                                        if not self._fetch_event.is_set():
+                                            break
+                                        processed = self._process_fetched_results(
+                                            tuple(batch[i])
+                                        )
+                                        self._enqueue(processed)
+                                        enqueued += 1
+                                    last_latest_sig = bsig
+                                    logger.debug(
+                                        f"Buffer batch: {n} total, skipped {skip}, "
+                                        f"enqueued {enqueued}"
+                                    )
+                        except Exception as e:
+                            logger.debug(f"Buffer fetch exception: {e}")
+                            bh = None
+                        buffer_future = None
+
+                    # Submit buffer fetch if idle and data is flowing
+                    if buffer_future is None and bh is not None and first_data_received:
+                        _bh = bh
+                        buffer_future = executor.submit(_bh.fetch_all)
+
+                    # --- Always poll latest_frame (blocks ~500ms over VPN) ---
+                    try:
+                        raw = lh.fetch_all()
+                    except Exception:
+                        lh = None
+                        continue
+
+                    if raw is not None:
+                        sig = self._frame_signature(raw)
+                        if sig != last_latest_sig:
+                            last_latest_sig = sig
+                            first_data_received = True
+                            processed = self._process_fetched_results(tuple(raw))
+                            self._enqueue(processed)
+                            self._single_frames_shown += 1
+                        else:
+                            time.sleep(0.05)
                     else:
-                        time.sleep(0.01)
-                        
-            except Exception as e:
-                logger.warning(f"Fetch loop error: {e}")
-                time.sleep(0.1)
+                        time.sleep(0.05)
+
+                except Exception as e:
+                    logger.warning(f"Fetch loop error: {e}")
+                    bh = lh = None
+                    if buffer_future is not None:
+                        buffer_future.cancel()
+                        buffer_future = None
+                    time.sleep(0.1)
+        finally:
+            executor.shutdown(wait=False)
         
-    def _clear_queue(self) -> None: 
-        """Clear all frames from queue and reset last frame."""
+    def _clear_queue(self) -> None:
+        """Clear all frames from the queue and reset tracking state."""
         while not self._frame_queue.empty():
             try:
                 self._frame_queue.get_nowait()
             except queue.Empty:
                 break
         self._last_frame = None
+        self._single_frames_shown = 0
+        self._fresh_frame_seq = 0
+        self._job_status_cache = None
+        self._job_status_time = 0.0
+
+    def _check_job_status_cached(self) -> str:
+        """Return cached job status, refreshing at most every 5 seconds."""
+        now = time.perf_counter()
+        if now - self._job_status_time > 5.0 or self._job_status_cache is None:
+            try:
+                self._job_status_cache = self.qm_job.status if self.qm_job else None
+            except Exception:
+                self._job_status_cache = None
+            self._job_status_time = now
+        return self._job_status_cache
 
     def perform_actual_acquisition(self) -> np.ndarray:
         if self._acquisition_status == "stopped":
             return np.full((self.y_axis.points, self.x_axis.points), np.nan)
+
         cur = (int(self.x_axis.points), 1 if self._is_1d else int(self.y_axis.points), self._is_1d)
         if self._compiled_xy is not None and cur != self._compiled_xy:
             logger.info(f"Scan shape changed {self._compiled_xy} -> {cur}. Forcing recompile.")
@@ -524,50 +653,66 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                 for channel in self.selected_readout_channels:
                     expected_vars.extend([f"I:{channel.name}", f"Q:{channel.name}"])
             if self._compiled_stream_vars != expected_vars:
-                logger.warning(f"Stream vars mismatch! Compiled: {self._compiled_stream_vars}, Expected: {expected_vars}. Regenerating program.")
+                logger.warning(f"Stream vars mismatch. Regenerating program.")
                 self._halt_acquisition()
                 self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
+
         if self._compilation_flags & ModifiedFlags.CONFIG_MODIFIED:
-            self._fetch_running = False
+            self._fetch_event.clear()
             self._clear_queue()
             logger.info(f"Config regeneration triggered for {self.component_id}.")
             self._regenerate_config_and_reopen_qm()
             self._compilation_flags = ModifiedFlags.NONE
+            self._job_status_cache = None
         elif self._compilation_flags & ModifiedFlags.PROGRAM_MODIFIED:
-            self._fetch_running = False
+            self._fetch_event.clear()
             self._clear_queue()
             self._halt_acquisition()
             self.execute_program()
             self._compilation_flags = ModifiedFlags.NONE
+            self._job_status_cache = None
 
-        if self.qm_job is None or self.qm_job.status != "running":
+        if self.qm_job is None or self._check_job_status_cached() != "running":
             if self._acquisition_status != "stopped":
                 logger.warning(
                     f"QM job for {self.component_id} is not running or None. Attempting to re-initialize."
                 )
                 self.initialize_qm()
                 self.execute_program()
+                self._job_status_cache = None
                 if self.qm_job is None:
                     raise RuntimeError(
                         f"Failed to initialize QM job for {self.component_id}."
                     )
             else:
                 return np.full((self.y_axis.points, self.x_axis.points), np.nan)
-            
-        
+
         if self._fetch_thread is None or not self._fetch_thread.is_alive():
-            self._fetch_running = True
+            self._fetch_event.set()
             self._fetch_thread = threading.Thread(target=self._fetch_loop, daemon=True)
             self._fetch_thread.start()
 
         try:
             frame = self._frame_queue.get_nowait()
             self._last_frame = frame
+            self._fresh_frame_seq += 1
             return frame
         except queue.Empty:
             if self._last_frame is not None:
                 return self._last_frame
             return np.full((self.y_axis.points, self.x_axis.points), np.nan)
+
+    def get_latest_data(self) -> Dict[str, Any]:
+        """
+        Return latest data plus a fresh-frame sequence.
+
+        Base 2D/GateSet wrappers can drop `seq` during xarray conversion. For
+        smooth plotting cadence we expose a monotonic sequence that advances only
+        when a genuinely new frame is consumed from the queue.
+        """
+        out = super().get_latest_data()
+        out["seq"] = int(self._fresh_frame_seq)
+        return out
 
     def _regenerate_config_and_reopen_qm(self) -> None:
         logger.info(f"Regenerating QUA config for {self.component_id} from machine.")
@@ -591,7 +736,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         self.qua_program = None
 
     def stop_acquisition(self) -> None:
-        self._fetch_running = False
+        self._fetch_event.clear()
         logger.info(f"OPXDataAcquirer ({self.component_id}) attempting to halt QM job.")
         super().stop_acquisition()
         if self.qm_job and self.qm_job.status == "running":

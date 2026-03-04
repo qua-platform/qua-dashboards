@@ -40,7 +40,6 @@ Quick How-to-Use:
 """
 
 # %% Imports
-from numpy import False_
 from qm import QuantumMachinesManager
 from quam.components import (
     pulses,
@@ -69,7 +68,7 @@ def main():
 
     # Adjust the IP and cluster name here
     qm_ip = "172.16.33.101"
-    cluster_name = "CS_1"
+    cluster_name = "CS_2"
 
     qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
     machine = BasicQuam()
@@ -125,7 +124,7 @@ def main():
         available_readout_pulses=[readout_pulse_ch1, readout_pulse_ch2], # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI. 
         acquisition_interval_s=0.05, 
         voltage_control_component=None,
-        use_buffered_stream=False,
+        use_buffered_stream=True,
     )
 
     virtual_gating_component = VirtualLayerEditor(gateset = virtual_gate_set, component_id = 'virtual-gates-ui', dc_set = None)

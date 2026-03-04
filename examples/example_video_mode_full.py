@@ -61,7 +61,7 @@ from qua_dashboards.utils import setup_DC_channel, setup_readout_channel, connec
 def main():
     logger = setup_logging(__name__)
 
-    qdac_connect = False
+    qdac_connect = True
     qdac = None
     if qdac_connect:
         qdac_ip = "172.16.33.101"
@@ -78,7 +78,7 @@ def main():
 
     # Adjust the IP and cluster name here
     qm_ip = "172.16.33.101"
-    cluster_name = "CS_1"
+    cluster_name = "CS_2"
 
     qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
     machine = BasicQuam()

@@ -77,10 +77,13 @@ def main():
     # machine = BasicQuam.load()
 
     # Adjust the IP and cluster name here
-    qm_ip = "172.16.33.101"
-    cluster_name = "CS_2"
+    qm_ip = "172.16.33.115"
+    cluster_name = "CS_3"
 
     qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
+    from qua_dashboards.utils.example_utils.qmm_wrapper import QMW
+    qmw = QMW(qmm = qmm, qm_id = None, close = True)
+
     machine = BasicQuam()
 
     # Define your readout pulses here. Each pulse should be uniquely mapped to your readout elements. 
@@ -88,18 +91,18 @@ def main():
     readout_pulse_ch2 = pulses.SquareReadoutPulse(id="readout", length=30000, amplitude=0.1)
 
     # Choose the FEM. For OPX+, keep fem = None. 
-    fem = None
+    fem = 5
 
     # Set up the readout channels
-    machine.channels["ch1_readout"] = setup_readout_channel(name = "ch1_readout", readout_pulse=readout_pulse_ch1, opx_output_port = 6, opx_input_port = 1, IF = 150e6, fem = fem)
-    machine.channels["ch2_readout"] = setup_readout_channel(name = "ch2_readout", readout_pulse=readout_pulse_ch2, opx_output_port = 6, opx_input_port = 1, IF = 250e6, fem = fem)
+    machine.channels["ch1_readout"] = setup_readout_channel(name = "ch1_readout", readout_pulse=readout_pulse_ch1, opx_output_port = 6, opx_input_port = 1, IF = 150e6, fem = fem, shareable = True)
+    machine.channels["ch2_readout"] = setup_readout_channel(name = "ch2_readout", readout_pulse=readout_pulse_ch2, opx_output_port = 6, opx_input_port = 1, IF = 250e6, fem = fem, shareable = True)
 
     channel_mapping = {
-        "ch1": setup_DC_channel(name = "ch1", opx_output_port = 1, qdac_port = 1, fem = fem), 
-        "ch2": setup_DC_channel(name = "ch2", opx_output_port = 2, qdac_port = 2, fem = fem), 
-        "ch3": setup_DC_channel(name = "ch3", opx_output_port = 3, qdac_port = 3, fem = fem), 
-        "ch1_readout_DC": setup_DC_channel(name = "ch1_readout_DC", opx_output_port = 4, qdac_port = 3, fem = fem), 
-        "ch2_readout_DC": setup_DC_channel(name = "ch2_readout_DC", opx_output_port = 5, qdac_port = 3, fem = fem), 
+        "ch1": setup_DC_channel(name = "ch1", opx_output_port = 1, qdac_port = 1, fem = fem, shareable = True), 
+        "ch2": setup_DC_channel(name = "ch2", opx_output_port = 2, qdac_port = 2, fem = fem, shareable = True), 
+        "ch3": setup_DC_channel(name = "ch3", opx_output_port = 3, qdac_port = 3, fem = fem, shareable = True), 
+        "ch1_readout_DC": setup_DC_channel(name = "ch1_readout_DC", opx_output_port = 4, qdac_port = 3, fem = fem, shareable = True), 
+        "ch2_readout_DC": setup_DC_channel(name = "ch2_readout_DC", opx_output_port = 5, qdac_port = 3, fem = fem, shareable = True), 
     }
     for ch_name, ch in channel_mapping.items(): 
         machine.channels[ch_name] = ch
@@ -147,7 +150,7 @@ def main():
     # Instantiate the OPXDataAcquirer.
     # This component handles the QUA program generation, execution, and data fetching.
     data_acquirer = OPXDataAcquirer(    
-        qmm=qmm,
+        qmm=qmw,
         machine=machine,
         gate_set=virtual_gate_set,  # Replace with your GateSet instance
         x_axis_name="ch1",  # Must appear in gate_set.valid_channel_names; Virtual gate names also valid
@@ -163,7 +166,7 @@ def main():
 
     video_mode_component = VideoModeComponent(
         data_acquirer=data_acquirer,
-        data_polling_interval_s=0.1,  # How often the dashboard polls for new data
+        data_polling_interval_s=0.05,  # How often the dashboard polls for new data
         voltage_control_tab = voltage_control_tab,
         save_path = r"C:\Users\..."
     )

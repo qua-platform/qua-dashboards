@@ -153,7 +153,6 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                     f"Default pulse not in channel '{ch.name}'. Adding operation 'half_max_square' and regenerating config"
                 )
                 self.qua_config = self.machine.generate_config()
-                self.qm = None
                 self.initialize_qm()
 
     def _rebuild_stream_vars(self) -> None:
@@ -291,10 +290,11 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         if self.qm is not None: 
             try: 
                 self.qm.close()
-                self.qm = None
                 logger.info(f"Closed QM for {self.component_id}")
             except Exception as e: 
                 logger.warning(f"Error closing QM: {e}")
+            finally:
+                self.qm = None
 
         if self.qua_config is None:
             self.qua_config = self.machine.generate_config()
@@ -572,8 +572,6 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
     def _regenerate_config_and_reopen_qm(self) -> None:
         logger.info(f"Regenerating QUA config for {self.component_id} from machine.")
         self.qua_config = self.machine.generate_config()
-        # Necessary to force qm to re-open
-        self.qm = None
         self.initialize_qm()
         self.execute_program()
 

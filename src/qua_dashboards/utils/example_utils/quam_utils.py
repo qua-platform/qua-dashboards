@@ -18,7 +18,7 @@ from quam_builder.architecture.quantum_dots.components import (
 __all__ = ["setup_DC_channel", "setup_readout_channel"]
 
 def setup_DC_channel(
-    name: str, opx_output_port: int, qdac_port: int, con="con1", fem: int = None
+    name: str, opx_output_port: int, qdac_port: int, con="con1", fem: int = None, shareable: bool = False,
 ):
     """
     Set up a DC Channel
@@ -34,6 +34,7 @@ def setup_DC_channel(
         opx_output = OPXPlusAnalogOutputPort(
             controller_id=con,
             port_id=opx_output_port,
+            shareable=shareable
         )
     else:
         opx_output = LFFEMAnalogOutputPort(
@@ -41,6 +42,7 @@ def setup_DC_channel(
             fem_id=fem,
             port_id=opx_output_port,
             upsampling_mode="pulse",
+            shareable=shareable
         )
 
     channel = VoltageGate(
@@ -64,6 +66,7 @@ def setup_readout_channel(
     IF: float,
     con="con1",
     fem: int = None,
+    shareable: bool = False,
 ):
     """
     Set up a Readout Channel
@@ -82,10 +85,12 @@ def setup_readout_channel(
         opx_output = OPXPlusAnalogOutputPort(
             controller_id=con,
             port_id=opx_output_port,
+            shareable=shareable,
         )
         opx_input = OPXPlusAnalogInputPort(
             controller_id=con,
             port_id=opx_input_port,
+            shareable=shareable,
         )
     else:
         opx_output = LFFEMAnalogOutputPort(
@@ -93,11 +98,13 @@ def setup_readout_channel(
             fem_id=fem,
             port_id=opx_output_port,
             upsampling_mode="mw",
+            shareable=shareable,
         )
         opx_input = LFFEMAnalogInputPort(
             controller_id=con,
             fem_id=fem,
             port_id=opx_input_port,
+            shareable=shareable,
         )
 
     channel = ReadoutResonatorSingle(

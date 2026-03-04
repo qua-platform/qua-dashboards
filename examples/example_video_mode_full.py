@@ -61,7 +61,7 @@ from qua_dashboards.utils import setup_DC_channel, setup_readout_channel, connec
 def main():
     logger = setup_logging(__name__)
 
-    qdac_connect = True
+    qdac_connect = False
     qdac = None
     if qdac_connect:
         qdac_ip = "172.16.33.101"
@@ -78,7 +78,7 @@ def main():
 
     # Adjust the IP and cluster name here
     qm_ip = "172.16.33.101"
-    cluster_name = "CS_2"
+    cluster_name = "CS_1"
 
     qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
     machine = BasicQuam()
@@ -157,13 +157,14 @@ def main():
         available_readout_pulses=[readout_pulse_ch1, readout_pulse_ch2], # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI. 
         acquisition_interval_s=0.05, 
         voltage_control_component=voltage_control_component, 
+        use_buffered_stream=True,
     )
 
     virtual_gating_component = VirtualLayerEditor(gateset = virtual_gate_set, component_id = 'virtual-gates-ui', dc_set = dc_gate_set)
 
     video_mode_component = VideoModeComponent(
         data_acquirer=data_acquirer,
-        data_polling_interval_s=0.1,  # How often the dashboard polls for new data
+        data_polling_interval_s=0.05,  # How often the dashboard polls for new data
         voltage_control_tab = voltage_control_tab,
         save_path = r"C:\Users\..."
     )

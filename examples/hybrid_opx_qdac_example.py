@@ -267,7 +267,8 @@ def main():
         qdac_ext_trigger_input_port = 1,
         qdac = qdac,
         mid_scan_compensation = True, 
-        qdac_settle_delay_ns = 200_000
+        qdac_settle_delay_ns = 200_000,
+        use_buffered_stream=True,
     )
 
     video_mode_component = VideoModeComponent(

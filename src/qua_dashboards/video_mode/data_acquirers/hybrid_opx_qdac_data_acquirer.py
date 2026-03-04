@@ -202,9 +202,9 @@ class HybridOPXQDACDataAcquirer(OPXDataAcquirer):
                         buffered_streams[self.stream_vars[i]]
                     )  # type: ignore
 
-                combined_qua_stream.save("latest_frame")  # Unbuffered - first frame fast
-                combined_qua_stream.buffer(self.buffer_frames).save("all_streams_combined")
-                # combined_qua_stream.buffer(self.buffer_frames).save("all_streams_combined")
+                combined_qua_stream.save("latest_frame")
+                if self.use_buffered_stream:
+                    combined_qua_stream.buffer(self.buffer_frames).save("all_streams_combined")
 
         self.qua_program = prog
         return prog

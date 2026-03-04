@@ -64,6 +64,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         voltage_control_component: Optional["VoltageControlComponent"] = None,
         mid_scan_compensation: bool = False, 
         buffer_frames: int = 20,
+        use_buffered_stream: bool = True,
         **kwargs: Any,
     ):
         """
@@ -79,6 +80,10 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
             stream_vars: List of stream variables (e.g., ["I", "Q"]) expected from QUA.
                          Defaults to ["I", "Q"].
             inner_loop_kwargs: Additional arguments for BasicInnerLoopAction creation.
+            use_buffered_stream: If True (default), uses a dual-stream approach with a
+                buffered batch stream for efficient fetching and a single-frame stream
+                for low-latency first results. If False, uses only a single-frame stream
+                ("latest_frame"), avoiding the extra FPGA stream processing overhead.
             **kwargs: Additional arguments for Base2DDataAcquirer.
         """
         self.voltage_control_component = voltage_control_component
@@ -122,6 +127,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         self.inner_functions_dict = inner_functions_dict or {}
         self.mid_scan_compensation = mid_scan_compensation
         self.buffer_frames = buffer_frames
+        self.use_buffered_stream = use_buffered_stream
         self._frame_queue = queue.Queue(maxsize=30)
         self._fetch_thread = None
         self._fetch_running = False
@@ -271,9 +277,9 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                         buffered_streams[self.stream_vars[i]]
                     )  # type: ignore
 
-                combined_qua_stream.save("latest_frame")  # Unbuffered - first frame fast
-                combined_qua_stream.buffer(self.buffer_frames).save("all_streams_combined")
-                # combined_qua_stream.buffer(self.buffer_frames).save("all_streams_combined")
+                combined_qua_stream.save("latest_frame")
+                if self.use_buffered_stream:
+                    combined_qua_stream.buffer(self.buffer_frames).save("all_streams_combined")
 
         self.qua_program = prog
         return prog
@@ -314,7 +320,8 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
 
         if validate_running and startup_timeout_s > 0:
             try:
-                handle = self.qm_job.result_handles.get("all_streams_combined")
+                handle_name = "all_streams_combined" if self.use_buffered_stream else "latest_frame"
+                handle = self.qm_job.result_handles.get(handle_name)
                 handle.wait_for_values(1, timeout=startup_timeout_s)
                 logger.info(f"QM job for {self.component_id} successfully produced initial values.")
             except Exception as e:
@@ -454,46 +461,52 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         return max(self._min_buffer_frames, min(self._max_buffer_frames, optimal))
     
     def _fetch_loop(self):
-        """Continuous background fetcher, with a 2 stream system."""
+        """Continuous background fetcher. Uses dual-stream (buffered + latest_frame)
+        when use_buffered_stream is True, or single-stream (latest_frame only) otherwise."""
         while self._fetch_running:
             try:
                 if self.qm_job is None or self.qm_job.status != "running":
                     time.sleep(0.01)
                     continue
 
-                buffered_handle = self.qm_job.result_handles.get("all_streams_combined")
                 latest_handle = self.qm_job.result_handles.get("latest_frame")
-
-                if buffered_handle is None or latest_handle is None:
+                if latest_handle is None:
                     logger.debug("Result handles not available yet")
                     time.sleep(0.05)
                     continue
 
-                buffered_results = buffered_handle.fetch_all()
-                
-                if buffered_results is not None and len(buffered_results) > 0:
-                    for frame_idx in range(len(buffered_results)):
-                        if not self._fetch_running:
-                            break
-                        frame = buffered_results[frame_idx]
-                        single_frame = tuple(frame)
-                        processed = self._process_fetched_results(single_frame)
-                        try:
-                            self._frame_queue.put(processed, timeout=0.1)
-                        except queue.Full:
-                            pass
+                if self.use_buffered_stream:
+                    buffered_handle = self.qm_job.result_handles.get("all_streams_combined")
+                    if buffered_handle is None:
+                        time.sleep(0.05)
+                        continue
+
+                    buffered_results = buffered_handle.fetch_all()
+
+                    if buffered_results is not None and len(buffered_results) > 0:
+                        for frame_idx in range(len(buffered_results)):
+                            if not self._fetch_running:
+                                break
+                            frame = buffered_results[frame_idx]
+                            single_frame = tuple(frame)
+                            processed = self._process_fetched_results(single_frame)
+                            try:
+                                self._frame_queue.put(processed, timeout=0.1)
+                            except queue.Full:
+                                pass
+                        continue
+
+                latest_result = latest_handle.fetch_all()
+                if latest_result is not None:
+                    single_frame = tuple(latest_result)
+                    processed = self._process_fetched_results(single_frame)
+                    try:
+                        self._frame_queue.put(processed, timeout=0.1)
+                    except queue.Full:
+                        pass
                 else:
-                    latest_result = latest_handle.fetch_all()
-                    if latest_result is not None:
-                        single_frame = tuple(latest_result)
-                        processed = self._process_fetched_results(single_frame)
-                        try:
-                            self._frame_queue.put(processed, timeout=0.1)
-                        except queue.Full:
-                            pass
-                    else:
-                        time.sleep(0.01)
-                        
+                    time.sleep(0.01)
+
             except Exception as e:
                 logger.warning(f"Fetch loop error: {e}")
                 time.sleep(0.1)

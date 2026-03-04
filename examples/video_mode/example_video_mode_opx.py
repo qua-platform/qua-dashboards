@@ -157,7 +157,8 @@ data_acquirer = OPXDataAcquirer(
     scan_modes=scan_mode_dict,
     result_type="I",  # "I", "Q", "amplitude", or "phase"
     available_readout_pulses=[readout_pulse], # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI. 
-    inner_functions_dict = inner_functions
+    inner_functions_dict = inner_functions,
+    use_buffered_stream=True,
 )
 
 # ### Add post-processing functions as needed. Default post-processing functions are x- and y- derivative functions. 

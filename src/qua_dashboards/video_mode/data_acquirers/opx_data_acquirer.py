@@ -463,17 +463,18 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
     def _fetch_loop(self):
         """Continuous background fetcher. Uses dual-stream (buffered + latest_frame)
         when use_buffered_stream is True, or single-stream (latest_frame only) otherwise."""
+        poll_s = self.acquisition_interval_s
         while self._fetch_running:
             try:
                 if self.qm_job is None or self.qm_job.status != "running":
-                    time.sleep(0.01)
+                    time.sleep(poll_s)
                     continue
 
                 if self.use_buffered_stream:
                     buffered_handle = self.qm_job.result_handles.get("all_streams_combined")
                     latest_handle = self.qm_job.result_handles.get("latest_frame")
                     if buffered_handle is None or latest_handle is None:
-                        time.sleep(0.05)
+                        time.sleep(poll_s)
                         continue
 
                     buffered_results = buffered_handle.fetch_all()
@@ -485,7 +486,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                             single_frame = tuple(frame)
                             processed = self._process_fetched_results(single_frame)
                             try:
-                                self._frame_queue.put(processed, timeout=0.1)
+                                self._frame_queue.put(processed, timeout=poll_s)
                             except queue.Full:
                                 pass
                     else:
@@ -494,15 +495,15 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                             single_frame = tuple(latest_result)
                             processed = self._process_fetched_results(single_frame)
                             try:
-                                self._frame_queue.put(processed, timeout=0.1)
+                                self._frame_queue.put(processed, timeout=poll_s)
                             except queue.Full:
                                 pass
                         else:
-                            time.sleep(0.01)
+                            time.sleep(poll_s)
                 else:
                     latest_handle = self.qm_job.result_handles.get("latest_frame")
                     if latest_handle is None:
-                        time.sleep(0.05)
+                        time.sleep(poll_s)
                         continue
 
                     latest_result = latest_handle.fetch_all()
@@ -510,15 +511,15 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                         single_frame = tuple(latest_result)
                         processed = self._process_fetched_results(single_frame)
                         try:
-                            self._frame_queue.put(processed, timeout=0.1)
+                            self._frame_queue.put(processed, timeout=poll_s)
                         except queue.Full:
                             pass
                     else:
-                        time.sleep(0.01)
+                        time.sleep(poll_s)
 
             except Exception as e:
                 logger.warning(f"Fetch loop error: {e}")
-                time.sleep(0.1)
+                time.sleep(poll_s)
         
     def _clear_queue(self) -> None: 
         """Clear all frames from queue and reset last frame."""

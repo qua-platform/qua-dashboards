@@ -157,13 +157,14 @@ def main():
         available_readout_pulses=[readout_pulse_ch1, readout_pulse_ch2], # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI. 
         acquisition_interval_s=0.05, 
         voltage_control_component=voltage_control_component, 
+        use_buffered_stream=True,
     )
 
     virtual_gating_component = VirtualLayerEditor(gateset = virtual_gate_set, component_id = 'virtual-gates-ui', dc_set = dc_gate_set)
 
     video_mode_component = VideoModeComponent(
         data_acquirer=data_acquirer,
-        data_polling_interval_s=0.1,  # How often the dashboard polls for new data
+        data_polling_interval_s=0.05,  # How often the dashboard polls for new data
         voltage_control_tab = voltage_control_tab,
         save_path = r"C:\Users\..."
     )

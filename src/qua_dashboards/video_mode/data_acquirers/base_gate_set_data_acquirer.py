@@ -245,12 +245,12 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
             else:
                 # Virtual gate -> no channel -> no attenuation or offset
                 attenuation = 0
-                if hasattr(self, "voltage_control_component") and self.voltage_control_component is not None: 
-                    params_by_name = self.voltage_control_component.voltage_parameters_by_name
-                    if channel_name in params_by_name:
-                        offset_parameter = params_by_name[channel_name]
-                else:
-                    offset_parameter = None
+                offset_parameter = None
+
+            if hasattr(self, "voltage_control_component") and self.voltage_control_component is not None:
+                params_by_name = self.voltage_control_component.voltage_parameters_by_name
+                if channel_name in params_by_name:
+                    offset_parameter = params_by_name[channel_name]
             voltage_axes.append(
                 VoltageSweepAxis(
                     name=channel_name,

@@ -316,6 +316,15 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         logger.info(f"Executing QUA program for {self.component_id}.")
         if self.qm is None:
             self.initialize_qm()
+
+        for ch in self.gate_set.channels.values():
+            p = getattr(ch, "offset_parameter", None)
+            if p is None:
+                continue
+            owner = getattr(p, "__self__", p)
+            if hasattr(owner, "reapply"):
+                owner.reapply()
+
         self.qm_job = self.qm.execute(self.qua_program)  # type: ignore
 
         if validate_running and startup_timeout_s > 0:

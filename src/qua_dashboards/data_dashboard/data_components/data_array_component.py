@@ -25,6 +25,7 @@ class DataArrayComponent(BaseDataComponent):
 
     _data_nd = {}
     _nd_callback_registered = False
+    _render_counter: dict = {}  # per-label counter to force React remount on each update
 
     @classmethod
     def can_handle(cls, value: any) -> bool:
@@ -76,12 +77,22 @@ class DataArrayComponent(BaseDataComponent):
         Returns a list of Dash components.
         """
         if value.ndim == 1:
+            cls._render_counter[label] = cls._render_counter.get(label, 0) + 1
             fig = plot_xarray(value)
-            graph = dcc.Graph(figure=fig, style=GRAPH_STYLE)
+            graph = dcc.Graph(
+                id=f"da-graph-{label}-{cls._render_counter[label]}",
+                figure=fig,
+                style=GRAPH_STYLE,
+            )
             return [graph]
         elif value.ndim == 2:
+            cls._render_counter[label] = cls._render_counter.get(label, 0) + 1
             fig = go.Figure(layout=dict(margin=dict(l=20, r=20, t=20, b=20)))
-            graph = dcc.Graph(figure=fig, style=GRAPH_STYLE)
+            graph = dcc.Graph(
+                id=f"da-graph-{label}-{cls._render_counter[label]}",
+                figure=fig,
+                style=GRAPH_STYLE,
+            )
             update_xarray_plot(fig, value)
             return [graph]
         elif value.ndim > 2:

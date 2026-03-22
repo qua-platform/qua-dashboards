@@ -5,7 +5,7 @@ This document provides an overview of the `qua-dashboards` library and the examp
 
 ## Requirements
 
-- Python 3.9 to 3.12
+- Python 3.10 to 3.12
 - QCoDeS (if using QDAC or other QCoDeS-compatible instruments with `VoltageControlComponent`)
 
 ## Installation

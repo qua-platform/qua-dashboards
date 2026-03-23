@@ -36,6 +36,7 @@ class AmplitudeSweepAxis(BaseSweepAxis):
         points: Optional[int] = None,
         component_id: Optional[str] = None,
         offset_parameter=None,
+        **kwargs,
     ):
         super().__init__(
             component_id=component_id,
@@ -44,6 +45,7 @@ class AmplitudeSweepAxis(BaseSweepAxis):
             points=points or DEFAULT_AMP_POINTS,
             units="V",
             offset_parameter=offset_parameter,
+            **kwargs,
         )
         self.dbm: bool = False
         self._coord_name = f"{name}_amp"
@@ -130,6 +132,9 @@ class AmplitudeSweepAxis(BaseSweepAxis):
         Updates data acquirer parameters (axes, averages).
         """
         flags = super().update_parameters(parameters)
+
+        if self.component_id not in parameters:
+            return flags
 
         params = parameters[self.component_id]
 

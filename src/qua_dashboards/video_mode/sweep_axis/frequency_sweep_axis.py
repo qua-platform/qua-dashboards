@@ -33,6 +33,7 @@ class FrequencySweepAxis(BaseSweepAxis):
         points: Optional[int] = None,
         component_id: Optional[str] = None,
         offset_parameter=None,
+        **kwargs,
     ):
         super().__init__(
             component_id=component_id,
@@ -41,6 +42,7 @@ class FrequencySweepAxis(BaseSweepAxis):
             points=points or DEFAULT_FREQ_POINTS,
             units="Hz",
             offset_parameter=offset_parameter,
+            **kwargs,
         )
         self._coord_name = f"{name}_freq"
 

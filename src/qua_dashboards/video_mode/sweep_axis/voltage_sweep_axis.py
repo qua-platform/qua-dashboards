@@ -33,6 +33,7 @@ class VoltageSweepAxis(BaseSweepAxis):
         attenuation: float = 0,
         component_id: Optional[str] = None,
         label: str = None,
+        **kwargs,
     ):
         super().__init__(
             component_id=component_id,
@@ -41,6 +42,7 @@ class VoltageSweepAxis(BaseSweepAxis):
             points=points or DEFAULT_VOLTAGE_POINTS,
             units="V",
             offset_parameter=offset_parameter,
+            **kwargs,
         )
         self.attenuation = attenuation
         self._coord_name = f"{name}_volts"

@@ -233,11 +233,8 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
     ) -> Dict[str, List[BaseSweepAxis]]:
         voltage_axes: List[VoltageSweepAxis] = []
         for channel_name in gate_set.valid_channel_names:
-            feedforward_taps, feedback_taps = [], []
             if channel_name in gate_set.channels:
-                channel_is_physical = True
                 channel = gate_set.channels[channel_name]
-                feedforward_taps, feedback_taps = channel.filter_fir_taps or [], channel.filter_iir_taps or []
                 if isinstance(channel, VoltageGate):
                     attenuation = channel.attenuation
                     offset_parameter = channel.offset_parameter
@@ -246,7 +243,6 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
                     attenuation = 0
                     offset_parameter = None
             else:
-                channel_is_physical = False
                 # Virtual gate -> no channel -> no attenuation or offset
                 attenuation = 0
                 offset_parameter = None
@@ -261,26 +257,17 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
                     offset_parameter=offset_parameter,
                     attenuation=attenuation,
                     component_id=f"{channel_name}_volt",
-                    channel_is_physical = channel_is_physical,
-                    feedforward_taps = feedforward_taps,
-                    feedback_taps = feedback_taps,
                 )
             )
         drive_axes: List[AmplitudeSweepAxis] = []
         freq_axes: List[FrequencySweepAxis] = []
         for pulse in available_pulses:
             channel_name = pulse.channel.name
-            channel_is_physical = True
-            feedforward_taps = pulse.channel.filter_fir_taps or []
-            feedback_taps = pulse.channel.filter_iir_taps or []
             freq_axes.append(
                 FrequencySweepAxis(
                     name=channel_name,
                     offset_parameter=pulse,
                     component_id=f"{channel_name}_freq",
-                    channel_is_physical = channel_is_physical,
-                    feedforward_taps = feedforward_taps,
-                    feedback_taps = feedback_taps,
                 )
             )
             drive_axes.append(
@@ -288,9 +275,6 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
                     name=channel_name,
                     offset_parameter=pulse,
                     component_id=f"{channel_name}_amp",
-                    channel_is_physical = channel_is_physical,
-                    feedforward_taps = feedforward_taps,
-                    feedback_taps = feedback_taps,
                 )
             )
         return {
@@ -306,11 +290,6 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
                 for ax in axes:
                     child_flags = ax.update_parameters(parameters)
                     flags |= child_flags
-                    if child_flags & ModifiedFlags.CONFIG_MODIFIED:
-                        if ax.channel_is_physical and ax.name in self.gate_set.channels:
-                            chan_output = self.gate_set.channels[ax.name].opx_output
-                            chan_output.feedforward_filter = ax.feedforward_taps or None
-                            chan_output.feedback_filter = ax.feedback_taps or None
         except Exception as e:
             logger.warning("Axis dispatch error: %s", e)
         if self.inner_loop_action is not None: 

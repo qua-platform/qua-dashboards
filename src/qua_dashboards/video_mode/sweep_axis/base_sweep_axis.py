@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from dash import Dash
 from dash.development.base_component import Component
@@ -35,6 +35,9 @@ class BaseSweepAxis(BaseUpdatableComponent):
         units: Optional[str] = None,
         offset_parameter=None,
         component_id: Optional[str] = None,
+        channel_is_physical: bool = False,
+        feedforward_taps: List[float] = None,
+        feedback_taps: List[float] = None,
     ):
         if component_id is None:
             component_id = f"{name}-axis"
@@ -47,6 +50,10 @@ class BaseSweepAxis(BaseUpdatableComponent):
         self.offset_parameter = offset_parameter
         self.dbm: bool = False
         self._coord_name = name
+
+        self.channel_is_physical = channel_is_physical
+        self.feedforward_taps = feedforward_taps
+        self.feedback_taps = feedback_taps
 
     @property
     def sweep_values(self):
@@ -116,6 +123,27 @@ class BaseSweepAxis(BaseUpdatableComponent):
                 step=1,
             ),
         ]
+        if self.channel_is_physical:
+            ids["feedforward"] = {"type": "number-input", "index": f"{self.component_id}::feedforward"}
+            ids["feedback"] = {"type": "number-input", "index": f"{self.component_id}::feedback"}
+            input_list.extend([
+                create_input_field(
+                    id=ids["feedforward"],
+                    label="FIR Taps",
+                    value=", ".join(str(t) for t in self.feedforward_taps) if self.feedforward_taps else "",
+                    type="text",
+                    input_style={"width": "180px", "fontFamily": "monospace"},
+                    placeholder = "eg 0.03, ...",
+                ),
+                create_input_field(
+                    id=ids["feedback"],
+                    label="IIR Taps",
+                    value=", ".join(str(t) for t in self.feedback_taps) if self.feedback_taps else "",
+                    type="text",
+                    input_style={"width": "180px", "fontFamily": "monospace"},
+                    placeholder = "eg 0.03, ...",
+                ),
+            ])
 
         return dbc.Col(
             dbc.Card(
@@ -150,5 +178,22 @@ class BaseSweepAxis(BaseUpdatableComponent):
         if "points" in params and self.points != params["points"]:
             self.points = params["points"]
             flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
-
+            
+        if self.channel_is_physical:
+            for key, attr in [("feedforward", "feedforward_taps"), ("feedback", "feedback_taps")]:
+                if key not in params:
+                    continue
+                text = str(params[key] or "").strip()
+                if not text:
+                    taps = []
+                else:
+                    try:
+                        taps = [float(val) for val in text.split(",")]
+                    except Exception as e:
+                        raise ValueError(
+                            f"Could not parse {key} taps for {self.component_id}: {text!r} ({e})"
+                        )
+                if taps != getattr(self, attr):
+                    setattr(self, attr, taps)
+                    flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.CONFIG_MODIFIED
         return flags

@@ -583,12 +583,14 @@ class VideoModeComponent(BaseComponent):
     def _register_data_polling_interval_callback(self, app: Dash) -> None:
         """Registers callback for periodically polling the data acquirer."""
 
+        graph_id = self.shared_viewer.get_graph_id()
+
         @app.callback(
             Output(self._get_store_id(self.LATEST_PROCESSED_DATA_STORE_SUFFIX), "data"),
             Output(
                 self._get_store_id(self.VIEWER_DATA_STORE_SUFFIX),
                 "data",
-                allow_duplicate=True,  # Allow update from here and tab switch
+                allow_duplicate=True,
             ),
             Output(
                 self._get_id(self._MAIN_STATUS_ALERT_ID_SUFFIX),
@@ -596,6 +598,7 @@ class VideoModeComponent(BaseComponent):
                 allow_duplicate=True,
             ),
             Output(self._get_store_id("auto-poll-config-store"), "data"),
+            Output(graph_id, "figure", allow_duplicate=True),
             Input(self._get_id(self._DATA_POLLING_INTERVAL_ID_SUFFIX), "n_intervals"),
             State(self._get_store_id(self.VIEWER_DATA_STORE_SUFFIX), "data"),
             State(self._get_id(self._TABS_ID_SUFFIX), "value"),
@@ -607,7 +610,7 @@ class VideoModeComponent(BaseComponent):
             current_viewer_data_ref: Optional[Dict[str, str]],
             active_tab_value: Optional[str],
             current_poll_config: Optional[Dict],
-        ) -> Tuple[Any, Any, Any, Any]:
+        ) -> Tuple[Any, Any, Any, Any, Any]:
             if not ctx.triggered_id:
                 raise PreventUpdate
 
@@ -622,6 +625,7 @@ class VideoModeComponent(BaseComponent):
             alert_children: Any = no_update
             latest_processed_data_ref_for_store: Any = no_update
             viewer_primary_data_ref_update: Any = no_update
+            figure_update: Any = no_update
 
             if error:
                 logger.error(f"Acquisition error from acquirer: {error}")
@@ -629,14 +633,12 @@ class VideoModeComponent(BaseComponent):
                     f"Acquisition Error: {str(error)[:200]}",
                     color="danger",
                     dismissable=True,
-                    # No duration: stays until dismissed or replaced
                 )
             elif status == "error" and not error:
                 alert_children = dbc.Alert(
                     "Acquisition system in error state.",
                     color="warning",
                     dismissable=True,
-                    # No duration: stays until dismissed or replaced
                 )
 
             if data_object is not None and status == "running":
@@ -647,12 +649,12 @@ class VideoModeComponent(BaseComponent):
                     if current_poll_ms != 150:
                         auto_poll_store_update = {"poll_ms": 150}
 
+                    live_data_object = {
+                        "base_image_data": data_object,
+                        "annotations": {"points": [], "lines": []},
+                    }
                     new_version = data_registry.set_data(
-                        data_registry.LIVE_DATA_KEY,
-                        {
-                            "base_image_data": data_object,
-                            "annotations": {"points": [], "lines": []},
-                        },
+                        data_registry.LIVE_DATA_KEY, live_data_object,
                     )
                     self._current_live_data_version = new_version
 
@@ -662,14 +664,21 @@ class VideoModeComponent(BaseComponent):
                     }
                     latest_processed_data_ref_for_store = data_reference
 
-                    for tab_controller in self.tab_controllers:
-                        if not isinstance(tab_controller, (LiveViewTabController, VoltageControlTabController)):
-                            continue
-
-                        if tab_controller.get_tab_value() == active_tab_value:
-                            viewer_primary_data_ref_update = data_reference
+                    is_live_tab = any(
+                        isinstance(tc, (LiveViewTabController, VoltageControlTabController))
+                        and tc.get_tab_value() == active_tab_value
+                        for tc in self.tab_controllers
+                    )
+                    if is_live_tab:
+                        viewer_primary_data_ref_update = data_reference
+                        figure_update = self.shared_viewer._create_figure_from_live_data(
+                            live_data_object
+                        )
+                        if self.shared_viewer._last_layout_shapes:
+                            figure_update.update_layout(
+                                shapes=self.shared_viewer._last_layout_shapes
+                            )
             else: 
-                    # When it has not updated, we can add a 'downtime', which reduces overhead
                     current_poll_ms = (current_poll_config or {}).get("poll_ms", self.data_polling_interval_ms)
                     downtime_ms = min(current_poll_ms*2, 2000)
                     auto_poll_store_update = {"poll_ms": downtime_ms}
@@ -679,6 +688,7 @@ class VideoModeComponent(BaseComponent):
                 viewer_primary_data_ref_update,
                 alert_children,
                 auto_poll_store_update,
+                figure_update,
             )
 
     def _register_tab_switching_callback(self, app: Dash) -> None:

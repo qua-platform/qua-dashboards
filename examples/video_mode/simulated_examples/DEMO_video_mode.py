@@ -70,6 +70,8 @@ def main():
     qdac_connect = True
 
     qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
+    from qua_dashboards.utils.example_utils.qmm_wrapper import QMW
+    qmw = QMW(qmm = qmm, qm_id = None, close = True)
     machine = BaseQuamQD()
 
     # Define your readout pulses here. Each pulse should be uniquely mapped to your readout elements.
@@ -84,10 +86,10 @@ def main():
     fem = 5
 
     # Set up the DC channels
-    p1 = setup_DC_channel(name="plunger_1", opx_output_port=6, qdac_port=1, fem=fem)
-    p2 = setup_DC_channel(name="plunger_2", opx_output_port=2, qdac_port=2, fem=fem)
-    s1 = setup_DC_channel(name="sensor_1", opx_output_port=4, qdac_port=4, fem=fem)
-    s2 = setup_DC_channel(name="sensor_2", opx_output_port=5, qdac_port=5, fem=fem)
+    p1 = setup_DC_channel(name="plunger_1", opx_output_port=6, qdac_port=1, fem=fem, shareable = True)
+    p2 = setup_DC_channel(name="plunger_2", opx_output_port=2, qdac_port=2, fem=fem, shareable = True)
+    s1 = setup_DC_channel(name="sensor_1", opx_output_port=4, qdac_port=4, fem=fem, shareable = True)
+    s2 = setup_DC_channel(name="sensor_2", opx_output_port=5, qdac_port=5, fem=fem, shareable = True)
 
     # Set up the readout channels
     sensor_readout_channel_1 = setup_readout_channel(
@@ -97,6 +99,7 @@ def main():
         opx_input_port=1,
         IF=150e6,
         fem=fem,
+        shareable = True,
     )
     sensor_readout_channel_2 = setup_readout_channel(
         name="readout_resonator_2",
@@ -105,6 +108,7 @@ def main():
         opx_input_port=1,
         IF=250e6,
         fem=fem,
+        shareable = True,
     )
 
     # Adjust or add your virtual gates here. This example assumes a single virtual gating layer, add more if necessary.
@@ -228,7 +232,7 @@ def main():
     )
 
     data_acquirer = SimulationDataAcquirerOPXOutput(
-        qmm = qmm,
+        qmm = qmw,
         machine=machine,
         gate_set=machine.virtual_gate_sets[
             "main_qpu"

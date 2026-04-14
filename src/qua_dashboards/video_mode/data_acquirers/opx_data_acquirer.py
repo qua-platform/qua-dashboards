@@ -15,6 +15,7 @@ from qm.qua import (
     stream_processing,
     wait,
 )
+from qualang_tools.units import unit
 
 from qua_dashboards.video_mode.data_acquirers.base_gate_set_data_acquirer import BaseGateSetDataAcquirer
 from qua_dashboards.core import ModifiedFlags
@@ -133,6 +134,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         self._fetch_running = False
         self._last_frame = None
 
+        self.u = unit(coerce_to_integer=True)
     def _ensure_pulse_names(self) -> None:
         """
         Check for pulse name "half_max_square" in each gate_set channel, necessary for operation.
@@ -358,6 +360,11 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
             return np.full((self.y_axis.points, self.x_axis.points), np.nan)
 
         self._raw_qua_results = dict(zip(compiled, fetched_qua_results))
+        for ch in self.selected_readout_channels:
+            dur = int(self.inner_loop_action._pulse_for(ch).length)
+            ik, qk = ("I", "Q") if len(self.selected_readout_channels) == 1 else (f"I:{ch.name}", f"Q:{ch.name}")
+            self._raw_qua_results[ik] = self.u.demod2volts(self._raw_qua_results[ik], dur, single_demod = True)
+            self._raw_qua_results[qk] = self.u.demod2volts(self._raw_qua_results[qk], dur, single_demod = True)
         expected_points = self.x_axis.points * self.y_axis.points
         num_sel = len(self.selected_readout_channels)
 

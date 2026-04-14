@@ -131,6 +131,9 @@ class AmplitudeSweepAxis(BaseSweepAxis):
         """
         flags = super().update_parameters(parameters)
 
+        if self.component_id not in parameters:
+            return flags
+
         params = parameters[self.component_id]
 
         if "offset" in params and self.offset != params["offset"]:

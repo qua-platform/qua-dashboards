@@ -3,7 +3,7 @@ from qua_dashboards.video_mode.scan_modes.scan_mode import ScanMode
 
 
 import numpy as np
-from qm.qua import declare, fixed, for_, for_each_
+from qm.qua import assign, declare, fixed, for_, for_each_
 from qualang_tools.loops import from_array
 
 
@@ -54,13 +54,16 @@ class SwitchRasterScan(ScanMode):
         return x_idxs, y_idxs
 
     def scan(
-        self, x_vals: Sequence[float], y_vals: Sequence[float], x_mode: str = None, y_mode: str = None, compensation_pulse:Callable = None,
+        self, x_vals: Sequence[float], y_vals: Sequence[float], x_mode: str = None, y_mode: str = None, compensation_pulse: Callable = None, settle_action: Callable = None,
     ) -> Generator[Tuple[QuaVariableFloat, QuaVariableFloat], None, None]:
         voltages = {"x": declare(int) if x_mode == "Frequency" else declare(fixed), "y": declare(int) if y_mode == "Frequency" else declare(fixed)}
         with for_each_(
             voltages["y"],
             self.interleave_arr(y_vals, start_from_middle=self.start_from_middle),
         ):  # type: ignore
+            if settle_action is not None:
+                assign(voltages["x"], x_vals[0])
+                settle_action(voltages["x"], voltages["y"])
             with for_(*from_array(voltages["x"], x_vals)):  # type: ignore
                 yield voltages["x"], voltages["y"]
             if compensation_pulse is not None: 

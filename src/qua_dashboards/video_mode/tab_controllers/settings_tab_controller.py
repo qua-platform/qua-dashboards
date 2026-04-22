@@ -68,6 +68,16 @@ class SettingsTabController(BaseTabController):
             units="ns",
             step=4,
         )
+        row_settle_time_input = create_input_field(
+            id={
+                "type": "row_settle_time",
+                "index": f"{self._data_acquirer_instance.component_id}::row_settle_time_ns",
+            },
+            label="Row Settle Time",
+            value=getattr(self._data_acquirer_instance.inner_loop_action, "row_settle_time_ns", 0),
+            units="ns",
+            step=4,
+        )
 
         inner_controls = []
         try:
@@ -206,6 +216,8 @@ class SettingsTabController(BaseTabController):
         ]
         if hasattr(self._data_acquirer_instance.inner_loop_action, "pre_measurement_delay"): 
             display_components.append(pre_measurement_delay_input)
+        if hasattr(self._data_acquirer_instance.inner_loop_action, "row_settle_time_ns"):
+            display_components.append(row_settle_time_input)
 
         return dbc.Card(
             dbc.CardBody(
@@ -257,10 +269,12 @@ class SettingsTabController(BaseTabController):
             State({"type": "ramp_duration", "index": ALL}, "id"),
             Input({"type": "pre_measurement_delay", "index": ALL}, "value"),
             State({"type": "pre_measurement_delay", "index": ALL}, "id"),
+            Input({"type": "row_settle_time", "index": ALL}, "value"),
+            State({"type": "row_settle_time", "index": ALL}, "id"),
             prevent_initial_call=True,
         )
         def _apply_settings(
-            inner_vals, inner_ids, select_vals, select_ids, ramp_vals, ramp_ids, pre_meas_delay_vals, pre_meas_delay_ids
+            inner_vals, inner_ids, select_vals, select_ids, ramp_vals, ramp_ids, pre_meas_delay_vals, pre_meas_delay_ids, row_settle_vals, row_settle_ids
         ):
             """
             Collect changes from the Settings tab and forward them to the acquirer.
@@ -295,6 +309,12 @@ class SettingsTabController(BaseTabController):
                 if pre_meas_delay_vals[0] is not None: 
                     pre_meas_delay_vals[0] = int(pre_meas_delay_vals[0])
                 params_to_update.setdefault(comp_id, {})[param] = pre_meas_delay_vals[0]
+            if row_settle_vals and row_settle_ids:
+                idx = row_settle_ids[0].get("index")
+                comp_id, param = idx.split("::", 1)
+                if row_settle_vals[0] is not None:
+                    row_settle_vals[0] = int(row_settle_vals[0])
+                params_to_update.setdefault(comp_id, {})[param] = row_settle_vals[0]
             if getattr(self, "_last_total_pixel_duration_ns", None) is not None:
                 params_to_update.setdefault(acq.component_id, {})["total_pixel_duration_ns"] = int(self._last_total_pixel_duration_ns)
 

@@ -52,6 +52,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         self.y_mode = "Voltage"
         self.apply_compensation = apply_compensation
         self.point_duration = 1000
+        self.row_settle_time_ns = 0
 
     def _pulse_for(self, ch):
         if ch.name not in self.readout_pulse_mapping.keys():
@@ -137,7 +138,25 @@ class BasicInnerLoopAction(InnerLoopAction):
 
         # Use GateSet's built-in ramp to zero, in-case it is not handled by the compensation pulse
         self.voltage_sequence.ramp_to_zero()
-        
+
+    def settle_to_row_start(self, x: QuaVariableFloat, y: QuaVariableFloat):
+        """Ramp to (x, y) and hold for row_settle_time_ns without measuring.
+
+        Called before each row's inner x-loop to let the voltage settle after
+        a large flyback jump. Compensation tracking is correctly maintained.
+        """
+        x_apply = self.x_axis.apply(x)
+        y_apply = self.y_axis.apply(y) if (self.y_axis and y is not None) else None
+
+        voltage_coordinates = {
+            **x_apply.get("voltage", {}),
+            **(y_apply.get("voltage", {}) or {}),
+        } if y_apply is not None else {**x_apply.get("voltage", {})}
+        self.voltage_sequence.ramp_to_voltages(
+            voltage_coordinates,
+            duration=self.row_settle_time_ns,
+            ramp_duration=self.ramp_duration,
+        )
 
     def build_readout_controls(self, channels=None):
         """

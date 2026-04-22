@@ -330,6 +330,14 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
                     flags |= (
                         ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
                     )
+                if (
+                    "row_settle_time_ns" in params
+                    and self.inner_loop_action.row_settle_time_ns != params["row_settle_time_ns"]
+                ):
+                    self.inner_loop_action.row_settle_time_ns = params["row_settle_time_ns"]
+                    flags |= (
+                        ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
+                    )
             if (
                 "gate-select-x" in params
                 and params["gate-select-x"] != self.x_axis_name

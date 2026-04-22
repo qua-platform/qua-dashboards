@@ -77,18 +77,18 @@ def main():
     # machine = BasicQuam.load()
 
     # Adjust the IP and cluster name here
-    qm_ip = "172.16.33.101"
-    cluster_name = "CS_2"
+    qm_ip = "172.16.33.115"
+    cluster_name = "CS_4"
 
     qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
     machine = BasicQuam()
 
     # Define your readout pulses here. Each pulse should be uniquely mapped to your readout elements. 
-    readout_pulse_ch1 = pulses.SquareReadoutPulse(id="readout", length=30000, amplitude=0.1)
-    readout_pulse_ch2 = pulses.SquareReadoutPulse(id="readout", length=30000, amplitude=0.1)
+    readout_pulse_ch1 = pulses.SquareReadoutPulse(id="readout", length=3000, amplitude=0.1)
+    readout_pulse_ch2 = pulses.SquareReadoutPulse(id="readout", length=3000, amplitude=0.1)
 
     # Choose the FEM. For OPX+, keep fem = None. 
-    fem = None
+    fem = 5
 
     # Set up the readout channels
     machine.channels["ch1_readout"] = setup_readout_channel(name = "ch1_readout", readout_pulse=readout_pulse_ch1, opx_output_port = 6, opx_input_port = 1, IF = 150e6, fem = fem)
@@ -157,7 +157,7 @@ def main():
         available_readout_pulses=[readout_pulse_ch1, readout_pulse_ch2], # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI. 
         acquisition_interval_s=0.05, 
         voltage_control_component=voltage_control_component, 
-        use_buffered_stream=True,
+        use_buffered_stream=False,
     )
 
     virtual_gating_component = VirtualLayerEditor(gateset = virtual_gate_set, component_id = 'virtual-gates-ui', dc_set = dc_gate_set)

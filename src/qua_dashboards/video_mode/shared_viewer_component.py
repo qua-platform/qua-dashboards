@@ -23,6 +23,7 @@ class SharedViewerComponent(BaseComponent):
     """
 
     _MAIN_GRAPH_ID_SUFFIX = "main-graph"
+    _REPAINT_DUMMY_SUFFIX = "repaint-dummy"
 
     def __init__(self, component_id: str, **kwargs: Any) -> None:
         """Initializes the SharedViewerComponent.
@@ -59,7 +60,11 @@ class SharedViewerComponent(BaseComponent):
                     figure=self._current_figure,
                     style={"height": "100%", "width": "100%"},
                     config={"scrollZoom": True, "displaylogo": False, "displayModeBar": False},
-                )
+                ),
+                html.Div(
+                    id=self._get_id(self._REPAINT_DUMMY_SUFFIX),
+                    style={"display": "none"},
+                ),
             ],
         )
 
@@ -230,6 +235,28 @@ class SharedViewerComponent(BaseComponent):
             #     fig_to_display.layout.uirevision = previous_uirevision
             self._current_figure = fig_to_display  # Store the figure
             return fig_to_display
+
+        # Workaround for Chromium on Windows: CSS-transform layers created by
+        # dash-dynamic-grid-layout can prevent DirectComposition from repainting
+        # canvas updates. Toggling a parent element's opacity forces a
+        # re-composite so the updated chart actually appears on screen.
+        app.clientside_callback(
+            """
+            function(figure) {
+                var grid = document.getElementById('main-dashboard-dynamic-grid');
+                if (grid) {
+                    grid.style.opacity = '0.999';
+                    requestAnimationFrame(function() {
+                        grid.style.opacity = '1';
+                    });
+                }
+                return '';
+            }
+            """,
+            Output(self._get_id(self._REPAINT_DUMMY_SUFFIX), "children"),
+            Input(self._get_id(self._MAIN_GRAPH_ID_SUFFIX), "figure"),
+            prevent_initial_call=True,
+        )
 
     def get_figures(self) -> List[go.Figure]:
         """

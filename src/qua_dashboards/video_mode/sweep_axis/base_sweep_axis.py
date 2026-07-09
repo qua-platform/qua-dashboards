@@ -5,6 +5,9 @@ from dash.development.base_component import Component
 import numpy as np
 import dash_bootstrap_components as dbc
 from qua_dashboards.core import BaseUpdatableComponent, ModifiedFlags
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from qua_dashboards.video_mode.inner_loop_actions import InnerLoopAction
 from qua_dashboards.utils.dash_utils import create_input_field
 
 __all__ = ["BaseSweepAxis"]
@@ -72,6 +75,10 @@ class BaseSweepAxis(BaseUpdatableComponent):
             min_span=0.001,
             max_span=None,
         )
+    
+    def configure_loop(self, inner_loop_action: "InnerLoopAction"): 
+        """Pass the InnerLoopAction here so that we can calculate the per-pixel action"""
+        pass
 
     def register_callbacks(self, app: Dash) -> None:
         pass

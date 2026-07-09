@@ -3,10 +3,12 @@ from .base_sweep_axis import *
 from .voltage_sweep_axis import *
 from .amplitude_sweep_axis import *
 from .frequency_sweep_axis import *
+from .time_sweep_axis import *
 
 __all__ = (
     base_sweep_axis.__all__
     + voltage_sweep_axis.__all__
     + amplitude_sweep_axis.__all__
     + frequency_sweep_axis.__all__
+    + time_sweep_axis.__all__
 )

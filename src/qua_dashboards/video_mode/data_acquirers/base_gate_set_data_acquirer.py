@@ -16,7 +16,7 @@ from qua_dashboards.video_mode.data_acquirers.base_2d_data_acquirer import (
 from quam.components.pulses import ReadoutPulse
 from qua_dashboards.video_mode.scan_modes import ScanMode, LineScan
 from qua_dashboards.video_mode.inner_loop_actions import InnerLoopAction
-from qua_dashboards.video_mode.sweep_axis import BaseSweepAxis, VoltageSweepAxis, AmplitudeSweepAxis, FrequencySweepAxis
+from qua_dashboards.video_mode.sweep_axis import BaseSweepAxis, VoltageSweepAxis, AmplitudeSweepAxis, FrequencySweepAxis, TimeSweepAxis
 from quam_builder.architecture.quantum_dots.components import VoltageGate, GateSet
 
 
@@ -231,6 +231,11 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
     def _generate_sweep_axes(
         self, gate_set, available_pulses
     ) -> Dict[str, List[BaseSweepAxis]]:
+        """
+        Generate the set of SweepAxis components. The divide: 
+            - A VoltageSweepAxis per valid_channel_name of the GateSet
+            - An Amplitude, Time, Frequency SweepAxis per readout pulse
+        """
         voltage_axes: List[VoltageSweepAxis] = []
         for channel_name in gate_set.valid_channel_names:
             if channel_name in gate_set.channels:
@@ -261,6 +266,7 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
             )
         drive_axes: List[AmplitudeSweepAxis] = []
         freq_axes: List[FrequencySweepAxis] = []
+        time_axes: List[TimeSweepAxis] = []
         for pulse in available_pulses:
             channel_name = pulse.channel.name
             freq_axes.append(
@@ -277,10 +283,18 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
                     component_id=f"{channel_name}_amp",
                 )
             )
+            time_axes.append(
+                TimeSweepAxis(
+                    name=channel_name, 
+                    offset_parameter = pulse, 
+                    component_id = f"{channel_name}_time",
+                )
+            )
         return {
             "Voltage": voltage_axes,
             "Frequency": freq_axes,
             "Amplitude": drive_axes,
+            "Time": time_axes,
         }
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:

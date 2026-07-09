@@ -77,6 +77,10 @@ class BasicInnerLoopAction(InnerLoopAction):
     def __call__(
         self, x: QuaVariableFloat, y: QuaVariableFloat
     ) -> List[QuaVariableFloat]:
+        
+        self.x_axis.configure_loop(self)
+        if self.y_axis is not None: 
+            self.y_axis.configure_loop(self)
     
         # Initial action
         self.pre_loop_action(self)

@@ -42,7 +42,7 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         Initializes the Base2DDataAcquirer.
 
         Args:
-            sweep_axes: The Dict of available sweep axis lists. Format should be {'Voltage': [VoltageSweepAxis], 'Frequency': [FrequencySweepAxis], 'Amplitude': [AmplitudeSweepAxiis]}
+            sweep_axes: The Dict of available sweep axis lists. Format should be {'Voltage': [VoltageSweepAxis], 'Frequency': [FrequencySweepAxis], 'Amplitude': [AmplitudeSweepAxiis], 'Time': [TimeSweepAxis]}
             x_axis_name: Name of the selected X sweep axis.
             y_axis_name: Name of the selected Y sweep axis.
             component_id: Unique ID for Dash component namespacing.

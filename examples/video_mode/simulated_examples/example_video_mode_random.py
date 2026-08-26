@@ -60,10 +60,10 @@ def main():
 
     machine = BasicQuam()
 
-    qdac_connect = False
+    qdac_connect = True
     qdac = None
     if qdac_connect:
-        qdac_ip = "172.16.33.101"
+        qdac_ip = "172.16.33.111"
         logger.info("Connecting to QDAC")
         qdac = connect_to_qdac(qdac_ip)
 
@@ -79,11 +79,11 @@ def main():
     machine.channels["ch2_readout"] = setup_readout_channel(name = "ch2_readout", readout_pulse=readout_pulse_ch2, opx_output_port = 6, opx_input_port = 1, IF = 250e6, fem = fem)
 
     channel_mapping = {
-        "ch1": setup_DC_channel(name = "ch1", opx_output_port = 1, qdac_port = 1, fem = fem), 
-        "ch2": setup_DC_channel(name = "ch2", opx_output_port = 2, qdac_port = 2, fem = fem), 
-        "ch3": setup_DC_channel(name = "ch3", opx_output_port = 3, qdac_port = 3, fem = fem), 
-        "ch1_readout_DC": setup_DC_channel(name = "ch1_readout_DC", opx_output_port = 4, qdac_port = 3, fem = fem), 
-        "ch2_readout_DC": setup_DC_channel(name = "ch2_readout_DC", opx_output_port = 5, qdac_port = 3, fem = fem), 
+        "ch1": setup_DC_channel(name = "ch1", opx_output_port = 1, dac_port = 1, fem = fem), 
+        "ch2": setup_DC_channel(name = "ch2", opx_output_port = 2, dac_port = 2, fem = fem), 
+        "ch3": setup_DC_channel(name = "ch3", opx_output_port = 3, dac_port = 3, fem = fem), 
+        "ch1_readout_DC": setup_DC_channel(name = "ch1_readout_DC", opx_output_port = 4, dac_port = 3, fem = fem), 
+        "ch2_readout_DC": setup_DC_channel(name = "ch2_readout_DC", opx_output_port = 5, dac_port = 3, fem = fem), 
     }
 
     for ch_name, ch in channel_mapping.items(): 
@@ -109,7 +109,7 @@ def main():
     voltage_control_tab, voltage_control_component, dc_gate_set = None, None, None
     if qdac is not None: 
         for ch_name, ch in channel_mapping.items(): 
-            ch.offset_parameter = qdac.channel(ch.qdac_spec.qdac_output_port).dc_constant_V
+            ch.offset_parameter = qdac.channel(ch.dac_spec.output_port).dc_constant_V
         dc_gate_set = VirtualDCSet(
             id = "Plungers", 
             channels = {ch_name: ch.get_reference() for ch_name, ch in channel_mapping.items()}

@@ -63,12 +63,9 @@ def main():
     ############ CREATE QUAM MACHINE (SKIP IF EXISTING QUAM STATE) ############
     ###########################################################################
 
-    # ### If Quam state exists, instead simply load it below: 
-    # machine = BasicQuam.load()
-
     # Adjust the IP and cluster name here
-    qm_ip = "172.16.33.101"
-    cluster_name = "CS_2"
+    qm_ip = "127.0.0.1"
+    cluster_name = "my_cluster_name"
 
     qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
     machine = BasicQuam()
@@ -86,11 +83,11 @@ def main():
 
 
     channel_mapping = {
-        "ch1": setup_DC_channel(name = "ch1", opx_output_port = 1, qdac_port = 1, fem = fem), 
-        "ch2": setup_DC_channel(name = "ch2", opx_output_port = 2, qdac_port = 2, fem = fem), 
-        "ch3": setup_DC_channel(name = "ch3", opx_output_port = 3, qdac_port = 3, fem = fem), 
-        "ch1_readout_DC": setup_DC_channel(name = "ch1_readout_DC", opx_output_port = 4, qdac_port = 3, fem = fem), 
-        "ch2_readout_DC": setup_DC_channel(name = "ch2_readout_DC", opx_output_port = 5, qdac_port = 3, fem = fem), 
+        "ch1": setup_DC_channel(name = "ch1", opx_output_port = 1, dac_port = 1, fem = fem), 
+        "ch2": setup_DC_channel(name = "ch2", opx_output_port = 2, dac_port = 2, fem = fem), 
+        "ch3": setup_DC_channel(name = "ch3", opx_output_port = 3, dac_port = 3, fem = fem), 
+        "ch1_readout_DC": setup_DC_channel(name = "ch1_readout_DC", opx_output_port = 4, dac_port = 3, fem = fem), 
+        "ch2_readout_DC": setup_DC_channel(name = "ch2_readout_DC", opx_output_port = 5, dac_port = 3, fem = fem), 
     }
     for ch_name, ch in channel_mapping.items(): 
         machine.channels[ch_name] = ch
@@ -124,7 +121,7 @@ def main():
         available_readout_pulses=[readout_pulse_ch1, readout_pulse_ch2], # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI. 
         acquisition_interval_s=0.05, 
         voltage_control_component=None,
-        use_buffered_stream=True,
+        use_buffered_stream=False,
     )
 
     virtual_gating_component = VirtualLayerEditor(gateset = virtual_gate_set, component_id = 'virtual-gates-ui', dc_set = None)

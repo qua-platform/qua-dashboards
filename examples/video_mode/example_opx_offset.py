@@ -57,10 +57,6 @@ from qua_dashboards.virtual_gates import VirtualLayerEditor, ui_update
 from qua_dashboards.utils import setup_DC_channel, setup_readout_channel
 from qua_dashboards.voltage_control.opx_offset import OPXOffsetParameter
 
-from quam_builder.architecture.quantum_dots.components import VoltageGate
-from quam.components.ports import OPXPlusAnalogOutputPort, LFFEMAnalogOutputPort
-from quam.components import StickyChannelAddon
-
 
 def main():
     logger = setup_logging(__name__)
@@ -73,8 +69,8 @@ def main():
     # machine = BasicQuam.load()
 
     # Adjust the IP and cluster name here
-    qm_ip = "172.16.33.115"
-    cluster_name = "CS_3"
+    qm_ip = "127.0.0.1"
+    cluster_name = "my_cluster_name"
 
     qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
     machine = BasicQuam()
@@ -92,11 +88,11 @@ def main():
 
     # For the gate_set
     channel_mapping = {
-        "ch1": setup_DC_channel(name = "ch1", opx_output_port = 6, qdac_port = None, fem = fem), 
-        "ch2": setup_DC_channel(name = "ch2", opx_output_port = 2, qdac_port = None, fem = fem), 
-        "ch3": setup_DC_channel(name = "ch3", opx_output_port = 3, qdac_port = None, fem = fem), 
-        "ch1_readout_DC": setup_DC_channel(name = "ch1_readout_DC", opx_output_port = 4, qdac_port = None, fem = fem), 
-        "ch2_readout_DC": setup_DC_channel(name = "ch2_readout_DC", opx_output_port = 5, qdac_port = None, fem = fem), 
+        "ch1": setup_DC_channel(name = "ch1", opx_output_port = 6, dac_port = None, fem = fem), 
+        "ch2": setup_DC_channel(name = "ch2", opx_output_port = 2, dac_port = None, fem = fem), 
+        "ch3": setup_DC_channel(name = "ch3", opx_output_port = 3, dac_port = None, fem = fem), 
+        "ch1_readout_DC": setup_DC_channel(name = "ch1_readout_DC", opx_output_port = 4, dac_port = None, fem = fem), 
+        "ch2_readout_DC": setup_DC_channel(name = "ch2_readout_DC", opx_output_port = 5, dac_port = None, fem = fem), 
     }
 
     # For the virtual DC set, set up some more DC outputs on the OPX.

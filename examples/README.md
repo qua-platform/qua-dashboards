@@ -26,9 +26,9 @@ The core functionality provides an interactive web frontend that displays a live
 
 ## Running Video Mode
 
-The `[examples/video_mode](examples/video_mode)` folder provides practical demonstrations of how to use this module.
+This examples folder provides practical demonstrations of how to use this module.
 
-### Simulating Video Mode ([example_video_mode_random.py](example_video_mode_random.py))
+### Simulated Examples
 
 For development, testing, or educational purposes, you can run Video Mode in a simulation.
 This does not require any connection to an OPX.
@@ -42,10 +42,11 @@ This does not require any connection to an OPX.
 - **How it Works**: It sets up `SweepAxis` for X and Y dimensions and feeds them to a `SimulationDataAcquirer`.
   The `VideoModeComponent` then displays the randomly generated 2D scan.
 - **Further Details**: For a detailed guide, see the `example_video_mode_random.py` script.
+- **QArray Simulator**: For a physics simulator experience complete with virtualization and interactive charge stability maps, refer to the example `example_video_mode_simulation.py`.
 
-### Running Video Mode with OPX ([example_video_mode_opx.py](example_video_mode_opx.py))
+### Running Video Mode with OPX
 
-This is the primary mode for conducting experiments on actual quantum hardware.
+This is the primary mode for conducting experiments on actual quantum hardware. For examples of basic usage, refer to the `basic_examples` folder. 
 
 - **Purpose**: This example demonstrates how to perform **actual 2D scans on a qubit chip** using a Quantum Orchestration Platform (OPX).
 - **Use Case**:
@@ -197,18 +198,21 @@ This Video Mode module provides a flexible and interactive way to perform and an
 
 Quick guide to every example shipped in this repo. Use the "When to use" blurb to pick the closest starting point; each bullet links to the script.
 
-## Full dashboards (top-level)
+## Full dashboard (top-level)
 - [`example_video_mode_full.py`](example_video_mode_full.py) – End-to-end OPX video-mode dashboard with optional QDAC DC control, virtual gates, and live plotting. When to use: you want the complete stack (VideoModeComponent + VirtualLayerEditor + VoltageControl) running on lab hardware.
+
+## Basic examples
+- [`basic_examples/example_video_mode_opx.py`](basic_examples/example_video_mode_opx.py) – Minimal OPX-only video mode. You plug in your own `GateSet`; ideal smoke test for OPX connectivity and QUA generation.
+- [`basic_examples/example_video_mode_2_opx.py`](basic_examples/example_video_mode_2_opx.py) – OPX video mode using `BasicQuam` + `VirtualGateSet` boilerplate. Leaner than the full example but already wires up sweep axes and readout pulses.
+- [`basic_examples/example_opx_offset.py`](basic_examples/example_opx_offset.py) – OPX video mode using `BasicQuam` + `VirtualGateSet` boilerplate. Lean example that allows you to set DC centres directly from the OPX. Most useful for when you do not have a bias tee, and would like to centre the sweeps around OPX output DC voltages. 
+
+## Simulated examples
+- [`simulated_examples/example_video_mode_random.py`](simulated_examples/example_video_mode_random.py) – UI/data-path smoke test with `SimulationDataAcquirer` + `RandomSimulator`; runs fully offline, optional QDAC offsets if available.
+- [`simulated_examples/example_video_mode_simulation.py`](simulated_examples/example_video_mode_simulation.py) – More realistic simulated scan using `QarraySimulator` + `BaseQuamQD` virtual gates. Great for developing scan logic and UI without booking hardware time.
+
+## Examples using the Quantum Dots Quam Infrastructure
 - [`hybrid_opx_qdac_example.py`](hybrid_opx_qdac_example.py) – Hybrid sweeps where X is OPX-driven and Y is stepped on the QDAC (triggered by OPX). When to use: bias-tee setups or experiments needing long dwell on one axis while still streaming frames.
 - [`qd_quam_example_video_mode.py`](qd_quam_example_video_mode.py) – Same video-mode flow built on `BaseQuamQD` with cross-compensation and detuning layers ready-made. When to use: you already structure devices with the QUAM quantum-dot template and want video mode + voltage control without rebuilding gatesets.
-
-## Video mode (OPX-based)
-- [`video_mode/example_video_mode_opx.py`](video_mode/example_video_mode_opx.py) – Minimal OPX-only video mode. You plug in your own `GateSet`; ideal smoke test for OPX connectivity and QUA generation.
-- [`video_mode/example_video_mode_2_opx.py`](video_mode/example_video_mode_2_opx.py) – OPX video mode using `BasicQuam` + `VirtualGateSet` boilerplate. Leaner than the full example but already wires up sweep axes and readout pulses.
-
-## Video mode (simulated backends)
-- [`video_mode/simulated_examples/example_video_mode_random.py`](video_mode/simulated_examples/example_video_mode_random.py) – UI/data-path smoke test with `SimulationDataAcquirer` + `RandomSimulator`; runs fully offline, optional QDAC offsets if available.
-- [`video_mode/simulated_examples/example_video_mode_simulation.py`](video_mode/simulated_examples/example_video_mode_simulation.py) – More realistic simulated scan using `QarraySimulator` + `BaseQuamQD` virtual gates. Great for developing scan logic and UI without booking hardware time.
 
 ## Data dashboard
 - [`data_dashboard/example_data_dashboard.py`](data_dashboard/example_data_dashboard.py) – Demonstrates sending scalars, dicts, `xarray` arrays/datasets, and Matplotlib figures to the Data Dashboard client, including short real-time loops.
@@ -219,7 +223,3 @@ Quick guide to every example shipped in this repo. Use the "When to use" blurb t
 ## Voltage control
 - [`voltage_control/example_voltage_control_simulated.py`](voltage_control/example_voltage_control_simulated.py) – Simulated voltage sources wired to `VoltageControlComponent`; quick way to test-drive the GUI and polling cadence with no instruments.
 - [`voltage_control/example_voltage_control_qdac.py`](voltage_control/example_voltage_control_qdac.py) – QCoDeS-backed QDAC control dashboard; template for real gate-bias tuning and integration with other components.
-
-## Debug helpers
-- [`debug/qarray_model_mwe.py`](debug/qarray_model_mwe.py) – Minimal `qarray` model to generate and plot a single frame (plus 1D slices) straight from the analytical charge-sensor model.
-- [`debug/qarray_simulator_mwe.py`](debug/qarray_simulator_mwe.py) – Minimal `QarraySimulator` usage: builds a virtual gate set and grabs one simulated frame for plotting; handy for understanding simulator outputs.

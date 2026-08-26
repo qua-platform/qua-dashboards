@@ -200,6 +200,7 @@ Quick guide to every example shipped in this repo. Use the "When to use" blurb t
 
 ## Full dashboard (top-level)
 - [`example_video_mode_full.py`](example_video_mode_full.py) – End-to-end OPX video-mode dashboard with optional QDAC DC control, virtual gates, and live plotting. When to use: you want the complete stack (VideoModeComponent + VirtualLayerEditor + VoltageControl) running on lab hardware.
+- [`example_load_existing_quam.py`](example_load_existing_quam.py) – An example video mode which loads an existing Quam state. Currently uses LossDiVincenzoQuam. Refer to quam-builder for details. 
 
 ## Basic examples
 - [`basic_examples/example_video_mode_opx.py`](basic_examples/example_video_mode_opx.py) – Minimal OPX-only video mode. You plug in your own `GateSet`; ideal smoke test for OPX connectivity and QUA generation.

@@ -211,8 +211,8 @@ Quick guide to every example shipped in this repo. Use the "When to use" blurb t
 - [`simulated_examples/example_video_mode_simulation.py`](simulated_examples/example_video_mode_simulation.py) – More realistic simulated scan using `QarraySimulator` + `BaseQuamQD` virtual gates. Great for developing scan logic and UI without booking hardware time.
 
 ## Examples using the Quantum Dots Quam Infrastructure
-- [`hybrid_opx_qdac_example.py`](hybrid_opx_qdac_example.py) – Hybrid sweeps where X is OPX-driven and Y is stepped on the QDAC (triggered by OPX). When to use: bias-tee setups or experiments needing long dwell on one axis while still streaming frames.
-- [`qd_quam_example_video_mode.py`](qd_quam_example_video_mode.py) – Same video-mode flow built on `BaseQuamQD` with cross-compensation and detuning layers ready-made. When to use: you already structure devices with the QUAM quantum-dot template and want video mode + voltage control without rebuilding gatesets.
+- [`qd_quam_examples/hybrid_opx_qdac_example.py`](qd_quam_examples/hybrid_opx_qdac_example.py) – Hybrid sweeps where X is OPX-driven and Y is stepped on the QDAC (triggered by OPX). When to use: bias-tee setups or experiments needing long dwell on one axis while still streaming frames.
+- [`qd_quam_examples/qd_quam_example_video_mode.py`](qd_quam_examples/qd_quam_example_video_mode.py) – Same video-mode flow built on `BaseQuamQD` with cross-compensation and detuning layers ready-made. When to use: you already structure devices with the QUAM quantum-dot template and want video mode + voltage control without rebuilding gatesets.
 
 ## Data dashboard
 - [`data_dashboard/example_data_dashboard.py`](data_dashboard/example_data_dashboard.py) – Demonstrates sending scalars, dicts, `xarray` arrays/datasets, and Matplotlib figures to the Data Dashboard client, including short real-time loops.

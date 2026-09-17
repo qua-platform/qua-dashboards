@@ -70,19 +70,20 @@ This is the primary mode for conducting experiments on actual quantum hardware. 
   ```python
   from quam.core import InOutSingleChannel, BasicQuam
   from quam_builder.architecture.quantum_dots.components import VoltageGate, GateSet, VirtualGateSet
+  from quam_builder.architecture.quantum_dots.voltage_sequence import DEFAULT_PULSE_NAME
 
   machine = BasicQuam() # An example QuAM basic machine
 
   machine.channels["ch1"] = VoltageGate(
       opx_output=("con1", 1),  # OPX controller and port
       sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
-      operations={"half_max_square": pulses.SquarePulse(amplitude=0.25, length=1000)}, #Ensure operation "half_max_square" exists in the channel object
+      operations={DEFAULT_PULSE_NAME: pulses.SquarePulse(amplitude=0.25, length=1000)}, #Ensure operation DEFAULT_PULSE_NAME exists in the channel object
   )
   # Define the second DC voltage output channel (e.g., for Y-axis sweep)
   machine.channels["ch2"] = VoltageGate(
       opx_output=("con1", 2),  # OPX controller and port
       sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
-      operations={"half_max_square": pulses.SquarePulse(amplitude=0.25, length=1000)},
+      operations={DEFAULT_PULSE_NAME: pulses.SquarePulse(amplitude=0.25, length=1000)},
   )
 
   # Define the readout pulse and the channel used for measurement

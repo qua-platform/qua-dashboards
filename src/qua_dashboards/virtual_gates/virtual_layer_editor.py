@@ -1,3 +1,5 @@
+import math
+
 import dash_bootstrap_components as dbc
 import dash
 from dash import html, dcc, Input, Output, State, ALL, no_update
@@ -5,6 +7,9 @@ from dash.exceptions import PreventUpdate
 import numpy as np
 from qua_dashboards.core import BaseComponent
 from .virtual_layer_adder import VirtualLayerAdder
+
+# Input column width. 1rem is the dashboard root font size.
+_MATRIX_COL_REM = 6
 
 
 class VirtualLayerEditor(BaseComponent):
@@ -29,6 +34,20 @@ class VirtualLayerEditor(BaseComponent):
             for i, _ in enumerate(self.gateset.layers)
         ]
         self._adder = VirtualLayerAdder(self.gateset, component_id = f"{component_id}-adder", layer_names=self.layer_names, dc_set=dc_set)
+        self.layout_rows = self._estimate_layout_rows()
+
+    def _estimate_layout_rows(self) -> int:
+        """Grid rows tall enough for the largest layer, plus the adder and editor chrome."""
+        counts = []
+        for gateset in (self.gateset, self.dc_set):
+            layers = getattr(gateset, "layers", None) or []
+            counts.extend(len(getattr(layer, "source_gates", [])) for layer in layers)
+        n_rows = max(counts, default=0)
+        row_px = 2 * 16 + 4
+        matrix_px = 9 * 16 + n_rows * row_px
+        needed = matrix_px + 520
+        # item height = 100*h + 10*(h-1); the tile content is capped at 95%.
+        return max(10, math.ceil((needed + 30) / 104.5))
 
     @property
     def active_target(self): 
@@ -40,29 +59,84 @@ class VirtualLayerEditor(BaseComponent):
         if layer_idx >= len(target_set.layers): 
             return html.Div("Layer not available for this target")
         layer = target_set.layers[layer_idx]
-        num_sources = len(layer.source_gates)
-        num_targets = len(layer.target_gates)
-        col_width = 12 // (num_targets + 1)
-        header = [dbc.Col("", width=col_width)] + [
-            dbc.Col(html.B(name), width=col_width) for name in layer.target_gates
+        col = f"{_MATRIX_COL_REM}rem"
+        n_cols = len(layer.target_gates)
+        header_label = {
+            "writingMode": "vertical-rl",
+            "transform": "rotate(180deg)",
+            "whiteSpace": "nowrap",
+            "overflow": "hidden",
+            "textOverflow": "ellipsis",
+            "maxHeight": "9rem",
+            "fontSize": "0.75rem",
+            "lineHeight": "1.1",
+            "fontWeight": "600",
+        }
+        cells = [
+            html.Div(
+                html.Span(name, title=name, style=header_label),
+                style={
+                    "width": col,
+                    "minWidth": "0",
+                    "display": "flex",
+                    "justifyContent": "center",
+                    "alignItems": "flex-end",
+                    "alignSelf": "end",
+                    "overflow": "hidden",
+                },
+            )
+            for name in layer.target_gates
         ]
-        rows = []
         for i, row_name in enumerate(layer.source_gates):
-            row = [dbc.Col(html.B(row_name), width=col_width)]
-            for j in range(num_targets):
-                row.append(
-                    dbc.Col(
-                        dcc.Input(
-                            id={"type": "edit-matrix-cell", "layer": layer_idx, "row": i, "col": j},
-                            type="number",
-                            value=layer.matrix[i][j],
-                            style={"width": "auto"}
-                        ),
-                        width=col_width,
+            cells.append(
+                html.Div(
+                    row_name,
+                    style={
+                        "whiteSpace": "nowrap",
+                        "textAlign": "right",
+                        "paddingRight": "8px",
+                        "fontWeight": "600",
+                    },
+                )
+            )
+            for j in range(n_cols):
+                cells.append(
+                    dcc.Input(
+                        id={
+                            "type": "edit-matrix-cell",
+                            "layer": layer_idx,
+                            "row": i,
+                            "col": j,
+                        },
+                        type="number",
+                        value=layer.matrix[i][j],
+                        className="vg-matrix-input",
+                        style={
+                            "width": col,
+                            "minWidth": "0",
+                            "boxSizing": "border-box",
+                            "textAlign": "center",
+                            "padding": "0 4px",
+                            "display": "block",
+                            "fontSize": "0.85rem",
+                        },
                     )
                 )
-            rows.append(dbc.Row(row, className="mb-1"))
-        return html.Div([dbc.Row(header, className="mb-2"), *rows])
+        return html.Div(
+            html.Div(
+                [html.Div(), *cells],
+                style={
+                    "display": "grid",
+                    "gridTemplateColumns": f"max-content repeat({n_cols}, {col})",
+                    "columnGap": "4px",
+                    "rowGap": "4px",
+                    "alignItems": "center",
+                    "justifyItems": "center",
+                    "width": "max-content",
+                },
+            ),
+            style={"overflow": "auto"},
+        )
 
 
     def get_layout(self):
@@ -132,11 +206,14 @@ class VirtualLayerEditor(BaseComponent):
             ])
         ])
 
-        return html.Div([
-            self._adder.get_layout(), 
-            opx_dc_toggle_switch,
-            editor_card, 
-        ])
+        return html.Div(
+            [
+                self._adder.get_layout(),
+                opx_dc_toggle_switch,
+                editor_card,
+            ],
+            className="vg-layer-editor",
+        )
 
 
     def register_callbacks(self, app):

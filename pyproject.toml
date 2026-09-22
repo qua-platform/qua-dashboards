@@ -16,8 +16,8 @@ dependencies = [
     "qualang-tools>=0.18.2",
     "dash-dynamic-grid-layout>=0.1.3",
     "qualibrate>=1",
-    "numpy>=1.25.2,<2.0.0",
-    "quam-builder",
+    "numpy>=1.25.2,<3.0.0",
+    "quam-builder@git+https://github.com/qua-platform/quam-builder.git@release/nightly",
 ]
 
 [project.urls]

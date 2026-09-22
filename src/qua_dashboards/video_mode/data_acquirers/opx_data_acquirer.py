@@ -17,6 +17,7 @@ from qm.qua import (
 )
 from qualang_tools.units import unit
 
+from quam_builder.architecture.quantum_dots.voltage_sequence import DEFAULT_PULSE_NAME
 from qua_dashboards.video_mode.data_acquirers.base_gate_set_data_acquirer import BaseGateSetDataAcquirer
 from qua_dashboards.core import ModifiedFlags
 from qua_dashboards.video_mode.sweep_axis import (
@@ -137,28 +138,28 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         self.u = unit(coerce_to_integer=True)
     def _ensure_pulse_names(self) -> None:
         """
-        Check for pulse name "half_max_square" in each gate_set channel, necessary for operation.
+        Check for pulse name DEFAULT_PULSE_NAME in each gate_set channel, necessary for operation.
         GateSet.new_sequence() does this check, but this function added to have a conditional regeneration of config and reinitialisation
         """
         for ch in self.gate_set.channels.values():
-            if "half_max_square" not in ch.operations.keys():
+            if DEFAULT_PULSE_NAME not in ch.operations.keys():
                 from quam.components import pulses
 
                 if hasattr(ch.opx_output, "output_mode"):
                     if ch.opx_output.output_mode == "amplified":
-                        ch.operations["half_max_square"] = pulses.SquarePulse(
+                        ch.operations[DEFAULT_PULSE_NAME] = pulses.SquarePulse(
                             amplitude=1.25, length=16
                         )
                     else:
-                        ch.operations["half_max_square"] = pulses.SquarePulse(
+                        ch.operations[DEFAULT_PULSE_NAME] = pulses.SquarePulse(
                             amplitude=0.25, length=16
                         )
                 else:
-                    ch.operations["half_max_square"] = pulses.SquarePulse(
+                    ch.operations[DEFAULT_PULSE_NAME] = pulses.SquarePulse(
                         amplitude=0.25, length=16
                     )
                 logger.info(
-                    f"Default pulse not in channel '{ch.name}'. Adding operation 'half_max_square' and regenerating config"
+                    f"Default pulse not in channel '{ch.name}'. Adding operation {DEFAULT_PULSE_NAME} and regenerating config"
                 )
                 self.qua_config = self.machine.generate_config()
                 self.qm = None

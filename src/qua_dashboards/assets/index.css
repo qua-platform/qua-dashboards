@@ -110,3 +110,19 @@ body,
 .card-title.text-light, .text-light {
     color: #f8f8f8 !important;
 }
+
+.vg-matrix-input {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.vg-matrix-input::-webkit-outer-spin-button,
+.vg-matrix-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* The grid tile clips children. Let this editor scroll instead of cutting off the matrix. */
+.react-grid-item:has(.vg-layer-editor) > div {
+    overflow: auto !important;
+}

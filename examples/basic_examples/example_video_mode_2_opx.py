@@ -55,12 +55,6 @@ from qua_dashboards.video_mode import (
 )
 from qua_dashboards.virtual_gates import VirtualLayerEditor, ui_update
 from qua_dashboards.utils import setup_DC_channel, setup_readout_channel
-from qua_dashboards.voltage_control.opx_offset import OPXOffsetParameter
-
-from quam_builder.architecture.quantum_dots.components import VoltageGate
-from quam.components.ports import OPXPlusAnalogOutputPort, LFFEMAnalogOutputPort
-from quam.components import StickyChannelAddon
-
 
 def main():
     logger = setup_logging(__name__)
@@ -69,12 +63,9 @@ def main():
     ############ CREATE QUAM MACHINE (SKIP IF EXISTING QUAM STATE) ############
     ###########################################################################
 
-    # ### If Quam state exists, instead simply load it below: 
-    # machine = BasicQuam.load()
-
     # Adjust the IP and cluster name here
-    qm_ip = "172.16.33.115"
-    cluster_name = "CS_3"
+    qm_ip = "127.0.0.1"
+    cluster_name = "my_cluster_name"
 
     qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
     machine = BasicQuam()
@@ -84,31 +75,21 @@ def main():
     readout_pulse_ch2 = pulses.SquareReadoutPulse(id="readout", length=100, amplitude=0.1)
 
     # Choose the FEM. For OPX+, keep fem = None. 
-    fem = 5
+    fem = None
 
     # Set up the readout channels
-    machine.channels["ch1_readout"] = setup_readout_channel(name = "ch1_readout", readout_pulse=readout_pulse_ch1, opx_output_port = 8, opx_input_port = 1, IF = 150e6, fem = fem)
-    machine.channels["ch2_readout"] = setup_readout_channel(name = "ch2_readout", readout_pulse=readout_pulse_ch2, opx_output_port = 8, opx_input_port = 1, IF = 250e6, fem = fem)
+    machine.channels["ch1_readout"] = setup_readout_channel(name = "ch1_readout", readout_pulse=readout_pulse_ch1, opx_output_port = 6, opx_input_port = 1, IF = 150e6, fem = fem)
+    machine.channels["ch2_readout"] = setup_readout_channel(name = "ch2_readout", readout_pulse=readout_pulse_ch2, opx_output_port = 6, opx_input_port = 1, IF = 250e6, fem = fem)
 
-    # For the gate_set
+
     channel_mapping = {
-        "ch1": setup_DC_channel(name = "ch1", opx_output_port = 6, qdac_port = None, fem = fem), 
-        "ch2": setup_DC_channel(name = "ch2", opx_output_port = 2, qdac_port = None, fem = fem), 
-        "ch3": setup_DC_channel(name = "ch3", opx_output_port = 3, qdac_port = None, fem = fem), 
-        "ch1_readout_DC": setup_DC_channel(name = "ch1_readout_DC", opx_output_port = 4, qdac_port = None, fem = fem), 
-        "ch2_readout_DC": setup_DC_channel(name = "ch2_readout_DC", opx_output_port = 5, qdac_port = None, fem = fem), 
+        "ch1": setup_DC_channel(name = "ch1", opx_output_port = 1, dac_port = 1, fem = fem), 
+        "ch2": setup_DC_channel(name = "ch2", opx_output_port = 2, dac_port = 2, fem = fem), 
+        "ch3": setup_DC_channel(name = "ch3", opx_output_port = 3, dac_port = 3, fem = fem), 
+        "ch1_readout_DC": setup_DC_channel(name = "ch1_readout_DC", opx_output_port = 4, dac_port = 3, fem = fem), 
+        "ch2_readout_DC": setup_DC_channel(name = "ch2_readout_DC", opx_output_port = 5, dac_port = 3, fem = fem), 
     }
-
-    # For the virtual DC set, set up some more DC outputs on the OPX.
-    dc_channels = channel_mapping.copy()
-    # IF adding more DC channels for control via other LF FEM outputs
-    # dc_channels.update(
-    #     {
-    #         "ch1_DC": setup_DC_channel(name = "ch1_DC", opx_output_port = 6, qdac_port = None, fem = fem),
-    #         "ch2_DC": setup_DC_channel(name = "ch2_DC", opx_output_port = 7, qdac_port = None, fem = fem),
-    #     }
-    # )
-    for ch_name, ch in dc_channels.items(): 
+    for ch_name, ch in channel_mapping.items(): 
         machine.channels[ch_name] = ch
 
     # Adjust or add your virtual gates here. This example assumes a single virtual gating layer, add more if necessary. 
@@ -127,40 +108,6 @@ def main():
         "Spiral_Scan": scan_modes.SpiralScan(),
     }
 
-    #########################################################
-    ############# SETUP DC CONTROL PARAMETERS ###############
-    #########################################################
-
-    offset_params = {}
-    # DC Control parameters
-    for ch_name, ch in dc_channels.items(): # Should include all DC controllable channels
-        offset_params[ch_name] = OPXOffsetParameter(element_name = ch_name, input = "single")
-        ch.offset_parameter = offset_params[ch_name].current_voltage
-
-    from qua_dashboards.voltage_control import VoltageControlComponent 
-    from quam_builder.architecture.quantum_dots.components import VirtualDCSet
-    dc_set = VirtualDCSet(
-        id = "DC_set", 
-        channels = {ch_name: ch.get_reference() for ch_name, ch in dc_channels.items()}
-    )
-    dc_set.add_layer(
-        target_gates = ["ch1", "ch2"],
-        source_gates = ["V1", "V2"],
-        matrix = [[1, 0.2], [0.2, 1]]
-    )
-    voltage_control_component = VoltageControlComponent(
-        component_id = "DC_Voltage_Control",
-        dc_set = dc_set,
-    )
-    from qua_dashboards.video_mode.tab_controllers import VoltageControlTabController
-    voltage_control_tab = VoltageControlTabController(voltage_control_component = voltage_control_component)
-
-
-    #########################################################
-    #########################################################
-    #########################################################
-
-
     # Instantiate the OPXDataAcquirer.
     # This component handles the QUA program generation, execution, and data fetching.
     data_acquirer = OPXDataAcquirer(    
@@ -173,21 +120,18 @@ def main():
         result_type="I",  # "I", "Q", "amplitude", or "phase"
         available_readout_pulses=[readout_pulse_ch1, readout_pulse_ch2], # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI. 
         acquisition_interval_s=0.05, 
-        voltage_control_component=voltage_control_component,
-        use_buffered_stream=True,
+        voltage_control_component=None,
+        use_buffered_stream=False,
     )
-    for ch_name, param in offset_params.items():
-        param.qm_provider = data_acquirer
 
     virtual_gating_component = VirtualLayerEditor(gateset = virtual_gate_set, component_id = 'virtual-gates-ui', dc_set = None)
 
     video_mode_component = VideoModeComponent(
         data_acquirer=data_acquirer,
         data_polling_interval_s=0.05,  # How often the dashboard polls for new data
-        voltage_control_tab = voltage_control_tab,
+        voltage_control_tab = None,
         save_path = r"C:\Users\..."
     )
-
     components = [video_mode_component, virtual_gating_component]
 
     app = build_dashboard(

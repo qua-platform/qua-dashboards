@@ -1,3 +1,5 @@
+from typing import Optional
+
 from quam.components import (
     pulses,
     StickyChannelAddon,
@@ -12,13 +14,14 @@ from quam.components.ports import (
 from quam_builder.architecture.quantum_dots.components import (
     VoltageGate,
     ReadoutResonatorSingle,
+    DacSpec,
     QdacSpec,
 )
 
 __all__ = ["setup_DC_channel", "setup_readout_channel"]
 
 def setup_DC_channel(
-    name: str, opx_output_port: int, qdac_port: int, con="con1", fem: int = None
+    name: str, opx_output_port: int, dac_port: Optional[int] = None, dac_name: Optional[str] = None, con="con1", fem: int = None, dac_is_qdac: Optional[bool] = False
 ):
     """
     Set up a DC Channel
@@ -49,9 +52,17 @@ def setup_DC_channel(
         sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
         attenuation = 10,
     )
-    qdac_spec = QdacSpec(qdac_output_port = qdac_port)
-    channel.qdac_spec = qdac_spec
-    if qdac_port is None:
+
+    if dac_name is None: 
+        dac_name = "main_dac"
+
+    if dac_port is not None: 
+        if dac_is_qdac: 
+            dac_spec = QdacSpec(dac_name = dac_name, output_port = dac_port)
+        else:
+            dac_spec = DacSpec(dac_name = dac_name, output_port = dac_port)
+        channel.dac_spec = dac_spec
+    if dac_port is None:
         channel.offset_parameter = None
     return channel
 

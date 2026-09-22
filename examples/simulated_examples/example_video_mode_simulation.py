@@ -57,12 +57,23 @@ from qua_dashboards.utils import setup_readout_channel, setup_DC_channel
 def main():
     logger = setup_logging(__name__)
 
-    # If connecting to qdac, set qdac_connect = True, and the qdac_ip.
-    qdac_ip = "172.16.33.101"
-    qdac_connect = True
-
-    # qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
     machine = BaseQuamQD()
+
+    # If connecting to qdac, set qdac_connect = True, and the qdac_ip.
+    dac_ip = "127.0.0.2"
+    dac_name = "main_qdac"
+    dac_connect = True
+
+    if dac_connect: 
+        dac_api_qcodes = {
+            "driver_module": "qcodes_contrib_drivers.drivers.QDevil.QDAC2",
+            "driver_class": "QDac2",
+            "connection": {"visalib": "@py", "address": f"TCPIP::{dac_ip}::5025::SOCKET"},
+            "channel_method": "channel",
+            "accessor": "dc_constant_V",
+            "is_qdac": True,
+        }
+        machine.set_dac_config({dac_name : dac_api_qcodes})
 
     # Define your readout pulses here. Each pulse should be uniquely mapped to your readout elements.
     readout_pulse_ch1 = pulses.SquareReadoutPulse(
@@ -76,10 +87,10 @@ def main():
     fem = 5
 
     # Set up the DC channels
-    p1 = setup_DC_channel(name="plunger_1", opx_output_port=1, qdac_port=1, fem=fem)
-    p2 = setup_DC_channel(name="plunger_2", opx_output_port=2, qdac_port=2, fem=fem)
-    s1 = setup_DC_channel(name="sensor_1", opx_output_port=4, qdac_port=4, fem=fem)
-    s2 = setup_DC_channel(name="sensor_2", opx_output_port=5, qdac_port=5, fem=fem)
+    p1 = setup_DC_channel(name="plunger_1", opx_output_port=1, dac_port=1, dac_name = dac_name, fem=fem)
+    p2 = setup_DC_channel(name="plunger_2", opx_output_port=2, dac_port=2, dac_name = dac_name, fem=fem)
+    s1 = setup_DC_channel(name="sensor_1", opx_output_port=4, dac_port=4, dac_name = dac_name, fem=fem)
+    s2 = setup_DC_channel(name="sensor_2", opx_output_port=5, dac_port=5, dac_name = dac_name, fem=fem)
 
     # Set up the readout channels
     sensor_readout_channel_1 = setup_readout_channel(
@@ -127,24 +138,18 @@ def main():
         },
     )
 
-    if qdac_connect:
-        logger.info("Connecting to QDAC")
-        machine.network.update({"qdac_ip": qdac_ip})
-        machine.connect_to_external_source(external_qdac=True)
-        machine.create_virtual_dc_set("main_qpu")
-
     scan_mode_dict = {
         "Switch_Raster_Scan": scan_modes.SwitchRasterScan(),
         "Raster_Scan": scan_modes.RasterScan(),
         "Spiral_Scan": scan_modes.SpiralScan(),
     }
 
-    virtual_gating_component = VirtualLayerEditor(
-        gateset=machine.virtual_gate_sets["main_qpu"], component_id="virtual-gates-ui", dc_set = machine.virtual_dc_sets["main_qpu"] if qdac_connect else None
-    )
-
     voltage_control_tab, voltage_control_component = None, None
-    if qdac_connect:
+    if dac_connect:
+        # Establish the connection first
+        logger.info("Connecting to QDAC")
+        machine.connect_to_external_source(reset_voltages = True)
+
         voltage_control_component = VoltageControlComponent(
             component_id="Voltage_Control",
             dc_set = machine.virtual_dc_sets["main_qpu"],
@@ -158,6 +163,10 @@ def main():
         voltage_control_tab = VoltageControlTabController(
             voltage_control_component=voltage_control_component
         )
+
+    virtual_gating_component = VirtualLayerEditor(
+        gateset=machine.virtual_gate_sets["main_qpu"], component_id="virtual-gates-ui", dc_set = machine.virtual_dc_sets["main_qpu"] if dac_connect else None
+    )
 
     from qarray import ChargeSensedDotArray
     Cdd = [
@@ -195,12 +204,12 @@ def main():
         "virtual_sensor_1": sensor_plunger_bias_mv[0],
         "virtual_sensor_2": sensor_plunger_bias_mv[1],
     }
-    if qdac_connect: 
+    if dac_connect: 
         machine.virtual_dc_sets["main_qpu"].set_voltages(base_point)
 
     simulator = QarraySimulator(
         gate_set = machine.virtual_gate_sets["main_qpu"], 
-        dc_set = machine.virtual_dc_sets["main_qpu"] if qdac_connect else None,
+        dc_set = machine.virtual_dc_sets["main_qpu"] if dac_connect else None,
         model = model,
         sensor_gate_names = ("virtual_sensor_1", "virtual_sensor_2"), 
         base_point = base_point,

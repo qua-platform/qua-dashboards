@@ -97,6 +97,13 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
         self._configure_readout()
         self._scan_idx_cache = None
 
+    @property
+    def result_unit(self) -> str:
+        if self.result_type in ("I", "Q", "amplitude"):
+            return "V"
+        if self.result_type == "phase":
+            return "rad"
+        return ""
 
     @property
     def current_scan_mode(self) -> str:
@@ -422,7 +429,17 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
         and includes status/error information.
         """
         if len(self.selected_readout_channels) <= 1:
-            return super().get_latest_data()
+            result = super().get_latest_data()
+
+            data = result.get("data")
+
+            if (
+                isinstance(data, xr.DataArray)
+                and len(self.selected_readout_channels) == 1
+            ):
+                data.name = self.selected_readout_channels[0].name
+
+            return result
 
         processed = BaseDataAcquirer.get_latest_data(self)
         data_np = processed.get("data")
@@ -464,8 +481,17 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
                     data_np,
                     dims=("readout", self.x_axis.coord_name),
                     coords={"readout": labels, self.x_axis.coord_name: x_coords},
-                    attrs={"long_name": "Signal"},
+                    attrs={
+                        "long_name": "Signal",
+                        "units": self.result_unit,
+                    },
                 )
+
+                if self.result_type in ("I", "Q", "amplitude"):
+                    data_xr.attrs["units"] = "V"
+                elif self.result_type == "phase":
+                    data_xr.attrs["units"] = "rad"
+                    
                 data_xr = self.selected_function(data_xr)
                 x_attrs = {"label": self.x_axis.label or self.x_axis.coord_name}
                 if self.x_axis.units is not None:
@@ -500,6 +526,11 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
                 },
                 attrs={"long_name": "Signal"},
             )
+            if self.result_type in ("I", "Q", "amplitude"):
+                data_xr.attrs["units"] = "V"
+            elif self.result_type == "phase":
+                data_xr.attrs["units"] = "rad"
+
             data_xr = self.selected_function(data_xr)
             for axis in [self.x_axis, self.y_axis]:
                 attrs = {"label": axis.label or axis.coord_name}

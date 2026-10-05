@@ -89,6 +89,7 @@ class VideoModeComponent(BaseComponent):
         self,
         data_acquirer: BaseDataAcquirer,
         save_path: str = None,
+        save_backend= None,
         tab_controllers: Optional[List[BaseTabController]] = None,
         default_tab_value: Optional[str] = None,
         component_id: str = DEFAULT_COMPONENT_ID,
@@ -117,6 +118,7 @@ class VideoModeComponent(BaseComponent):
         if not isinstance(data_acquirer, BaseDataAcquirer):
             raise TypeError("data_acquirer must be an instance of BaseDataAcquirer.")
         self.save_path = save_path
+        self.save_backend = save_backend
         self.data_acquirer: BaseDataAcquirer = data_acquirer
         self.shared_viewer: SharedViewerComponent = SharedViewerComponent(
             component_id=f"{self.component_id}-shared-viewer"
@@ -345,7 +347,7 @@ class VideoModeComponent(BaseComponent):
                             lg=8,
                             style={
                                 "maxHeight": "calc(100vh - 70px)",
-                                "overflowY": "hidden",  # Graph usually handles its own scroll
+                                # "overflowY": "hidden",  # Graph usually handles its own scroll
                             },
                         ),
                     ],
@@ -491,46 +493,21 @@ class VideoModeComponent(BaseComponent):
                 results_key = data_registry.LIVE_DATA_KEY
 
             try:
-                details = self.save(results_key=results_key)
-                import os
-                save_dir = details["path"]
-                if not os.path.isdir(save_dir):
-                    save_dir = os.path.dirname(save_dir)
-                self.data_acquirer.machine.save(save_dir)
-                notes = (notes_text or "").strip()
-                if notes: 
-                    try:
-                        notes_path = os.path.join(save_dir, "notes.txt")
-                        with open(notes_path, "w", encoding="utf-8") as f:
-                            f.write(notes)
-                    except Exception as e_notes: 
-                        logger.error(f"(Notes save failed: {e_notes})")
+                details = self.save(
+                    results_key=results_key,
+                    notes=notes_text,
+                )
+                message = self.save_backend.success_message(details)
+
             except Exception as e:
-                message = (
-                    f"Error saving data, please configure the data_root_folder. "
-                    "To change the data_root_folder, please run "
-                    "**qualibrate-config config --storage-location "
-                    "<your-desired-root-folder>}**"
-                )
-                logger.error(f"{message}: \n{e}")
-                return dbc.Alert(
-                    dcc.Markdown(message),
-                    color="danger",
-                    dismissable=True,
-                )
+                logger.error(f"Error saving data: {e}")
 
-            message = f"Data **#{details['idx']}** saved to {details['path']}."
-            if ".qualibrate" in str(details["path"]):
-                message += "To change the data root folder, please run "
-                "**qualibrate-config config --storage-location "
-                "<your-desired-root-folder>}**"
+                message = self.save_backend.error_message(e)
 
-            return dbc.Alert(
-                dcc.Markdown(message),
-                color="success",
-                dismissable=True,
-                # No duration: stays until dismissed or replaced
-            )
+                return dbc.Alert(message, color="danger", dismissable=True)
+
+            return dbc.Alert(message, color="success", dismissable=True)
+
     def _register_quam_save_button_callback(self, app: Dash) -> None:
         @app.callback(
             Output(self._get_id(self._MAIN_STATUS_ALERT_ID_SUFFIX), "children", allow_duplicate=True),
@@ -767,34 +744,56 @@ class VideoModeComponent(BaseComponent):
 
             return viewer_data_update, viewer_ui_state_update, layout_config_update, main_status_update
 
-    def save(self, results_key: str) -> Dict[str, Any]:
+    def save(self, results_key: str, notes: Optional[str] = None) -> Dict[str, Any]:
         image_data = data_registry.get_data(results_key)
 
         if image_data is None:
             logger.error(
                 f"Error saving results: {results_key} not found in data registry."
             )
+
             live_data = data_registry.get_data(data_registry.LIVE_DATA_KEY)
             static_data = data_registry.get_data(data_registry.STATIC_DATA_KEY)
+
             if isinstance(live_data, dict):
                 image_data = live_data
             elif isinstance(static_data, dict):
                 image_data = static_data
             else:
-                raise ValueError(
-                    "No data found in data registry for saving. "
-                    "Please provide data to save."
-                )
-        results = {"image_data": image_data}
+                raise ValueError("No data found in data registry for saving.")
 
-        # Add plotly graphs from the shared viewer
-        try:
-            # Temporary import check since qualang tools does not yet support plotly
-            from qualang_tools.results.data_handler.data_processors import (
-                plotly_graph_saver,
-            )
+        if self.save_backend is None:
+            raise RuntimeError("No save backend configured.")
 
-            results["figures"] = self.shared_viewer.get_figures()
-        except ImportError:
-            pass
-        return save_data(results)
+        data = image_data.get("base_image_data")
+        annotations = image_data.get("annotations", {})
+
+        if data is None:
+            raise ValueError("No base_image_data found for saving.")
+
+        metadata = {
+            "result_type": getattr(
+                self.data_acquirer,
+                "result_type",
+                None,
+            ),
+        }
+
+        notes = (notes or "").strip()
+        if notes:
+            metadata["notes"] = notes
+
+        selected_readouts = getattr(
+            self.data_acquirer,
+            "selected_readout_channels",
+            [],
+        )
+
+
+        return self.save_backend.save(
+            data,
+            annotations=annotations,
+            metadata=metadata,
+            name="video_mode",
+            machine=self.data_acquirer.machine
+        )

@@ -277,45 +277,87 @@ def find_closest_line_id(
 
 def calculate_slopes(
     annotations_data: Dict[str, List[Dict[str, Any]]],
-) -> Dict[str, float]:
+) -> Dict[str, Dict[str, float]]:
     """
-    Calculates slopes for annotated lines.
+    Calculates geometric properties for annotated lines.
 
-    Args:
-        annotations_data: The main annotations data structure.
-            Expected: {"points": [...], "lines": [...]}
-
-    Returns:
-        A dictionary mapping line ID (string) to its slope.
+    Returns, for each line:
+        - slope
+        - reciprocal_slope
+        - dx
+        - dy
+        - length
+        - dx_mV
+        - dy_mV
+        - length_mV
     """
-    slopes: Dict[str, float] = {}
+    results: Dict[str, Dict[str, float]] = {}
     lines = annotations_data.get("lines", [])
 
     for line in lines:
         line_id = line["id"]
-        coords1 = get_point_coords_by_id(annotations_data, line["start_point_id"])
-        coords2 = get_point_coords_by_id(annotations_data, line["end_point_id"])
 
-        if coords1 and coords2:
-            x1, y1 = coords1
-            x2, y2 = coords2
-            delta_x = x2 - x1
-            delta_y = y2 - y1
-            if np.isclose(delta_x, 0):
-                slope_val = (
-                    float("inf")
-                    if delta_y > 0
-                    else float("-inf")
-                    if delta_y < 0
-                    else float(
-                        "nan"
-                    )  # Undefined (points coincide or vertical line of zero length)
-                )
-                slopes[line_id] = slope_val
-            else:
-                slopes[line_id] = delta_y / delta_x
+        coords1 = get_point_coords_by_id(
+            annotations_data,
+            line["start_point_id"],
+        )
+        coords2 = get_point_coords_by_id(
+            annotations_data,
+            line["end_point_id"],
+        )
+
+        if coords1 is None or coords2 is None:
+            results[line_id] = {
+                "slope": float("nan"),
+                "reciprocal_slope": float("nan"),
+                "dx": float("nan"),
+                "dy": float("nan"),
+                "length": float("nan"),
+                "dx_mV": float("nan"),
+                "dy_mV": float("nan"),
+                "length_mV": float("nan"),
+            }
+            continue
+
+        x1, y1 = coords1
+        x2, y2 = coords2
+
+        dx = float(x2 - x1)
+        dy = float(y2 - y1)
+        length = float(np.hypot(dx, dy))
+
+        if np.isclose(dx, 0):
+            slope = (
+                float("inf")
+                if dy > 0
+                else float("-inf")
+                if dy < 0
+                else float("nan")
+            )
         else:
-            slopes[line_id] = float("nan")  # Cannot calculate if points are missing
+            slope = dy / dx
 
-    logger.info(f"Calculated slopes for {len(slopes)} lines.")
-    return slopes
+        if np.isclose(dy, 0):
+            reciprocal_slope = (
+                float("inf")
+                if dx > 0
+                else float("-inf")
+                if dx < 0
+                else float("nan")
+            )
+        else:
+            reciprocal_slope = dx / dy
+
+        results[line_id] = {
+            "slope": slope,
+            "reciprocal_slope": reciprocal_slope,
+            "dx": dx,
+            "dy": dy,
+            "length": length,
+            "dx_mV": dx * 1e3,
+            "dy_mV": dy * 1e3,
+            "length_mV": length * 1e3,
+        }
+
+    logger.info(f"Calculated line properties for {len(results)} lines.")
+    return results

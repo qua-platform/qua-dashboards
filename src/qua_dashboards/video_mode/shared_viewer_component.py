@@ -46,22 +46,73 @@ class SharedViewerComponent(BaseComponent):
         return go.Figure().update_layout(template="plotly_dark")
 
     def get_layout(self) -> html.Div:
-        """Generates the Dash layout for the SharedViewerComponent.
-
-        Returns:
-            An html.Div component containing the dcc.Graph.
-        """
+        viewer_size = "min(calc(100vh - 160px), 900px)"
         return html.Div(
-            style={"height": "100%", "width": "100%"},
+            style={
+                "width": viewer_size,
+                "height": viewer_size,
+                "maxWidth": "100%",
+                "maxHeight": viewer_size,
+                "marginLeft": "auto",
+                "marginRight": "auto",
+            },
             children=[
                 dcc.Graph(
                     id=self._get_id(self._MAIN_GRAPH_ID_SUFFIX),
                     figure=self._current_figure,
-                    style={"height": "100%", "width": "100%"},
-                    config={"scrollZoom": True, "displaylogo": False, "displayModeBar": False},
+                    style={
+                        "height": "100%",
+                        "width": "100%",
+                    },
+                    responsive=True,
+                    config={
+                        "scrollZoom": True,
+                        "displaylogo": False,
+                        "displayModeBar": False,
+                        "doubleClick": False,
+                    },
                 )
             ],
         )
+    @staticmethod
+    def _keep_square_axes(fig):
+        layout = fig.to_dict().get("layout", {})
+
+        if "yaxis2" in layout:
+            return fig
+
+        x_range = None
+        y_range = None
+
+        for trace in fig.data:
+            if getattr(trace, "type", None) != "heatmap":
+                continue
+
+            x_vals = getattr(trace, "x", None)
+            y_vals = getattr(trace, "y", None)
+
+            if x_vals is None or y_vals is None or len(x_vals) == 0 or len(y_vals) == 0:
+                break
+
+            x_range = [float(min(x_vals)), float(max(x_vals))]
+            y_range = [float(min(y_vals)), float(max(y_vals))]
+            break
+
+        x_axis = {"constrain": "domain", "autorange": False}
+        y_axis = {"constrain": "domain", "autorange": False}
+
+        if x_range is not None:
+            x_axis["range"] = x_range
+
+        if y_range is not None:
+            y_axis["range"] = y_range
+
+        fig.update_xaxes(**x_axis)
+        fig.update_yaxes(**y_axis)
+
+        fig.layout.yaxis.scaleanchor = None
+
+        return fig
 
     def get_graph_id(self) -> Dict[str, str]:
         """
@@ -87,6 +138,7 @@ class SharedViewerComponent(BaseComponent):
         """
         try:
             fig = build_live_figure(data_object)
+            fig = self._keep_square_axes(fig)
         except Exception as e:
             logger.error(f"SharedViewer ({self.component_id}): live->fig error: {e}", exc_info=True)
             fig = empty_dark()
@@ -109,6 +161,7 @@ class SharedViewerComponent(BaseComponent):
         """
         try:
             fig = build_static_figure(static_data_object, viewer_ui_state_input)
+            fig = self._keep_square_axes(fig)
         except Exception as e:
             logger.error(f"SharedViewer ({self.component_id}): static->fig error: {e}", exc_info=True)
             fig = empty_dark()

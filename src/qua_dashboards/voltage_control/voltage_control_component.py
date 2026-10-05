@@ -330,113 +330,113 @@ class VoltageControlComponent(BaseComponent):
             control_row.last_committed_text = control_row.current_input_text
             return control_row.current_input_text
 
-        app.clientside_callback(
-            r"""
-            function(config) {
-                if (!config || !config.input_ids) {
-                    return null;
-                }
+        # app.clientside_callback(
+        #     r"""
+        #     function(config) {
+        #         if (!config || !config.input_ids) {
+        #             return null;
+        #         }
 
-                if (window._voltageKeyboardListenerAttached) {
-                    return null;
-                }
-                window._voltageKeyboardListenerAttached = true;
+        #         if (window._voltageKeyboardListenerAttached) {
+        #             return null;
+        #         }
+        #         window._voltageKeyboardListenerAttached = true;
 
-                var inputIds = config.input_ids || [];
-                var stepSize = config.step_size || 0.00001;
+        #         var inputIds = config.input_ids || [];
+        #         var stepSize = config.step_size || 0.00001;
 
-                function findVoltageInput(index) {
-                    if (index < 0 || index >= inputIds.length) {
-                        return null;
-                    }
-                    var id = inputIds[index];
-                    var allInputs = document.querySelectorAll('input');
-                    for (var i = 0; i < allInputs.length; i++) {
-                        var el = allInputs[i];
-                        var rawId = el.id;
-                        if (!rawId) continue;
-                        try {
-                            var parsed = JSON.parse(rawId);
-                            if (parsed && parsed.type === id.type && parsed.index === id.index) {
-                                return el;
-                            }
-                        } catch (e) {}
-                    }
-                    return null;
-                }
+        #         function findVoltageInput(index) {
+        #             if (index < 0 || index >= inputIds.length) {
+        #                 return null;
+        #             }
+        #             var id = inputIds[index];
+        #             var allInputs = document.querySelectorAll('input');
+        #             for (var i = 0; i < allInputs.length; i++) {
+        #                 var el = allInputs[i];
+        #                 var rawId = el.id;
+        #                 if (!rawId) continue;
+        #                 try {
+        #                     var parsed = JSON.parse(rawId);
+        #                     if (parsed && parsed.type === id.type && parsed.index === id.index) {
+        #                         return el;
+        #                     }
+        #                 } catch (e) {}
+        #             }
+        #             return null;
+        #         }
 
-                function isVoltageInputElement(el) {
-                    if (!el || !el.id) return false;
-                    try {
-                        var parsed = JSON.parse(el.id);
-                        for (var i = 0; i < inputIds.length; i++) {
-                            var id = inputIds[i];
-                            if (id.type === parsed.type && id.index === parsed.index) {
-                                return true;
-                            }
-                        }
-                        return false;
-                    } catch (e) {
-                        return false;
-                    }
-                }
+        #         function isVoltageInputElement(el) {
+        #             if (!el || !el.id) return false;
+        #             try {
+        #                 var parsed = JSON.parse(el.id);
+        #                 for (var i = 0; i < inputIds.length; i++) {
+        #                     var id = inputIds[i];
+        #                     if (id.type === parsed.type && id.index === parsed.index) {
+        #                         return true;
+        #                     }
+        #                 }
+        #                 return false;
+        #             } catch (e) {
+        #                 return false;
+        #             }
+        #         }
 
-                document.addEventListener('keydown', function(e) {
-                    var activeEl = document.activeElement;
-                    var tagName = activeEl ? activeEl.tagName.toLowerCase() : '';
-                    var isInInput = (tagName === 'input' || tagName === 'textarea');
-                    var isInVoltageInput = isInInput && isVoltageInputElement(activeEl);
+        #         document.addEventListener('keydown', function(e) {
+        #             var activeEl = document.activeElement;
+        #             var tagName = activeEl ? activeEl.tagName.toLowerCase() : '';
+        #             var isInInput = (tagName === 'input' || tagName === 'textarea');
+        #             var isInVoltageInput = isInInput && isVoltageInputElement(activeEl);
 
-                    var shortcuts = [
-                        'q','w','e','r','t','y','u','i','o','p',
-                        'a','s','d','f','g','h','j','k','l',
-                        'z','x','c','v','b','n','m'
-                    ];
-                    var key = (e.key || '').toLowerCase();
-                    var idx = shortcuts.indexOf(key);
+        #             var shortcuts = [
+        #                 'q','w','e','r','t','y','u','i','o','p',
+        #                 'a','s','d','f','g','h','j','k','l',
+        #                 'z','x','c','v','b','n','m'
+        #             ];
+        #             var key = (e.key || '').toLowerCase();
+        #             var idx = shortcuts.indexOf(key);
 
-                    if (idx !== -1 && (!isInInput || isInVoltageInput)) {
-                        var targetEl = findVoltageInput(idx);
-                        if (targetEl) {
-                            e.preventDefault();
-                            if (activeEl && typeof activeEl.blur === 'function') {
-                                activeEl.blur();
-                            }
-                            targetEl.focus();
-                            if (typeof targetEl.select === 'function') {
-                                targetEl.select();
-                            }
-                        }
-                    }
+        #             if (idx !== -1 && (!isInInput || isInVoltageInput)) {
+        #                 var targetEl = findVoltageInput(idx);
+        #                 if (targetEl) {
+        #                     e.preventDefault();
+        #                     if (activeEl && typeof activeEl.blur === 'function') {
+        #                         activeEl.blur();
+        #                     }
+        #                     targetEl.focus();
+        #                     if (typeof targetEl.select === 'function') {
+        #                         targetEl.select();
+        #                     }
+        #                 }
+        #             }
 
-                    if (isInVoltageInput && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-                        e.preventDefault();
+        #             if (isInVoltageInput && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        #                 e.preventDefault();
 
-                        var currentVal = parseFloat(activeEl.value);
-                        if (!isFinite(currentVal)) {
-                            currentVal = 0;
-                        }
+        #                 var currentVal = parseFloat(activeEl.value);
+        #                 if (!isFinite(currentVal)) {
+        #                     currentVal = 0;
+        #                 }
 
-                        var delta = (e.key === 'ArrowUp') ? stepSize : -stepSize;
-                        if (e.shiftKey) delta *= 10;
-                        if (e.ctrlKey)  delta *= 100;
+        #                 var delta = (e.key === 'ArrowUp') ? stepSize : -stepSize;
+        #                 if (e.shiftKey) delta *= 10;
+        #                 if (e.ctrlKey)  delta *= 100;
 
-                        var newVal = currentVal + delta;
-                        var newValStr = newVal.toFixed(9).replace(/\.?0+$/, '');
+        #                 var newVal = currentVal + delta;
+        #                 var newValStr = newVal.toFixed(9).replace(/\.?0+$/, '');
 
-                        activeEl.value = newValStr;
-                        var parsedId = JSON.parse(activeEl.id);
-                        dash_clientside.set_props(
-                            config.dummy_store_id,
-                            {data: {param_name: parsedId.index, value: newValStr, ts: Date.now()}}
-                        );
-                    }
-                });
+        #                 activeEl.value = newValStr;
+        #                 var parsedId = JSON.parse(activeEl.id);
+        #                 dash_clientside.set_props(
+        #                     config.dummy_store_id,
+        #                     {data: {param_name: parsedId.index, value: newValStr, ts: Date.now()}}
+        #                 );
+        #             }
+        #         });
 
-                return null;
-            }
-            """,
-            Output(self._get_id("keyboard-dummy"), "data"),
-            Input(self._get_id("keyboard-config"), "data"),
-            prevent_initial_call=True,
-        )
+        #         return null;
+        #     }
+        #     """,
+        #     Output(self._get_id("keyboard-dummy"), "data"),
+        #     Input(self._get_id("keyboard-config"), "data"),
+        #     prevent_initial_call=True,
+        # )

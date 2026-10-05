@@ -50,16 +50,20 @@ class VoltageSweepAxis(BaseSweepAxis):
         """Returns axis sweep values without attenuation."""
         return self.sweep_values
 
+    
+    # def sweep_values_with_offset(self):
+    #     """Returns axis sweep values with offset."""
+    #     offset = 0.0
+    #     if self.offset_parameter is not None:
+    #         try:
+    #             offset = self.offset_parameter.get_latest()
+    #         except:
+    #             offset = 0.0
+    #     return self.sweep_values_unattenuated + offset
     @property
     def sweep_values_with_offset(self):
-        """Returns axis sweep values with offset."""
-        offset = 0.0
-        if self.offset_parameter is not None:
-            try:
-                offset = self.offset_parameter.get_latest()
-            except:
-                offset = 0.0
-        return self.sweep_values_unattenuated + offset
+        """Returns relative sweep values centered around zero."""
+        return self.sweep_values_unattenuated
 
     @property
     def qua_sweep_values(self) -> np.ndarray:

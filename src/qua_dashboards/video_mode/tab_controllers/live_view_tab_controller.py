@@ -117,10 +117,32 @@ class LiveViewTabController(BaseTabController):
                         html.Div(
                             [
                                 dbc.Row(
-                                    [dbc.Col(
+                                    [
+                                    dbc.Button(
+                                        "Set DC center",
+                                        id=self._get_id("set-dc-center-button"),
+                                        color="primary",
+                                        size="sm",
+                                        className="mt-2",
+                                        disabled=True,
+                                    ),
+                                    dcc.Store(
+                                        id=self._get_id("set-dc-center-armed"),
+                                        data=False,
+                                    ),
+                                    dbc.Col(
                                         dbc.Checklist(
                                             id=self._get_id("center-marker-toggle"),
                                             options=[{"label": "Crosshairs", "value": "on"}],
+                                            value=[],
+                                            switch=True,
+                                        ),
+                                        width="auto",
+                                    ),
+                                    dbc.Col(
+                                        dbc.Checklist(
+                                            id=self._get_id("mouse-crosshairs-toggle"),
+                                            options=[{"label": "Mouse crosshairs", "value": "on"}],
                                             value=[],
                                             switch=True,
                                         ),
@@ -253,6 +275,7 @@ class LiveViewTabController(BaseTabController):
         self._register_acquisition_control_callback(app, orchestrator_stores)
         self._register_parameter_update_callback(app)
         self._register_gate_selection_callback(app)
+        self._register_set_dc_button_callback(app)
         self._register_gridlines_callback(app, shared_viewer_store_ids)
         self._register_readoutparams_callback(app)
         self._register_mode_callback(app)
@@ -289,51 +312,103 @@ class LiveViewTabController(BaseTabController):
 
         @app.callback(
             Output(
-                self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX), 
-                "children", 
-                allow_duplicate = True, 
-            ), 
-            Input(
-                shared_viewer_graph_id, "clickData", 
-            ), 
+                self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX),
+                "children",
+                allow_duplicate=True,
+            ),
+            Output(
+                self._get_id("set-dc-center-armed"),
+                "data",
+                allow_duplicate=True,
+            ),
+            Output(
+                self._get_id("set-dc-center-button"),
+                "children",
+                allow_duplicate=True,
+            ),
+            Output(
+                self._get_id("set-dc-center-button"),
+                "color",
+                allow_duplicate=True,
+            ),
+            Input(shared_viewer_graph_id, "clickData"),
+            State(self._get_id("set-dc-center-armed"), "data"),
             State(tabs_id, "value"),
-            prevent_initial_call = True, 
+            prevent_initial_call=True,
         )
-        def _centre_on_click(click_data, active_tab_value): 
-            if active_tab_value not in ("live-view-tab", "voltage-control-tab"):
-                return dash.no_update
-            if not click_data or "points" not in click_data: 
-                return dash.no_update
+        def _centre_on_click(click_data, armed, active_tab_value):
+            if not armed:
+                return (
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                )
+
+            if active_tab_value != "live-view-tab":
+                return (
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                )
+
+            if not click_data or "points" not in click_data:
+                return (
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                )
 
             pt = click_data["points"][0]
             x_val = pt.get("x")
             y_val = pt.get("y")
-            if x_val is None and y_val is None:
-                return dash.no_update
-            
+
             da = self._data_acquirer_instance
             voltage_control = getattr(da, "voltage_control_component", None)
 
-            if voltage_control is None or voltage_control.dc_set is None: 
-                return dash.no_update
+            if voltage_control is None or voltage_control.dc_set is None:
+                return (
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                )
 
             dc_set = voltage_control.dc_set
-            voltages_to_set = {}
+            current = dc_set.all_current_voltages.copy()
 
+            targets = {}
 
-            if x_val is not None and da.x_axis_name in dc_set.valid_channel_names: 
-                voltages_to_set[da.x_axis_name] = float(x_val)
+            if x_val is not None and da.x_axis_name in dc_set.valid_channel_names:
+                targets[da.x_axis_name] = (
+                    current.get(da.x_axis_name, 0.0)
+                    + float(x_val)
+                )
+
             if (
                 y_val is not None
                 and da.y_axis_name is not None
                 and da.y_axis_name in dc_set.valid_channel_names
             ):
-                voltages_to_set[da.y_axis_name] = float(y_val)
+                targets[da.y_axis_name] = (
+                    current.get(da.y_axis_name, 0.0)
+                    + float(y_val)
+                )
 
-            if voltages_to_set: 
-                dc_set.set_voltages(voltages_to_set)
+            if targets:
+                print("Current DC:", current)
+                print("Clicked delta:", {"x": x_val, "y": y_val})
+                print("Targets:", targets)
 
-            return ""
+                dc_set.set_voltages(targets)
+
+                print("Updated DC:", dc_set.all_current_voltages)
+
+            da.start_acquisition()
+
+            return "", False, "Set DC center", "primary"
             
     def _register_gridlines_callback(
             self, 
@@ -343,25 +418,36 @@ class LiveViewTabController(BaseTabController):
         @app.callback(
             Output(shared_viewer_store_ids["layout_config_store"], "data", allow_duplicate = True),
             Input(self._get_id("center-marker-toggle"), "value"),
+            Input(self._get_id("mouse-crosshairs-toggle"), "value"),
             Input(self._get_id("show-full-grid-toggle"), "value"),
             Input(self._get_id("grid_opacity"), "value"),
             State(shared_viewer_store_ids["layout_config_store"], "data"),
             prevent_initial_call=True,
         )
-        def _toggle_gridlines(toggle_val, full_val, opacity, existing_layout):
+        def _toggle_gridlines(toggle_val, mouse_val, full_val, opacity, existing_layout):
             layout = existing_layout or {}
-            show = "on" in toggle_val
+            show = "on" in (toggle_val or [])
             show_full = "on" in (full_val or [])
+            show_mouse = "on" in (mouse_val or [])
             shapes = []
             alpha = float(opacity)/100
             n_subplots = max(1, len(self._data_acquirer_instance.selected_readout_channels))
 
+            def axis_layout_name(axis: str, i: int) -> str:
+                return axis if i == 1 else f"{axis}{i}"
+
             da = self._data_acquirer_instance
             is_1d = da.y_axis_name is None
 
-            cache_key = (show, show_full, opacity, tuple(self._data_acquirer_instance.x_axis.sweep_values_with_offset),
+            cache_key = (
+                show,
+                show_mouse,
+                show_full,
+                opacity,
+                tuple(self._data_acquirer_instance.x_axis.sweep_values_with_offset),
                 tuple(self._data_acquirer_instance.y_axis.sweep_values_with_offset),
-                len(self._data_acquirer_instance.selected_readout_channels))
+                len(self._data_acquirer_instance.selected_readout_channels),
+            )
             if cache_key == self._last_gridlines_state:
                 return dash.no_update
             self._last_gridlines_state = cache_key
@@ -371,12 +457,10 @@ class LiveViewTabController(BaseTabController):
                     return "" if i == 1 else str(i)
 
                 xr = list(self._data_acquirer_instance.x_axis.sweep_values_with_offset)
-                x_centre = float(xr[len(xr) // 2])
                 xs = np.linspace(xr[0], xr[-1], 15).tolist()
 
                 if not is_1d:
                     yr = list(self._data_acquirer_instance.y_axis.sweep_values_with_offset)
-                    y_centre = float(yr[len(yr) // 2])
                     ys = np.linspace(yr[0], yr[-1], 15).tolist()
 
                 for i in range(1, n_subplots + 1):
@@ -389,10 +473,12 @@ class LiveViewTabController(BaseTabController):
                         if is_1d:
                             shapes.append({
                                 "type": "line",
-                                "xref": xref,
+                                "xref": f"{xref} domain",
                                 "yref": "paper",
-                                "x0": x_centre, "x1": x_centre,
-                                "y0": 0, "y1": 1,
+                                "x0": 0.5,
+                                "x1": 0.5,
+                                "y0": 0,
+                                "y1": 1,
                                 "line": {"width": 5, "color": grid_color_1d},
                                 "layer": "above",
                                 "name": "crosshair-x",
@@ -401,16 +487,25 @@ class LiveViewTabController(BaseTabController):
                             yref = f"y{sfx}"
                             shapes.append({
                                 "type": "line",
-                                "xref": xref, "yref": yref,
-                                "x0": x_centre, "x1": x_centre, "y0": min(ys), "y1": max(ys),
+                                "xref": f"{xref} domain",
+                                "yref": f"{yref} domain",
+                                "x0": 0.5,
+                                "x1": 0.5,
+                                "y0": 0,
+                                "y1": 1,
                                 "line": {"width": 5, "color": grid_color},
                                 "layer": "above",
                                 "name": "crosshair-x",
                             })
+
                             shapes.append({
                                 "type": "line",
-                                "xref": xref, "yref": yref,
-                                "x0": min(xs), "x1": max(xs), "y0": y_centre, "y1": y_centre,
+                                "xref": f"{xref} domain",
+                                "yref": f"{yref} domain",
+                                "x0": 0,
+                                "x1": 1,
+                                "y0": 0.5,
+                                "y1": 0.5,
                                 "line": {"width": 5, "color": grid_color},
                                 "layer": "above",
                                 "name": "crosshair-y",
@@ -451,6 +546,28 @@ class LiveViewTabController(BaseTabController):
                                 })
 
             layout["shapes"] = shapes
+
+            for i in range(1, n_subplots + 1):
+                xaxis = axis_layout_name("xaxis", i)
+
+                layout[xaxis] = {
+                    **layout.get(xaxis, {}),
+                    "showspikes": show_mouse,
+                    "spikesnap": "cursor",
+                    "spikemode": "across",
+                    "spikethickness": 1,
+                }
+
+                if not is_1d:
+                    yaxis = axis_layout_name("yaxis", i)
+
+                    layout[yaxis] = {
+                        **layout.get(yaxis, {}),
+                        "showspikes": show_mouse,
+                        "spikesnap": "cursor",
+                        "spikemode": "across",
+                        "spikethickness": 1,
+                    }
             return layout
 
     def _register_gate_selection_callback(
@@ -515,7 +632,27 @@ class LiveViewTabController(BaseTabController):
             da.update_parameters(params)
             return "", da.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
 
+    def _register_set_dc_button_callback(self, app: Dash) -> None:
+        @app.callback(
+            Output(self._get_id("set-dc-center-armed"), "data"),
+            Output(self._get_id("set-dc-center-button"), "children"),
+            Output(self._get_id("set-dc-center-button"), "color"),
+            Input(self._get_id("set-dc-center-button"), "n_clicks"),
+            prevent_initial_call=True,
+        )
+        def _arm_set_dc(_n_clicks):
+            da = self._data_acquirer_instance
 
+            state = da.get_latest_data()
+            status = state.get("status", "unknown").upper()
+
+            # Only allow parking from a live, currently running image
+            if status != "RUNNING":
+                raise dash.exceptions.PreventUpdate
+
+            da.stop_acquisition()
+
+            return True, "Click new center on plot", "warning"
 
     def _register_acquisition_control_callback(
         self, app: Dash, orchestrator_stores: Dict[str, Any]
@@ -537,13 +674,14 @@ class LiveViewTabController(BaseTabController):
             Output(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "color"),
             Output(self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX), "children"),
             Output(self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX), "color"),
+            Output(self._get_id("set-dc-center-button"), "disabled"),
             Input(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "n_clicks"),
             Input(main_status_alert_id, "children"),
             prevent_initial_call=True,
         )
         def handle_acquisition_control_and_status_update(
             _toggle_clicks: Any, _status_alert_trigger: Any
-        ) -> tuple[str, str, str, str]:
+        ) -> tuple[str, str, str, str, bool]:
             """
             Handles acquisition toggle and updates UI based on acquirer status.
             """
@@ -563,8 +701,18 @@ class LiveViewTabController(BaseTabController):
             acquirer_state = self._data_acquirer_instance.get_latest_data()
             current_status = acquirer_state.get("status", "unknown").upper()
             error_details = acquirer_state.get("error")
-            if not is_button_click and _status_alert_trigger and "STOPPED" in str(_status_alert_trigger).upper():
-                return ("Start Acquisition", "success", "STOPPED", "secondary")
+            if (
+                not is_button_click
+                and _status_alert_trigger
+                and "STOPPED" in str(_status_alert_trigger).upper()
+            ):
+                return (
+                    "Start Acquisition",
+                    "success",
+                    "STOPPED",
+                    "secondary",
+                    True,
+                )
 
             button_text: str
             button_color: str
@@ -620,7 +768,9 @@ class LiveViewTabController(BaseTabController):
                     button_text, button_color = "Start Acquisition", "warning"
                     status_text, status_color = current_status, "warning"
 
-            return button_text, button_color, status_text, status_color
+            set_dc_disabled = status_text != "RUNNING"
+
+            return button_text, button_color, status_text, status_color, set_dc_disabled
 
     def _register_parameter_update_callback(self, app: Dash) -> None:
         """Hybrid callback: pattern-matching for sweep axes, static inputs for inner loop/scan mode."""

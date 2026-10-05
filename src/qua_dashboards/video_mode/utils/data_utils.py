@@ -33,16 +33,20 @@ def dataset_to_dataarray(
     return ds[var_name]
 
 
-def save_data(results: Dict[str, Any]) -> Dict[str, Any]:
+def save_data(
+    results: Dict[str, Any], machine=None,
+) -> Dict[str, Any]:
     node = QualibrationNode("2D_video_mode")
 
-    # Convert any DataArray in results to Dataset for saving
-    # Recursively convert any DataArray values in the dict
     for k, v in results["image_data"].items():
         if isinstance(v, xr.DataArray):
             results["image_data"][k] = dataarray_to_dataset(v)
 
     node.results = results
+
+    if machine is not None:
+        node.machine = machine
+
     node.save()
 
     try:

@@ -1339,49 +1339,81 @@ class AnnotationTabController(BaseTabController):
 
     def _handle_line_mode_interaction(
         self,
+        x: float,
+        y: float,
         clicked_annotation_point_id: Optional[str],
         current_annotations: Dict[str, List[Dict[str, Any]]],
         subplot_col: int = 1,
     ) -> bool:
         """Handles graph interactions for 'line' mode."""
-        if clicked_annotation_point_id is None:
-            return False
 
         lines_list = current_annotations["lines"]
         points_list = current_annotations["points"]
         changed = False
 
-        # Ensure the clicked point actually exists
+        # If no existing point was clicked/snap-selected,
+        # create a new endpoint at the clicked position.
+        if clicked_annotation_point_id is None:
+            clicked_annotation_point_id = self._get_new_point_id()
+
+            new_point = {
+                "id": clicked_annotation_point_id,
+                "x": x,
+                "y": y,
+            }
+
+            if self._is_subplot_mode():
+                new_point["subplot_col"] = subplot_col
+
+            points_list.append(new_point)
+            changed = True
+
+        # Ensure the selected point actually exists
         if not any(p["id"] == clicked_annotation_point_id for p in points_list):
             logger.warning(
                 f"Line mode: Clicked point ID {clicked_annotation_point_id} not found."
             )
-            return False
+            return changed
 
+        # Select / deselect endpoint
         if clicked_annotation_point_id not in self._selected_indices_for_line:
             self._selected_indices_for_line.append(clicked_annotation_point_id)
         else:
             self._selected_indices_for_line.remove(clicked_annotation_point_id)
 
+        # Two selected endpoints -> create line
         if len(self._selected_indices_for_line) == 2:
             id1, id2 = self._selected_indices_for_line
+
             is_dup = any(
-                (line["start_point_id"] == id1 and line["end_point_id"] == id2)
-                or (line["start_point_id"] == id2 and line["end_point_id"] == id1)
+                (
+                    line["start_point_id"] == id1
+                    and line["end_point_id"] == id2
+                )
+                or (
+                    line["start_point_id"] == id2
+                    and line["end_point_id"] == id1
+                )
                 for line in lines_list
             )
+
             if not is_dup and id1 != id2:
                 new_line_id = self._get_new_line_id()
+
                 new_line = {
                     "id": new_line_id,
                     "start_point_id": id1,
                     "end_point_id": id2,
                 }
+
                 if self._is_subplot_mode():
                     new_line["subplot_col"] = subplot_col
+
                 lines_list.append(new_line)
                 changed = True
+
             self._selected_indices_for_line.clear()
+
         return changed
     
     def _handle_delete_mode_interaction(
@@ -1647,7 +1679,21 @@ class AnnotationTabController(BaseTabController):
                         raise PreventUpdate
                     self._last_click_sig = sig
             elif interaction_type == "hoverData":
-                pass
+                needs_hover = (
+                    (
+                        mode == "point"
+                        and self._selected_point_to_move.get("is_moving")
+                        and self._selected_point_to_move.get("point_id") is not None
+                    )
+                    or
+                    (
+                        mode == "translate-all"
+                        and self._translate_all.get("translate")
+                    )
+                )
+
+                if not needs_hover:
+                    raise PreventUpdate
             else:
                 raise PreventUpdate
 
@@ -1689,7 +1735,11 @@ class AnnotationTabController(BaseTabController):
                     )
                 elif mode == "line":
                     interaction_changed_data = self._handle_line_mode_interaction(
-                        clicked_annotation_point_id, annotations_copy, subplot_col
+                        x,
+                        y,
+                        clicked_annotation_point_id,
+                        annotations_copy,
+                        subplot_col,
                     )
                 elif mode == "delete":
                     interaction_changed_data = self._handle_delete_mode_interaction(

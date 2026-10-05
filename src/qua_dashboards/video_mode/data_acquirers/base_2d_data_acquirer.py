@@ -325,7 +325,8 @@ class Base2DDataAcquirer(BaseDataAcquirer):
                     (self.y_axis.coord_name, self.y_axis.sweep_values_with_offset),
                     (self.x_axis.coord_name, self.x_axis.sweep_values_with_offset),
                 ],
-                attrs={"long_name": "Signal"},
+                attrs={"long_name": "Signal",
+                       "units": self.result_unit},
             )
             data_xr = self.selected_function(data_xr)
 

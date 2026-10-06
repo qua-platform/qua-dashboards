@@ -41,10 +41,15 @@ class VirtualLayerEditor(BaseComponent):
         """Returns gateset or dc_set based on current selection. Default is gateset"""
         return getattr(self, "_current_target_set", self.gateset)
     
-    def _render_matrix_editor(self, layer_idx, use_dc = False):
-        target_set = self.dc_set if (use_dc and self.dc_set) else self.gateset 
-        if layer_idx >= len(target_set.layers): 
+    def _render_matrix_editor(self, layer_idx, use_dc=False):
+        target_set = self.dc_set if (use_dc and self.dc_set) else self.gateset
+
+        if layer_idx is None:
+            return html.Div("No layer selected")
+
+        if not 0 <= layer_idx < len(target_set.layers):
             return html.Div("Layer not available for this target")
+
         layer = target_set.layers[layer_idx]
         num_sources = len(layer.source_gates)
         num_targets = len(layer.target_gates)
@@ -215,28 +220,50 @@ class VirtualLayerEditor(BaseComponent):
         )
         def apply_layer_changes(n_clicks, n_submit, layer_idx, use_dc, edit_both, matrix_flat, cell_ids, vg_val):
             if not n_clicks and not any(n_submit or []):
-                raise dash.exceptions.PreventUpdate
+                    raise PreventUpdate
+
+            if layer_idx is None:
+                raise PreventUpdate
+
             if self.dc_set is None:
                 edit_both = True
                 use_dc = False
 
             target_set = self.dc_set if (use_dc and self.dc_set) else self.gateset
+
+            if not 0 <= layer_idx < len(target_set.layers):
+                raise PreventUpdate
+
             layer = target_set.layers[layer_idx]
+
             num_sources = len(layer.source_gates)
             num_targets = len(layer.target_gates)
-            coord_vals = {(cid["row"], cid["col"]): v for cid, v in zip(cell_ids, matrix_flat)}
+
+            coord_vals = {
+                (cid["row"], cid["col"]): v
+                for cid, v in zip(cell_ids, matrix_flat)
+            }
+
             M = [
-                [float(coord_vals.get((i, j), 0.0) or 0.0) for j in range(num_targets)]
+                [
+                    float(coord_vals.get((i, j), 0.0) or 0.0)
+                    for j in range(num_targets)
+                ]
                 for i in range(num_sources)
             ]
-            M = to_quam_matrix(M)  # follow the covention, e.g., vP1 = 1*P1 + (-0.2)*sensor_gate
+
+            M = to_quam_matrix(M)
+
             if edit_both:
                 if layer_idx < len(self.gateset.layers):
                     self.gateset.layers[layer_idx].matrix = [row[:] for row in M]
+
                 if self.dc_set is not None and layer_idx < len(self.dc_set.layers):
                     self.dc_set.layers[layer_idx].matrix = [row[:] for row in M]
+
             else:
                 target_set.layers[layer_idx].matrix = M
+
             return "Updated!", "", (vg_val or 0) + 1
         
         @app.callback(
@@ -258,6 +285,10 @@ class VirtualLayerEditor(BaseComponent):
                 use_dc = False
             
             target_set = self.dc_set if (use_dc and self.dc_set) else self.gateset
+
+            if not 0 <= layer_idx < len(target_set.layers):
+                raise PreventUpdate
+
             layer = target_set.layers[layer_idx]
             num_sources = len(layer.source_gates)
             num_targets = len(layer.target_gates)

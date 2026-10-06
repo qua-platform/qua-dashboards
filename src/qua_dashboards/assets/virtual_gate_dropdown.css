@@ -1,0 +1,53 @@
+/* Virtual gate dropdown */
+.virtual-gate-dropdown {
+    width: 100%;
+}
+
+/* Dropdown menu outer container */
+.virtual-gate-dropdown .Select-menu-outer {
+    max-height: 100px !important;
+    height: 100px !important;
+    overflow: hidden !important;
+}
+
+/* Actual scrollable option list */
+.virtual-gate-dropdown .Select-menu {
+    max-height: 100px !important;
+    height: 100px !important;
+    overflow-y: scroll !important;
+    overflow-x: hidden !important;
+    scrollbar-gutter: stable;
+}
+
+/* Newer Dash / React Select fallback */
+.virtual-gate-dropdown [role="listbox"] {
+    max-height: 100px !important;
+    height: 100px !important;
+    overflow-y: scroll !important;
+    overflow-x: hidden !important;
+    scrollbar-gutter: stable;
+}
+
+/* Chromium / Edge scrollbar */
+.virtual-gate-dropdown .Select-menu::-webkit-scrollbar,
+.virtual-gate-dropdown [role="listbox"]::-webkit-scrollbar {
+    width: 10px;
+}
+
+.virtual-gate-dropdown .Select-menu::-webkit-scrollbar-thumb,
+.virtual-gate-dropdown [role="listbox"]::-webkit-scrollbar-thumb {
+    background-color: #888;
+    border-radius: 5px;
+}
+
+.virtual-gate-dropdown .Select-menu::-webkit-scrollbar-track,
+.virtual-gate-dropdown [role="listbox"]::-webkit-scrollbar-track {
+    background-color: #eee;
+}
+
+/* Firefox */
+.virtual-gate-dropdown .Select-menu,
+.virtual-gate-dropdown [role="listbox"] {
+    scrollbar-width: auto;
+    scrollbar-color: #888 #eee;
+}

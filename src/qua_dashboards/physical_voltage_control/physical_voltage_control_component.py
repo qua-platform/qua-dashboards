@@ -47,6 +47,10 @@ class PhysicalVoltageControlComponent(BaseComponent):
         self.update_interval_ms = update_interval_ms
         self.channel_labels = dict(channel_labels or {})
 
+        # Dashboard panel size
+        self.layout_columns = 12
+        self.layout_rows = max(4, len(self.voltage_parameters))
+
         self.rows = {
             name: PhysicalVoltageControlRow(
                 component_id=self.component_id,

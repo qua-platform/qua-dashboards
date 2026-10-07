@@ -25,49 +25,85 @@ class VirtualLayerAdder:
         self.layer_names = layer_names
 
     def _matrix_builder(self, source_gates: list[str], target_gates: list[str]):
-        """
-        Returns a list of dbc.Row children for an MxK matrix editor
-        """
-        K = len(source_gates)
-        M = len(target_gates)
-        col_width = 12 // (M + 1)
-
-        header = [ dbc.Col(html.B("→ / ↓"), width = col_width) ] + [
-            dbc.Col(html.B(target_gates[j]), width=col_width) for j in range(M)
+        header = html.Tr(
+            [
+                html.Th(""),
+                *[
+                    html.Th(
+                        name,
+                        style={
+                            "padding": "4px 8px",
+                            "textAlign": "center",
+                            "whiteSpace": "nowrap",
+                        },
+                    )
+                    for name in target_gates
+                ],
             ]
-        
+        )
 
         rows = []
 
-        for i in range(K):
-            cells = [dbc.Col(dcc.Input(
-                id={"type":"vg-source-column", "index":self.component_id, "col": i},
-                value=source_gates[i],
-                style={"width":"auto", "textAlign":"center"},
-            ), width=col_width)]
-            for j in range(M):
-                default_value = 1.0 if (i == j) else 0.0
+        for i, source_name in enumerate(source_gates):
+            cells = [
+                html.Th(
+                    dcc.Input(
+                        id={
+                            "type": "vg-source-column",
+                            "index": self.component_id,
+                            "col": i,
+                        },
+                        value=source_name,
+                        placeholder="new gate", # source gate name
+                        className="virtual-matrix-source-input",
+                    ),
+                    style={"padding": "0"},
+                )
+            ]
+
+            for j in range(len(target_gates)):
+                default_value = 1.0 if i == j else 0.0
+
+                class_name = (
+                    "virtual-matrix-input virtual-matrix-input-diagonal"
+                    if i == j
+                    else "virtual-matrix-input"
+                )
 
                 cells.append(
-                    dbc.Col(dcc.Input(
-                        id = {"type":"vg-layer-cell", 
-                              "index":self.component_id,
-                              "row":i,"col":j},
-                              type = "number",
-                              value = default_value, 
-                              style = {"width":"auto", "textAlign":"center"}
-                              
-                    ), width = col_width)
+                    html.Td(
+                        dcc.Input(
+                            id={
+                                "type": "vg-layer-cell",
+                                "index": self.component_id,
+                                "row": i,
+                                "col": j,
+                            },
+                            type="number",
+                            value=default_value,
+                            className=class_name,
+                        ),
+                        style={"padding": "0", "margin": "0"},
+                    )
                 )
-            rows.append(dbc.Row(cells, className="mb-1"))
-        return [dbc.Row(header, className="mb-2"), *rows]
+
+            rows.append(html.Tr(cells))
+
+        return html.Table(
+            [
+                html.Thead(header),
+                html.Tbody(rows),
+            ],
+            className="virtual-matrix-table",
+        )
 
     def get_layout(self):
-        if self.gateset.layers:
-            assigned = {target for layer in self.gateset.layers for target in layer.target_gates}
-            full_list = [name for name in self.gateset.valid_channel_names if name not in assigned]
-        else:
-            full_list = list(self.gateset.channels.keys())
+        # if self.gateset.layers:
+        #     assigned = {target for layer in self.gateset.layers for target in layer.target_gates}
+        #     full_list = [name for name in self.gateset.valid_channel_names if name not in assigned]
+        # else:
+        #     full_list = list(self.gateset.channels.keys())
+        full_list = list(self.gateset.valid_channel_names)
         
         dropdown_options = [{"label":n,"value":n} for n in sorted(set(full_list))]
 
@@ -138,20 +174,24 @@ class VirtualLayerAdder:
 
             M = len(target_list)
             K = len(source_names)
-            if len(flat_cells) != M*K:
+            if len(flat_cells) != M * K:
                 app.logger.error(f"Wrong shape: Expected {M*K} cells, got {len(flat_cells)}")
-                return no_update, no_update, no_update
+                return no_update, no_update, no_update, no_update
 
             coord_vals = { (cid["row"], cid["col"]): v for cid, v in zip(cell_ids, flat_cells) }
             apply_mat = [[ float(coord_vals.get((i, j), 0.0)) for j in range(K)] for i in range(M)]
             mat = to_quam_matrix(apply_mat)
+            gateset_added = False
+
             try:
                 self.gateset.add_layer(
                     source_gates=source_names,
                     target_gates=target_list,
-                    matrix=mat, 
-                    layer_id = layer_name,
+                    matrix=mat,
+                    layer_id=layer_name,
                 )
+                gateset_added = True
+
                 if self.dc_set is not None:
                     self.dc_set.add_layer(
                         source_gates=source_names,
@@ -159,9 +199,17 @@ class VirtualLayerAdder:
                         matrix=mat,
                         layer_id=layer_name,
                     )
+
                 app.logger.info(f"Added layer {source_names} -> {target_list}")
+
             except Exception as e:
-                app.logger.error(f"add_layer failed: {e}")
+                # Roll back gateset if dc_set failed after gateset succeeded.
+                if gateset_added and len(self.gateset.layers) > new_idx:
+                    self.gateset.layers.pop()
+                    self.gateset._calculate_influence_map()
+
+                app.logger.exception("add_layer failed")
+
                 return f"Error: {e}", no_update, no_update, no_update
             
             
@@ -176,10 +224,11 @@ class VirtualLayerAdder:
             prevent_initial_call=True,
         )
         def _refresh_target_dropdown(_refresh, _init):
-            if self.gateset.layers:
-                assigned = {t for layer in self.gateset.layers for t in layer.target_gates}
-                full_list = [n for n in self.gateset.valid_channel_names if n not in assigned]
-            else:
-                full_list = list(self.gateset.channels.keys())
+            # if self.gateset.layers:
+            #     assigned = {t for layer in self.gateset.layers for t in layer.target_gates}
+            #     full_list = [n for n in self.gateset.valid_channel_names if n not in assigned]
+            # else:
+            #     full_list = list(self.gateset.channels.keys())
+            full_list = list(self.gateset.valid_channel_names)
             options = [{"label": n, "value": n} for n in sorted(set(full_list))]
             return options, []

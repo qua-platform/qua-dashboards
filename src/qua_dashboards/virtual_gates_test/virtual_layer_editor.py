@@ -51,40 +51,85 @@ class VirtualLayerEditor(BaseComponent):
             return html.Div("Layer not available for this target")
 
         layer = target_set.layers[layer_idx]
-        num_sources = len(layer.source_gates)
-        num_targets = len(layer.target_gates)
-        col_width = 12 // (num_targets + 1)
-        header = [dbc.Col("", width=col_width)] + [
-            dbc.Col(html.B(name), width=col_width) for name in layer.target_gates
-        ]
+
+        matrix_shown = to_apply_matrix(layer.matrix)
+
+        header = html.Tr(
+            [
+                html.Th(""),
+                *[
+                    html.Th(
+                        name,
+                        style={
+                            "padding": "4px 8px",
+                            "textAlign": "center",
+                            "whiteSpace": "nowrap",
+                        },
+                    )
+                    for name in layer.target_gates
+                ],
+            ]
+        )
+
         rows = []
-        matrix_shown = to_apply_matrix(layer.matrix) # added a function to show matrix based on the perferred convention
-        for i, row_name in enumerate(layer.source_gates):
-            row = [dbc.Col(html.B(row_name), width=col_width)]
-            for j in range(num_targets):
-                row.append(
-                    dbc.Col(
+
+        for i, source_name in enumerate(layer.source_gates):
+            cells = [
+                html.Th(
+                    source_name,
+                    style={
+                        "padding": "4px 8px",
+                        "textAlign": "right",
+                        "whiteSpace": "nowrap",
+                    },
+                )
+            ]
+
+            for j in range(len(layer.target_gates)):
+                class_name = (
+                    "virtual-matrix-input virtual-matrix-input-diagonal"
+                    if i == j
+                    else "virtual-matrix-input"
+                )
+                cells.append(
+                    html.Td(
                         dcc.Input(
-                            id={"type": "edit-matrix-cell", "layer": layer_idx, "row": i, "col": j},
+                            id={
+                                "type": "edit-matrix-cell",
+                                "layer": layer_idx,
+                                "row": i,
+                                "col": j,
+                            },
                             type="number",
                             value=matrix_shown[i][j],
                             debounce=False,
                             n_submit=0,
-                            style={"width": "auto"}
+                            className=class_name,
                         ),
-                        width=col_width,
+                        style={
+                            "padding": "0",
+                            "margin": "0",
+                        },
                     )
                 )
-            rows.append(dbc.Row(row, className="mb-1"))
-        return html.Div([dbc.Row(header, className="mb-2"), *rows])
+
+            rows.append(html.Tr(cells))
+
+        return html.Table(
+            [
+                html.Thead(header),
+                html.Tbody(rows),
+            ],
+            className="virtual-matrix-table",
+        )
 
 
     def get_layout(self):
         layers = [layer for layer in self.gateset.layers]
         num_of_layers = len(layers)
         options = self.layer_names
-        default = 0 if num_of_layers > 0 else None
-
+        default = "0" if num_of_layers > 0 else None
+        
         # Tsung-Lin
         opx_dc_toggle_switch = html.Div([
             dbc.Switch(id=f"{self.component_id}-target-switch", value=False),
@@ -115,11 +160,19 @@ class VirtualLayerEditor(BaseComponent):
         editor_card = dbc.Card([
             dbc.CardHeader("VirtualGateSet Layer Editor"),
             dbc.CardBody([
-                dcc.Dropdown(
-                    id = f"{self.component_id}-layer-dropdown",
-                    options = options,
-                    value = default,
-                    clearable = False
+                dcc.Tabs(
+                    id=f"{self.component_id}-layer-tabs",
+                    value=default,
+                    children=[
+                        dcc.Tab(
+                            label=option["label"],
+                            value=str(option["value"]),
+                            className="virtual-layer-tab",
+                            selected_className="virtual-layer-tab-selected",
+                        )
+                        for option in options
+                    ],
+                    className="virtual-layer-tabs",
                 ),
                 html.Div(id = f"{self.component_id}-layer-matrix-editor"),
                 dcc.Interval(
@@ -180,29 +233,46 @@ class VirtualLayerEditor(BaseComponent):
 
         @app.callback(
             Output(f"{self.component_id}-layer-matrix-editor", "children"),
-            Output(f"{self.component_id}-layer-dropdown", "options"),
-            Output(f"{self.component_id}-layer-dropdown", "value"),
-            Input(f"{self.component_id}-layer-dropdown", "value"),
-            Input(f"{self.component_id}-target-switch", "value") if self.dc_set else Input(f"{self.component_id}-init", "n_intervals"),
+            Output(f"{self.component_id}-layer-tabs", "children"),
+            Output(f"{self.component_id}-layer-tabs", "value"),
+            Input(f"{self.component_id}-layer-tabs", "value"),
+            Input(f"{self.component_id}-target-switch", "value")
+            if self.dc_set
+            else Input(f"{self.component_id}-init", "n_intervals"),
             Input("vg-layer-refresh-trigger", "data"),
             Input(f"{self.component_id}-init", "n_intervals"),
         )
         def show_selected_layer(layer_idx, use_dc, _refresh, _init):
             if self.dc_set is None:
                 use_dc = False
-            
+
             target_set = self.dc_set if (use_dc and self.dc_set) else self.gateset
-            # options = [{"label": f"Layer {i+1}", "value": i} for i in range(len(target_set.layers))]
-            options = [
-                {"label": (lyr.id or f"Layer {i+1}"), "value": i}
+
+            tabs = [
+                dcc.Tab(
+                    label=lyr.id or f"Layer {i + 1}",
+                    value=str(i),
+                    className="virtual-layer-tab",
+                    selected_className="virtual-layer-tab-selected",
+                )
                 for i, lyr in enumerate(target_set.layers)
             ]
-            if not options:
+
+            if not tabs:
                 return "No Layers", [], None
-            if layer_idx is None or layer_idx >= len(target_set.layers):
+
+            if layer_idx is None:
+                layer_idx = 0
+            else:
+                try:
+                    layer_idx = int(layer_idx)
+                except (TypeError, ValueError):
+                    layer_idx = 0
+
+            if not 0 <= layer_idx < len(target_set.layers):
                 layer_idx = 0
 
-            return self._render_matrix_editor(layer_idx, use_dc), options, layer_idx
+            return self._render_matrix_editor(layer_idx, use_dc), tabs, str(layer_idx)
 
         @app.callback(
             Output(f"{self.component_id}-edit-output", "children"),
@@ -210,9 +280,9 @@ class VirtualLayerEditor(BaseComponent):
             Output("vg-layer-refresh-trigger", "data", allow_duplicate=True),
             Input(f"{self.component_id}-apply-edit", "n_clicks"),
             Input({"type": "edit-matrix-cell", "layer": ALL, "row": ALL, "col": ALL}, "n_submit"),
-            State(f"{self.component_id}-layer-dropdown", "value"),
-            State(f"{self.component_id}-target-switch", "value") if self.dc_set else State(f"{self.component_id}-layer-dropdown", "value"),
-            State(f"{self.component_id}-edit-both", "value") if self.dc_set else State(f"{self.component_id}-layer-dropdown", "value"),
+            State(f"{self.component_id}-layer-tabs", "value"),
+            State(f"{self.component_id}-target-switch", "value") if self.dc_set else State(f"{self.component_id}-layer-tabs", "value"),
+            State(f"{self.component_id}-edit-both", "value") if self.dc_set else State(f"{self.component_id}-layer-tabs", "value"),
             State({'type': 'edit-matrix-cell', 'layer': ALL, 'row': ALL, 'col': ALL}, 'value'),
             State({'type': 'edit-matrix-cell', 'layer': ALL, 'row': ALL, 'col': ALL}, 'id'),
             State("vg-layer-refresh-trigger", "data"),
@@ -220,9 +290,14 @@ class VirtualLayerEditor(BaseComponent):
         )
         def apply_layer_changes(n_clicks, n_submit, layer_idx, use_dc, edit_both, matrix_flat, cell_ids, vg_val):
             if not n_clicks and not any(n_submit or []):
-                    raise PreventUpdate
+                raise PreventUpdate
 
             if layer_idx is None:
+                raise PreventUpdate
+
+            try:
+                layer_idx = int(layer_idx)
+            except (TypeError, ValueError):
                 raise PreventUpdate
 
             if self.dc_set is None:
@@ -270,9 +345,9 @@ class VirtualLayerEditor(BaseComponent):
             Output(f"{self.component_id}-layer-matrix-editor", "children", allow_duplicate=True),
             Output("vg-layer-refresh-trigger", "data", allow_duplicate=True),
             Input(f"{self.component_id}-identity-reset", 'n_clicks'),
-            State(f"{self.component_id}-layer-dropdown", 'value'),
-            State(f"{self.component_id}-target-switch", "value") if self.dc_set else State(f"{self.component_id}-layer-dropdown", "value"),
-            State(f"{self.component_id}-edit-both", "value") if self.dc_set else State(f"{self.component_id}-layer-dropdown", "value"),
+            State(f"{self.component_id}-layer-tabs", 'value'),
+            State(f"{self.component_id}-target-switch", "value") if self.dc_set else State(f"{self.component_id}-layer-tabs", "value"),
+            State(f"{self.component_id}-edit-both", "value") if self.dc_set else State(f"{self.component_id}-layer-tabs", "value"),
             State("vg-layer-refresh-trigger", "data"),
             prevent_initial_call=True
         )
@@ -307,12 +382,16 @@ class VirtualLayerEditor(BaseComponent):
             Output(f"{self.component_id}-save-status", "children", allow_duplicate=True),
             Output("vg-layer-refresh-trigger", "data", allow_duplicate=True),
             Input(f"{self.component_id}-delete-layer", "n_clicks"),
-            State(f"{self.component_id}-layer-dropdown", "value"),
+            State(f"{self.component_id}-layer-tabs", "value"),
             State("vg-layer-refresh-trigger", "data"),
             prevent_initial_call=True,
         )
         def delete_layer(n_clicks, layer_idx, vg_val):
             if not n_clicks or layer_idx is None:
+                raise PreventUpdate
+            try:
+                layer_idx = int(layer_idx)
+            except (TypeError, ValueError):
                 raise PreventUpdate
             if layer_idx != len(self.gateset.layers) - 1:
                 return dbc.Alert("Only the top layer can be deleted.", color="warning"), no_update

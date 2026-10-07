@@ -1,0 +1,151 @@
+:root {
+    --qm-black: #0E0E0E;
+    --qm-secondary-black: #1D1D1D;
+    --qm-white: #E5E5E5;
+    --qm-grey: #999999;
+    --qm-blue: #3A86FF;
+}
+
+/* =========================================================
+   Virtual layer tabs
+   ========================================================= */
+
+.virtual-layer-tabs {
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 4px;
+
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--qm-grey);
+}
+
+/* Unselected tab */
+.virtual-layer-tab {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 70px;
+
+    padding: 6px 14px !important;
+
+    background-color: #777777 !important;
+    color: white !important;
+
+    border: 1px solid #777777 !important;
+    border-bottom: none !important;
+
+    text-align: center;
+    cursor: pointer;
+}
+
+/* Selected tab */
+.virtual-layer-tab-selected {
+    flex: 0 0 auto !important;
+    width: 80px !important;
+    min-width: 70px;
+
+    padding: 6px 14px !important;
+
+    background-color: var(--qm-blue) !important;
+    color: white !important;
+
+    border: 1px solid var(--qm-blue) !important;
+    border-bottom: none !important;
+
+    font-weight: bold;
+}
+
+
+/* =========================================================
+   Virtual gate matrix
+   ========================================================= */
+
+.virtual-matrix-table {
+    border-collapse: collapse;
+    width: auto;
+    table-layout: auto;
+
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+.virtual-matrix-table th,
+.virtual-matrix-table td {
+    border: 1px solid #888;
+    padding: 0;
+}
+
+/* Row + column headers */
+.virtual-matrix-table th {
+    background-color: var(--qm-secondary-black);
+    color: white;
+
+    font-weight: normal;
+    text-align: center;
+
+    white-space: nowrap;
+    padding: 4px 8px;
+}
+
+/* Matrix input */
+.virtual-matrix-input {
+    width: 100%;
+    min-width: 80px;
+    height: 32px;
+
+    padding: 3px 6px;
+    margin: 0;
+
+    border: none;
+    border-radius: 0;
+
+    text-align: center;
+    box-sizing: border-box;
+
+    background-color: white;
+    color: black;
+}
+
+/* Diagonal */
+.virtual-matrix-input-diagonal {
+    background-color: #D0D0D0 !important;
+    color: black !important;
+    font-weight: bold;
+}
+
+
+/* =========================================================
+   Source gate input in Layer Adder
+   ========================================================= */
+
+.virtual-matrix-source-input {
+    width: 100%;
+    min-width: 80px;
+    height: 32px;
+
+    padding: 3px 6px;
+    margin: 0;
+
+    border: none;
+    border-radius: 0;
+
+    text-align: center;
+    box-sizing: border-box;
+
+    background-color: var(--qm-secondary-black);
+    color: white;
+}
+
+
+/* =========================================================
+   Number input cleanup
+   ========================================================= */
+
+.virtual-matrix-input::-webkit-outer-spin-button,
+.virtual-matrix-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.virtual-matrix-input[type="number"] {
+    -moz-appearance: textfield;
+}

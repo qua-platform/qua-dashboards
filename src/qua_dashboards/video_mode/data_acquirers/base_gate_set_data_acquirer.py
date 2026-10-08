@@ -178,16 +178,31 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
     
     def ensure_axis(self) -> None:
         gs = self.gate_set
-        have = {axis.name for ax in self.sweep_axes.values() for axis in ax}
-        for nm in gs.valid_channel_names:
-            if nm not in have:
-                offset_parameter = None
-                if self.voltage_control_component is not None: 
-                    params = self.voltage_control_component.voltage_parameters_by_name
-                    if nm in params: 
-                        offset_parameter = params[nm]
-                self.sweep_axes["Voltage"].append(VoltageSweepAxis(name=nm, offset_parameter=offset_parameter))
-        
+        valid_names = list(gs.valid_channel_names)
+
+        self.sweep_axes["Voltage"] = [axis for axis in self.sweep_axes["Voltage"] if axis.name in valid_names]
+
+        have = {axis.name for axis in self.sweep_axes["Voltage"]}
+
+        for nm in valid_names:
+            if nm in have:
+                continue
+
+            offset_parameter = None
+
+            if self.voltage_control_component is not None:
+                params = self.voltage_control_component.voltage_parameters_by_name
+                if nm in params:
+                    offset_parameter = params[nm]
+
+            self.sweep_axes["Voltage"].append(VoltageSweepAxis(name=nm, offset_parameter=offset_parameter))
+
+        if self.x_axis_name not in valid_names:
+            self.x_axis_name = valid_names[0]
+
+        if self.y_axis_name not in valid_names:
+            self.y_axis_name = valid_names[1] if len(valid_names) > 1 else None
+            
     def _build_dropdown_options(self, _display_sweep_axis):
         """Build dropdown options with physical/virtual grouping."""
         options = []

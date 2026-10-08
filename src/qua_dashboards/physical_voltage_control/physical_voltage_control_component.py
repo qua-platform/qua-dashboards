@@ -47,6 +47,12 @@ class PhysicalVoltageControlComponent(BaseComponent):
         self.update_interval_ms = update_interval_ms
         self.channel_labels = dict(channel_labels or {})
 
+        # For videomode
+        self.voltage_parameters_by_name = self.voltage_parameters
+
+        # Keep all internal voltage values in volts.
+        self.display_unit = "V"
+
         # Dashboard panel size
         self.layout_columns = 12
         self.layout_rows = max(4, len(self.voltage_parameters))
@@ -57,9 +63,23 @@ class PhysicalVoltageControlComponent(BaseComponent):
                 param=param,
                 label=name,
                 channel_label=self.channel_labels.get(name),
+                display_unit=self.display_unit,
             )
             for name, param in self.voltage_parameters.items()
         }
+
+    def _to_display_voltage(self, value: float) -> float:
+        if self.display_unit == "mV":
+            return value * 1e3
+        return value
+
+    def _from_display_voltage(self, value: float) -> float:
+        if self.display_unit == "mV":
+            return value * 1e-3
+        return value
+
+    def _display_precision(self) -> int:
+        return 3 if self.display_unit == "mV" else 6
 
     def get_layout(self):
         return dbc.Card(
@@ -69,17 +89,39 @@ class PhysicalVoltageControlComponent(BaseComponent):
 
                     dbc.Row(
                         [
-                            dbc.Col(dbc.Label("Step size", style={"marginBottom": "0"}), width="auto"),
+                            dbc.Col(
+                                dbc.Label(
+                                    "Step size",
+                                    style={"marginBottom": "0"},
+                                ),
+                                width="auto",
+                            ),
                             dbc.Col(
                                 dbc.Input(
                                     id=self._get_id("step-size"),
                                     type="number",
-                                    value=self.step_size,
+                                    value=self._to_display_voltage(self.step_size),
                                     step=1e-4,
                                 ),
                                 width=3,
                             ),
-                            dbc.Col(dbc.Label("V", style={"marginBottom": "0"}), width="auto"),
+                            dbc.Col(
+                                dcc.Dropdown(
+                                    id=self._get_id("display-unit"),
+                                    options=[
+                                        {"label": "V", "value": "V"},
+                                        {"label": "mV", "value": "mV"},
+                                    ],
+                                    value=self.display_unit,
+                                    clearable=False,
+                                    searchable=False,
+                                    style={
+                                        "width": "80px",
+                                        "color": "black",
+                                    },
+                                ),
+                                width="auto",
+                            ),
                         ],
                         align="center",
                         className="mb-3",
@@ -87,7 +129,12 @@ class PhysicalVoltageControlComponent(BaseComponent):
 
                     html.Hr(),
 
-                    html.Div([self.rows[name].get_layout() for name in self.voltage_parameters]),
+                    html.Div(
+                        [
+                            self.rows[name].get_layout()
+                            for name in self.voltage_parameters
+                        ]
+                    ),
 
                     dcc.Interval(
                         id=self._get_id("update-interval"),
@@ -102,17 +149,90 @@ class PhysicalVoltageControlComponent(BaseComponent):
 
     def register_callbacks(self, app: dash.Dash) -> None:
         value_type = f"{self.component_id}-value"
+        unit_label_type = f"{self.component_id}-unit-label"
         increment_type = f"{self.component_id}-increment"
         decrement_type = f"{self.component_id}-decrement"
 
         @app.callback(
-            Output({"type": value_type, "index": MATCH}, "value", allow_duplicate=True),
+            Output(self._get_id("step-size"), "value", allow_duplicate=True),
+            Output(
+                {"type": value_type, "index": ALL},
+                "value",
+                allow_duplicate=True,
+            ),
+            Output(
+                {"type": unit_label_type, "index": ALL},
+                "children",
+            ),
+            Input(self._get_id("display-unit"), "value"),
+            State(self._get_id("step-size"), "value"),
+            State({"type": value_type, "index": ALL}, "id"),
+            prevent_initial_call=True,
+        )
+        def change_display_unit(new_unit, current_step_display, value_ids):
+            if new_unit not in ("V", "mV"):
+                raise PreventUpdate
+
+            old_unit = self.display_unit
+
+            try:
+                step_value = float(current_step_display)
+            except (TypeError, ValueError):
+                raise PreventUpdate
+
+            if new_unit == "mV":
+                # V -> mV
+                step_in_volts = step_value
+            else:
+                # mV -> V
+                step_in_volts = step_value * 1e-3
+
+            self.display_unit = new_unit
+            new_step_display = self._to_display_voltage(step_in_volts)
+            precision = self._display_precision()
+
+            values = []
+            for value_id in value_ids:
+                gate_name = value_id["index"]
+                param = self.voltage_parameters[gate_name]
+
+                try:
+                    value = param.get_latest()
+
+                    if value is None:
+                        value = param.get()
+
+                    display_value = self._to_display_voltage(float(value))
+                    values.append(
+                        format_voltage_fixed(display_value, precision=precision)
+                    )
+
+                except Exception:
+                    logger.exception("Failed to read voltage for %s", gate_name)
+                    values.append(dash.no_update)
+
+            unit_labels = [new_unit for _ in value_ids]
+
+            return new_step_display, values, unit_labels
+
+        @app.callback(
+            Output(
+                {"type": value_type, "index": MATCH},
+                "value",
+                allow_duplicate=True,
+            ),
             Input({"type": increment_type, "index": MATCH}, "n_clicks"),
             Input({"type": decrement_type, "index": MATCH}, "n_clicks"),
             State(self._get_id("step-size"), "value"),
+            State(self._get_id("display-unit"), "value"),
             prevent_initial_call=True,
         )
-        def change_voltage(increment_clicks, decrement_clicks, step_size):
+        def change_voltage(
+            increment_clicks,
+            decrement_clicks,
+            step_size,
+            display_unit,
+        ):
             if step_size is None:
                 raise PreventUpdate
 
@@ -127,7 +247,8 @@ class PhysicalVoltageControlComponent(BaseComponent):
             if gate_name not in self.voltage_parameters:
                 raise PreventUpdate
 
-            step = float(step_size)
+            self.display_unit = display_unit
+            step = self._from_display_voltage(float(step_size))
 
             if trigger_type == increment_type:
                 if not increment_clicks:
@@ -180,18 +301,30 @@ class PhysicalVoltageControlComponent(BaseComponent):
             if updated is None:
                 updated = target
 
-            return format_voltage_fixed(updated)
+            display_value = self._to_display_voltage(float(updated))
+
+            return format_voltage_fixed(
+                display_value,
+                precision=self._display_precision(),
+            )
 
         @app.callback(
-            Output({"type": value_type, "index": ALL}, "value", allow_duplicate=True),
+            Output(
+                {"type": value_type, "index": ALL},
+                "value",
+                allow_duplicate=True,
+            ),
             Input(self._get_id("update-interval"), "n_intervals"),
             State({"type": value_type, "index": ALL}, "id"),
+            State(self._get_id("display-unit"), "value"),
             prevent_initial_call=True,
         )
-        def refresh_voltages(_n_intervals, value_ids):
+        def refresh_voltages(_n_intervals, value_ids, display_unit):
             if not value_ids:
                 return []
 
+            self.display_unit = display_unit
+            precision = self._display_precision()
             values = []
 
             for value_id in value_ids:
@@ -204,7 +337,10 @@ class PhysicalVoltageControlComponent(BaseComponent):
                     if value is None:
                         value = param.get()
 
-                    values.append(format_voltage_fixed(float(value)))
+                    display_value = self._to_display_voltage(float(value))
+                    values.append(
+                        format_voltage_fixed(display_value, precision=precision)
+                    )
 
                 except Exception:
                     logger.exception("Failed to read voltage for %s", gate_name)

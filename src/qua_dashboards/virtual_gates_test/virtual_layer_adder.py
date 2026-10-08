@@ -31,11 +31,6 @@ class VirtualLayerAdder:
                 *[
                     html.Th(
                         name,
-                        style={
-                            "padding": "4px 8px",
-                            "textAlign": "center",
-                            "whiteSpace": "nowrap",
-                        },
                     )
                     for name in target_gates
                 ],
@@ -54,7 +49,7 @@ class VirtualLayerAdder:
                             "col": i,
                         },
                         value=source_name,
-                        placeholder="new gate", # source gate name
+                        placeholder="vgate", # source gate name
                         className="virtual-matrix-source-input",
                     ),
                     style={"padding": "0"},
@@ -64,10 +59,10 @@ class VirtualLayerAdder:
             for j in range(len(target_gates)):
                 default_value = 1.0 if i == j else 0.0
 
-                class_name = (
-                    "virtual-matrix-input virtual-matrix-input-diagonal"
+                cell_class = (
+                    "virtual-matrix-cell-diagonal"
                     if i == j
-                    else "virtual-matrix-input"
+                    else "virtual-matrix-cell"
                 )
 
                 cells.append(
@@ -81,9 +76,9 @@ class VirtualLayerAdder:
                             },
                             type="number",
                             value=default_value,
-                            className=class_name,
+                            className="virtual-matrix-input",
                         ),
-                        style={"padding": "0", "margin": "0"},
+                        className=cell_class,
                     )
                 )
 

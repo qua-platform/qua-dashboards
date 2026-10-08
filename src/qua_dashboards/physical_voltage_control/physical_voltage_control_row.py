@@ -41,15 +41,22 @@ class PhysicalVoltageControlRow:
         param,
         label: Optional[str] = None,
         channel_label: Optional[str] = None,
+        display_unit: str = "V",
     ):
         self.component_id = component_id
         self.param = param
 
         self.label = label or param.name
         self.channel_label = channel_label
+        self.display_unit = display_unit
 
         self.value_id = {
             "type": f"{component_id}-value",
+            "index": self.label,
+        }
+
+        self.unit_label_id = {
+            "type": f"{component_id}-unit-label",
             "index": self.label,
         }
 
@@ -75,6 +82,15 @@ class PhysicalVoltageControlRow:
             except Exception:
                 value = None
 
+        if value is None:
+            display_value = None
+        elif self.display_unit == "mV":
+            display_value = float(value) * 1e3
+        else:
+            display_value = float(value)
+
+        precision = 3 if self.display_unit == "mV" else 6
+
         return dbc.Row(
             [
                 # Logical gate name
@@ -93,14 +109,14 @@ class PhysicalVoltageControlRow:
                 dbc.Col(
                     dbc.Label(
                         self.channel_label or "",
-                        className="text-muted",
                         style={
-                            "fontSize": "0.85rem",
+                            "color": "#A0A0A0",
+                            "fontSize": "0.80rem",
                             "whiteSpace": "nowrap",
                             "marginBottom": "0",
                         },
                     ),
-                    width=1,
+                    width="auto",
                 ),
 
                 # Current absolute voltage
@@ -108,22 +124,27 @@ class PhysicalVoltageControlRow:
                     dbc.Input(
                         id=self.value_id,
                         type="text",
-                        value=format_voltage_fixed(value),
+                        value=format_voltage_fixed(display_value, precision=precision),
                         readonly=True,
+                        style={
+                            "width": "110px",
+                            "textAlign": "center",
+                        },
                     ),
-                    width=4,
+                    width="auto",
                 ),
 
                 # Unit
                 dbc.Col(
                     dbc.Label(
-                        "V",
+                        self.display_unit,
+                        id=self.unit_label_id,
                         style={
                             "whiteSpace": "nowrap",
                             "marginBottom": "0",
                         },
                     ),
-                    width=1,
+                    width="auto",
                 ),
 
                 # Minus button
@@ -140,7 +161,7 @@ class PhysicalVoltageControlRow:
                             "height": "32px",
                         },
                     ),
-                    width=1,
+                    width="auto",
                 ),
 
                 # Plus button
@@ -157,7 +178,7 @@ class PhysicalVoltageControlRow:
                             "height": "32px",
                         },
                     ),
-                    width=1,
+                    width="auto",
                 ),
             ],
             align="center",

@@ -10,7 +10,7 @@ from .matrix_convention import to_apply_matrix, to_quam_matrix
 
 class VirtualLayerEditor(BaseComponent):
     """
-    A dash component allowing the editing of virtual layers to work with VirtualGateSet. Renders the matrix as an NxN editable table, complete with a reset_to_identity button. 
+    A dash component allowing the editing of virtual layers to work with VirtualGateSet. Renders the matrix as an NxN editable table.
     An apply button changes the VirtualGateSet.layer matrix. 
     """
 
@@ -60,11 +60,6 @@ class VirtualLayerEditor(BaseComponent):
                 *[
                     html.Th(
                         name,
-                        style={
-                            "padding": "4px 8px",
-                            "textAlign": "center",
-                            "whiteSpace": "nowrap",
-                        },
                     )
                     for name in layer.target_gates
                 ],
@@ -86,10 +81,10 @@ class VirtualLayerEditor(BaseComponent):
             ]
 
             for j in range(len(layer.target_gates)):
-                class_name = (
-                    "virtual-matrix-input virtual-matrix-input-diagonal"
+                cell_class = (
+                    "virtual-matrix-cell-diagonal"
                     if i == j
-                    else "virtual-matrix-input"
+                    else "virtual-matrix-cell"
                 )
                 cells.append(
                     html.Td(
@@ -104,13 +99,11 @@ class VirtualLayerEditor(BaseComponent):
                             value=matrix_shown[i][j],
                             debounce=False,
                             n_submit=0,
-                            className=class_name,
+                            className="virtual-matrix-input",
                         ),
-                        style={
-                            "padding": "0",
-                            "margin": "0",
-                        },
-                    )
+                        className=cell_class,
+                    ),
+                
                 )
 
             rows.append(html.Tr(cells))
@@ -182,40 +175,63 @@ class VirtualLayerEditor(BaseComponent):
                 dbc.Row(
                     [
                         dbc.Col(
-                            dbc.Button(
-                                "Apply Changes",
-                                id=f"{self.component_id}-apply-edit",
-                                color="primary",
-                                className="mt-2 w-100",
-                            )
+                            html.Div(
+                                [
+                                    dbc.Button(
+                                        "Apply Changes",
+                                        id=f"{self.component_id}-apply-edit",
+                                        color="primary",
+                                        className="me-2 mt-2",
+                                    ),
+                                    dbc.Button(
+                                        "Save QuAM state",
+                                        id=f"{self.component_id}-save-quam",
+                                        color="success",
+                                        className="mt-2",
+                                    ),
+                                ]
+                            ),
+                            width="auto",
                         ),
-                        dbc.Col(
-                            dbc.Button(
-                                "Reset to Identity",
-                                id=f"{self.component_id}-identity-reset",
-                                color="secondary",
-                                className="mt-2 w-100",
-                            )
-                        ),
+                        dbc.Col(),
                         dbc.Col(
                             dbc.Button(
                                 "Delete layer",
                                 id=f"{self.component_id}-delete-layer",
                                 color="danger",
-                                className="mt-2 w-100",
-                            )
-                        ),
-                        dbc.Col(
-                            dbc.Button(
-                                "Save QuAM state",
-                                id=f"{self.component_id}-save-quam",
-                                color="success",
-                                className="mt-2 w-100",
-                            )
+                                className="mt-2",
+                            ),
+                            width="auto",
                         ),
                     ],
+                    align="center",
                     className="g-2",
-                ),                
+                ),
+                dbc.Modal(
+                    [
+                        dbc.ModalHeader(dbc.ModalTitle("Delete layer?")),
+                        dbc.ModalBody(id=f"{self.component_id}-delete-confirm-message"),
+                        dbc.ModalFooter(
+                            [
+                                dbc.Button(
+                                    "Cancel",
+                                    id=f"{self.component_id}-delete-cancel",
+                                    color="secondary",
+                                    outline=True,
+                                    className="me-2",
+                                ),
+                                dbc.Button(
+                                    "Delete layer",
+                                    id=f"{self.component_id}-delete-confirm",
+                                    color="danger",
+                                ),
+                            ]
+                        ),
+                    ],
+                    id=f"{self.component_id}-delete-modal",
+                    is_open=False,
+                    centered=True,
+                ),
                 html.Div(id=f"{self.component_id}-edit-output", style={"display": "none"}),
                 html.Div(id=f"{self.component_id}-save-status", className="mt-2")
             ])
@@ -342,46 +358,55 @@ class VirtualLayerEditor(BaseComponent):
             return "Updated!", "", (vg_val or 0) + 1
         
         @app.callback(
-            Output(f"{self.component_id}-layer-matrix-editor", "children", allow_duplicate=True),
-            Output("vg-layer-refresh-trigger", "data", allow_duplicate=True),
-            Input(f"{self.component_id}-identity-reset", 'n_clicks'),
-            State(f"{self.component_id}-layer-tabs", 'value'),
-            State(f"{self.component_id}-target-switch", "value") if self.dc_set else State(f"{self.component_id}-layer-tabs", "value"),
-            State(f"{self.component_id}-edit-both", "value") if self.dc_set else State(f"{self.component_id}-layer-tabs", "value"),
-            State("vg-layer-refresh-trigger", "data"),
-            prevent_initial_call=True
+            Output(f"{self.component_id}-delete-modal", "is_open"),
+            Output(f"{self.component_id}-delete-confirm-message", "children"),
+            Input(f"{self.component_id}-delete-layer", "n_clicks"),
+            Input(f"{self.component_id}-delete-cancel", "n_clicks"),
+            State(f"{self.component_id}-delete-modal", "is_open"),
+            State(f"{self.component_id}-layer-tabs", "value"),
+            prevent_initial_call=True,
         )
-        def reset_to_identity_and_refresh(n_clicks, layer_idx, use_dc, edit_both, vg_val):
-            if not n_clicks or layer_idx is None:
-                raise PreventUpdate
-            
-            if self.dc_set is None:
-                edit_both = False
-                use_dc = False
-            
-            target_set = self.dc_set if (use_dc and self.dc_set) else self.gateset
+        def toggle_delete_modal(delete_clicks, cancel_clicks, is_open, layer_idx):
+            triggered = dash.ctx.triggered_id
 
-            if not 0 <= layer_idx < len(target_set.layers):
+            if triggered == f"{self.component_id}-delete-cancel":
+                return False, no_update
+
+            if triggered != f"{self.component_id}-delete-layer" or not delete_clicks:
                 raise PreventUpdate
 
-            layer = target_set.layers[layer_idx]
-            num_sources = len(layer.source_gates)
-            num_targets = len(layer.target_gates)
-            identity = [[1.0 if i == j else 0.0 for j in range(num_targets)] for i in range(num_sources)]
-            if edit_both:
-                if layer_idx < len(self.gateset.layers):
-                    self.gateset.layers[layer_idx].matrix = [row[:] for row in identity]
-                if layer_idx < len(self.dc_set.layers):
-                    self.dc_set.layers[layer_idx].matrix = [row[:] for row in identity]
-            else:
-                target_set.layers[layer_idx].matrix = identity
-            
-            return self._render_matrix_editor(layer_idx, use_dc), (vg_val or 0) + 1
+            if layer_idx is None:
+                raise PreventUpdate
+
+            try:
+                layer_idx = int(layer_idx)
+            except (TypeError, ValueError):
+                raise PreventUpdate
+
+            if not 0 <= layer_idx < len(self.gateset.layers):
+                raise PreventUpdate
+
+            layer = self.gateset.layers[layer_idx]
+            layer_name = layer.id or f"Layer {layer_idx + 1}"
+
+            message = html.Div(
+                [
+                    html.P(f'Are you sure you want to delete layer "{layer_name}"?'),
+                    html.P(
+                        "This removes the layer from the current QuAM state. "
+                        "Save the QuAM state afterwards if you want to keep the deletion.",
+                        className="mb-0",
+                    ),
+                ]
+            )
+
+            return True, message
 
         @app.callback(
             Output(f"{self.component_id}-save-status", "children", allow_duplicate=True),
             Output("vg-layer-refresh-trigger", "data", allow_duplicate=True),
-            Input(f"{self.component_id}-delete-layer", "n_clicks"),
+            Output(f"{self.component_id}-delete-modal", "is_open", allow_duplicate=True),
+            Input(f"{self.component_id}-delete-confirm", "n_clicks"),
             State(f"{self.component_id}-layer-tabs", "value"),
             State("vg-layer-refresh-trigger", "data"),
             prevent_initial_call=True,
@@ -389,18 +414,34 @@ class VirtualLayerEditor(BaseComponent):
         def delete_layer(n_clicks, layer_idx, vg_val):
             if not n_clicks or layer_idx is None:
                 raise PreventUpdate
+
             try:
                 layer_idx = int(layer_idx)
             except (TypeError, ValueError):
                 raise PreventUpdate
+
             if layer_idx != len(self.gateset.layers) - 1:
-                return dbc.Alert("Only the top layer can be deleted.", color="warning"), no_update
+                return (
+                    dbc.Alert("Only the top layer can be deleted.", color="warning"),
+                    no_update,
+                    False,
+                )
+
             self.gateset.layers.pop(layer_idx)
-            # Tsung-Lin
+
             if self.dc_set is not None and layer_idx < len(self.dc_set.layers):
                 self.dc_set.layers.pop(layer_idx)
+
             self.gateset._calculate_influence_map()
-            return dbc.Alert("Layer deleted (Save QuAM state to keep it).", color="success"), (vg_val or 0) + 1
+
+            return (
+                dbc.Alert(
+                    "Layer deleted (Save QuAM state to keep it).",
+                    color="success",
+                ),
+                (vg_val or 0) + 1,
+                False,
+            )
 
         @app.callback(
             Output(f"{self.component_id}-save-status", "children"),

@@ -6,6 +6,7 @@
     --qm-blue: #3A86FF;
 }
 
+
 /* =========================================================
    Virtual layer tabs
    ========================================================= */
@@ -19,7 +20,6 @@
     border-bottom: 1px solid var(--qm-grey);
 }
 
-/* Unselected tab */
 .virtual-layer-tab {
     flex: 0 0 auto !important;
     width: auto !important;
@@ -37,10 +37,9 @@
     cursor: pointer;
 }
 
-/* Selected tab */
 .virtual-layer-tab-selected {
     flex: 0 0 auto !important;
-    width: 80px !important;
+    width: auto !important;
     min-width: 70px;
 
     padding: 6px 14px !important;
@@ -61,7 +60,7 @@
 
 .virtual-matrix-table {
     border-collapse: collapse;
-    width: auto;
+    width: max-content;
     table-layout: auto;
 
     margin-top: 10px;
@@ -74,55 +73,40 @@
     padding: 0;
 }
 
-/* Row + column headers */
+/* Header cells */
 .virtual-matrix-table th {
     background-color: var(--qm-secondary-black);
     color: white;
 
     font-weight: normal;
     text-align: center;
-
     white-space: nowrap;
-    padding: 4px 8px;
+
+    padding: 4px 3px;
 }
 
-/* Matrix input */
-.virtual-matrix-input {
-    width: 100%;
-    min-width: 80px;
-    height: 32px;
 
-    padding: 3px 6px;
-    margin: 0;
-
-    border: none;
-    border-radius: 0;
-
-    text-align: center;
-    box-sizing: border-box;
-
+/* Normal cell */
+.virtual-matrix-cell {
     background-color: white;
-    color: black;
 }
 
-/* Diagonal */
-.virtual-matrix-input-diagonal {
-    background-color: #D0D0D0 !important;
-    color: black !important;
+/* Diagonal cell */
+.virtual-matrix-cell-diagonal {
+    background-color: #D0D0D0;
+}
+
+.virtual-matrix-cell-diagonal .virtual-matrix-input {
     font-weight: bold;
 }
 
 
-/* =========================================================
-   Source gate input in Layer Adder
-   ========================================================= */
-
-.virtual-matrix-source-input {
-    width: 100%;
-    min-width: 80px;
+/* Matrix numerical input */
+.virtual-matrix-input {
+    width: 56px;
     height: 32px;
 
-    padding: 3px 6px;
+    padding: 3px 2px;
     margin: 0;
 
     border: none;
@@ -131,7 +115,26 @@
     text-align: center;
     box-sizing: border-box;
 
-    background-color: var(--qm-secondary-black);
+    background-color: transparent;
+    color: black;
+}
+
+
+/* Source gate name input in Layer Adder */
+.virtual-matrix-source-input {
+    width: 64px;
+    height: 32px;
+
+    padding: 3px 2px;
+    margin: 0;
+
+    border: none;
+    border-radius: 0;
+
+    text-align: center;
+    box-sizing: border-box;
+
+    background-color: transparent;
     color: white;
 }
 

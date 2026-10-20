@@ -1,6 +1,6 @@
 from typing import Optional, Dict, Any
 
-from dash import Dash
+from dash import Dash, html
 from dash.development.base_component import Component
 import numpy as np
 import dash_bootstrap_components as dbc
@@ -84,54 +84,83 @@ class BaseSweepAxis(BaseUpdatableComponent):
         """Apply the correct QUA command"""
         pass
 
+    def _create_parameter_row(
+        self,
+        *,
+        label: str,
+        input_id,
+        value,
+        units: str = "",
+        min_value=None,
+        max_value=None,
+        step=None,
+    ):
+        return dbc.Row(
+            [
+                dbc.Col(
+                    html.Div(label),
+                    width="auto",
+                    style={"width": "72px", "flex": "0 0 72px"},
+                ),
+                dbc.Col(
+                    dbc.Input(
+                        id=input_id,
+                        type="number",
+                        value=value,
+                        min=min_value,
+                        max=max_value,
+                        step=step,
+                        size="sm",
+                        style={"width": "150px"},
+                    ),
+                    width="auto",
+                    className="px-0",
+                ),
+                dbc.Col(
+                    html.Span(units),
+                    width="auto",
+                    style={"width": "42px", "flex": "0 0 42px"},
+                ),
+            ],
+            className="g-2 align-items-center mb-2 flex-nowrap",
+        )
+
     def create_axis_layout(self, min_span: float, max_span: Optional[float] = None):
-        """Modified to use pattern-matching IDs"""
+        """Build a compact, aligned axis-parameter layout."""
         if not self.name.replace("_", "").isalnum():
             raise ValueError(
                 f"Axis {self.name} must only contain alphanumeric characters and underscores."
             )
 
-        # Use pattern-matching IDs instead of regular IDs
         ids = {
             "span": {"type": "number-input", "index": f"{self.component_id}::span"},
             "points": {"type": "number-input", "index": f"{self.component_id}::points"},
         }
 
-        input_list = [
-            create_input_field(
-                id=ids["span"],
+        rows = [
+            self._create_parameter_row(
                 label="Span",
+                input_id=ids["span"],
                 value=self.span,
-                min=min_span,
-                max=max_span,
-                input_style={"width": "150px"},
-                units=self.units if self.units is not None else "",
-                step = 0.001,
+                units=self.units or "",
+                min_value=min_span,
+                max_value=max_span,
+                step=0.001,
             ),
-            create_input_field(
-                id=ids["points"],
+            self._create_parameter_row(
                 label="Points",
+                input_id=ids["points"],
                 value=self.points,
-                min=1,
-                max=501,
+                min_value=1,
+                max_value=501,
                 step=1,
             ),
         ]
 
         return dbc.Col(
-            dbc.Card(
-                [
-                    dbc.CardBody(
-                        input_list,
-                        className="text-light",
-                    ),
-                ],
-                color="dark",
-                inverse=True,
-                className="h-100 tab-card-dark",
-            ),
+            html.Div(rows, className="py-2"),
             md=6,
-            className="mb-3",
+            className="mb-2",
         )
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:

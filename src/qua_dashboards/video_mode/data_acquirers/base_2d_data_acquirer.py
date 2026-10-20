@@ -170,112 +170,212 @@ class Base2DDataAcquirer(BaseDataAcquirer):
         ] 
         return options
 
+    def _axis_number_input(self, axis, parameter, value, units="", **kwargs):
+        input_id = {"type": "number-input", "index": f"{axis.component_id}::{parameter}"}
+        input_component = dbc.Input(
+            id=input_id,
+            type="number",
+            value=value,
+            size="sm",
+            **kwargs,
+        )
+
+        if units:
+            return dbc.InputGroup(
+                [
+                    input_component,
+                    dbc.InputGroupText(units),
+                ],
+                size="sm",
+            )
+
+        return input_component
+
+    def _axis_parameter_rows(self):
+        x_axis = self.x_axis
+        y_axis = self.y_axis if self.y_axis_name is not None else None
+
+        rows = [
+            (
+                "Span",
+                self._axis_number_input(
+                    x_axis,
+                    "span",
+                    x_axis.span,
+                    x_axis.units or "",
+                    min=0.001,
+                    step=0.001,
+                ),
+                self._axis_number_input(
+                    y_axis,
+                    "span",
+                    y_axis.span,
+                    y_axis.units or "",
+                    min=0.001,
+                    step=0.001,
+                ) if y_axis is not None else None,
+            ),
+            (
+                "Points",
+                self._axis_number_input(
+                    x_axis,
+                    "points",
+                    x_axis.points,
+                    min=1,
+                    max=501,
+                    step=1,
+                ),
+                self._axis_number_input(
+                    y_axis,
+                    "points",
+                    y_axis.points,
+                    min=1,
+                    max=501,
+                    step=1,
+                ) if y_axis is not None else None,
+            ),
+        ]
+
+        x_has_offset = hasattr(x_axis, "offset")
+        y_has_offset = y_axis is not None and hasattr(y_axis, "offset")
+
+        if x_has_offset or y_has_offset:
+            rows.append(
+                (
+                    "Offset",
+                    self._axis_number_input(
+                        x_axis,
+                        "offset",
+                        x_axis.offset,
+                        x_axis.units or "",
+                    ) if x_has_offset else None,
+                    self._axis_number_input(
+                        y_axis,
+                        "offset",
+                        y_axis.offset,
+                        y_axis.units or "",
+                    ) if y_has_offset else None,
+                )
+            )
+
+        x_has_dbm = hasattr(x_axis, "_offset_volts")
+        y_has_dbm = y_axis is not None and hasattr(y_axis, "_offset_volts")
+
+        if x_has_dbm or y_has_dbm:
+            def dbm_toggle(axis):
+                if axis is None or not hasattr(axis, "_offset_volts"):
+                    return None
+                return dbc.Row(
+                    [
+                        dbc.Col("V", width="auto"),
+                        dbc.Col(
+                            dbc.Checklist(
+                                id={
+                                    "type": "toggle",
+                                    "index": f"{axis.component_id}::dbm-toggle",
+                                },
+                                options=[{"label": "", "value": "on"}],
+                                value=["on"] if axis.dbm else [],
+                                switch=True,
+                                className="mb-0",
+                            ),
+                            width="auto",
+                        ),
+                        dbc.Col("dBm", width="auto"),
+                    ],
+                    className="g-1 align-items-center",
+                )
+
+            rows.append(("Units", dbm_toggle(x_axis), dbm_toggle(y_axis)))
+
+        return [
+            dbc.Row(
+                [
+                    dbc.Col(label, width=2, className="d-flex align-items-center"),
+                    dbc.Col(x_control if x_control is not None else html.Div(), width=5),
+                    dbc.Col(y_control if y_control is not None else html.Div(), width=5),
+                ],
+                className="g-2 mb-2 align-items-center",
+            )
+            for label, x_control, y_control in rows
+        ]
+
     def get_dash_components(self, include_subcomponents: bool = True) -> List[Any]:
-        """
-        Returns Dash UI components for X and Y axis configuration.
-        """
+        """Returns a compact X/Y parameter table for the selected sweep axes."""
         components = super().get_dash_components(include_subcomponents)
         keys = self.sweep_axes.keys()
         y_mode_keys = getattr(self, "_y_mode_keys_override", None) or keys
         x_mode_keys = getattr(self, "_x_mode_keys_override", None) or keys
 
-        mode_selection_ui = [
+        components.append(
             html.Div(
                 [
                     dbc.Row(
                         [
-                            dbc.Col(
-                                [
-                                    html.H6("Select X Mode"),
-                                    dcc.Dropdown(
-                                        id=self._get_id("x-mode"),
-                                        options=[
-                                            {"label": mode, "value": mode}
-                                            for mode in x_mode_keys
-                                        ],
-                                        value=self.x_mode,
-                                        style={"color": "black"},
-                                        className="mb-2",
-                                        clearable=False,
-                                    ),
-                                ]
-                            ),
-                            dbc.Col(
-                                [
-                                    html.H6("Select Y Mode"),
-                                    dcc.Dropdown(
-                                        id=self._get_id("y-mode"),
-                                        options=[
-                                            {"label": mode, "value": mode}
-                                            for mode in y_mode_keys
-                                        ],
-                                        value=self.y_mode,
-                                        style={"color": "black"},
-                                        className="mb-2",
-                                        placeholder="None",
-                                        clearable=False,
-                                    ),
-                                ]
-                            ),
-                        ]
-                    )
-                ]
-            )
-        ]
-
-        selection_ui = [
-            html.Div(
-                [
-                    dbc.Row(
-                        [
-                            dbc.Col(
-                                [
-                                    html.H6("Select X Axis"),
-                                    dcc.Dropdown(
-                                        id=self._get_id("gate-select-x"),
-                                        options=self._build_dropdown_options(self._display_x_sweep_axes),
-                                        value=self.x_axis_name,
-                                        style={"color": "black"},
-                                        className="mb-2",
-                                        clearable=False,
-                                    ),
-                                ]
-                            ),
-                            dbc.Col(
-                                [
-                                    html.H6("Select Y Axis"),
-                                    dcc.Dropdown(
-                                        id=self._get_id("gate-select-y"),
-                                        options=self._build_dropdown_options(self._display_y_sweep_axes),
-                                        value=self.y_axis_name,
-                                        style={"color": "black"},
-                                        className="mb-2",
-                                        placeholder="None",
-                                    ),
-                                ]
-                            ),
-                        ]
-                    )
-                ]
-            )
-        ]
-        components = components + mode_selection_ui + selection_ui
-        row = (
-            [self.x_axis.get_layout(), self.y_axis.get_layout()]
-            if self.y_axis_name is not None
-            else [self.x_axis.get_layout()]
-        )
-        axis_ui = [
-            html.Div(
-                [
-                    dbc.Row(
-                        row,
-                        className="g-0",  # No gutters
+                            dbc.Col("", width=2),
+                            dbc.Col(html.Strong("X"), width=5),
+                            dbc.Col(html.Strong("Y"), width=5),
+                        ],
+                        className="g-2 mb-1",
                     ),
+                    dbc.Row(
+                        [
+                            dbc.Col("Mode", width=2, className="d-flex align-items-center"),
+                            dbc.Col(
+                                dcc.Dropdown(
+                                    id=self._get_id("x-mode"),
+                                    options=[{"label": mode, "value": mode} for mode in x_mode_keys],
+                                    value=self.x_mode,
+                                    style={"color": "black"},
+                                    clearable=False,
+                                ),
+                                width=5,
+                            ),
+                            dbc.Col(
+                                dcc.Dropdown(
+                                    id=self._get_id("y-mode"),
+                                    options=[{"label": mode, "value": mode} for mode in y_mode_keys],
+                                    value=self.y_mode,
+                                    style={"color": "black"},
+                                    placeholder="None",
+                                    clearable=False,
+                                ),
+                                width=5,
+                            ),
+                        ],
+                        className="g-2 mb-2 align-items-center",
+                    ),
+                    dbc.Row(
+                        [
+                            dbc.Col("Axis", width=2, className="d-flex align-items-center"),
+                            dbc.Col(
+                                dcc.Dropdown(
+                                    id=self._get_id("gate-select-x"),
+                                    options=self._build_dropdown_options(self._display_x_sweep_axes),
+                                    value=self.x_axis_name,
+                                    style={"color": "black"},
+                                    clearable=False,
+                                ),
+                                width=5,
+                            ),
+                            dbc.Col(
+                                dcc.Dropdown(
+                                    id=self._get_id("gate-select-y"),
+                                    options=self._build_dropdown_options(self._display_y_sweep_axes),
+                                    value=self.y_axis_name,
+                                    style={"color": "black"},
+                                    placeholder="None",
+                                ),
+                                width=5,
+                            ),
+                        ],
+                        className="g-2 mb-2 align-items-center",
+                    ),
+                    *self._axis_parameter_rows(),
                 ]
             )
-        ]
-        components.extend(axis_ui)
+        )
+
         return components
 
     def get_latest_data(self) -> Dict[str, Any]:

@@ -11,6 +11,7 @@ QDAC-only gates are controlled directly through their QCoDeS parameters.
 """
 
 import logging
+import math
 from typing import Mapping, Optional
 
 import dash
@@ -55,8 +56,17 @@ class PhysicalVoltageControlComponent(BaseComponent):
 
         # Dashboard panel size
         self.layout_columns = 12
-        self.layout_rows = max(4, len(self.voltage_parameters))
+        n_channels = len(self.voltage_parameters)
 
+        header_height_px = 175
+        channel_row_height_px = 43
+        dashboard_row_height_px = 100
+
+        estimated_height_px = (
+            header_height_px
+            + n_channels * channel_row_height_px
+        )
+        self.layout_rows = max(4, math.ceil(estimated_height_px / dashboard_row_height_px))
         self.rows = {
             name: PhysicalVoltageControlRow(
                 component_id=self.component_id,

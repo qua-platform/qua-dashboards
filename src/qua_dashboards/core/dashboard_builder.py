@@ -17,6 +17,7 @@ def build_dashboard(
     shared_stores: Sequence[dcc.Store] = None,  # Allow passing shared stores
     initial_grid_layout: List[Dict[str, Any]] = None,  # For defining initial positions
     title: str = "Dashboard",
+    full_viewport: bool = False,
 ) -> Dash:
     app = Dash(
         __name__,
@@ -29,6 +30,52 @@ def build_dashboard(
     if not components:
         logger.warning(msg="No components provided to build_dashboard.")
         app.layout = html.Div("No components were provided for this dashboard.")
+        return app
+
+    if full_viewport:
+        if len(components) != 1:
+            raise ValueError("full_viewport=True requires exactly one component.")
+
+        component = components[0]
+        app_children = [
+            html.Div(
+                component.get_layout(),
+                style={
+                    "width": "100vw",
+                    "height": "100vh",
+                    "minWidth": "0",
+                    "minHeight": "0",
+                    "margin": "0",
+                    "padding": "0",
+                    "overflow": "hidden",
+                },
+            )
+        ]
+        if shared_stores:
+            app_children.extend(shared_stores)
+
+        app.layout = html.Div(
+            app_children,
+            style={
+                "width": "100vw",
+                "height": "100vh",
+                "margin": "0",
+                "padding": "0",
+                "overflow": "hidden",
+            },
+        )
+
+        logger.debug("Registering callbacks for full-viewport component.")
+        try:
+            component.register_callbacks(app)
+        except Exception as e:
+            comp_name = type(component).__name__
+            logger.error(
+                f"Error registering callbacks for component {comp_name}: {e}",
+                exc_info=True,
+            )
+
+        logger.info("Dashboard build complete in full-viewport mode.")
         return app
 
     draggable_children = []

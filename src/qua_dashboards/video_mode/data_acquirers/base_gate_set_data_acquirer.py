@@ -197,11 +197,19 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
 
             self.sweep_axes["Voltage"].append(VoltageSweepAxis(name=nm, offset_parameter=offset_parameter))
 
+        if not valid_names:
+            self.x_axis_name = None
+            self.y_axis_name = None
+            return
+
         if self.x_axis_name not in valid_names:
             self.x_axis_name = valid_names[0]
 
-        if self.y_axis_name not in valid_names:
-            self.y_axis_name = valid_names[1] if len(valid_names) > 1 else None
+        if self.y_axis_name not in valid_names or self.y_axis_name == self.x_axis_name:
+            self.y_axis_name = next(
+                (name for name in valid_names if name != self.x_axis_name),
+                None,
+            )
             
     def _build_dropdown_options(self, _display_sweep_axis):
         """Build dropdown options with physical/virtual grouping."""

@@ -125,10 +125,39 @@ class VirtualLayerAdder:
                             id=f"{self.component_id}-init",
                             interval=50, n_intervals=0, max_intervals=1
                         ),
-                        dbc.Button("Apply", id=self.apply_button_id, color="primary", className="mt-2"),
-                        html.Div(
-                            id={"type": "LAYER_OUTPUT", "index": self.component_id},
-                            style={"display": "none"},
+                        dbc.Row(
+                            [
+                                dbc.Col(
+                                    dbc.Button(
+                                        "Apply",
+                                        id=self.apply_button_id,
+                                        color="primary",
+                                    ),
+                                    width="auto",
+                                ),
+                                dbc.Col(
+                                    dbc.Alert(
+                                        id={"type": "LAYER_OUTPUT", "index": self.component_id},
+                                        is_open=False,
+                                        duration=3000,
+                                        color="danger",
+                                        className="mb-0",
+                                        style={
+                                            "height": "38px",
+                                            "minHeight": "38px",
+                                            "maxHeight": "38px",
+                                            "display": "flex",
+                                            "alignItems": "center",
+                                            "padding": "0 12px",
+                                            "whiteSpace": "nowrap",
+                                            "lineHeight": "1",
+                                        },
+                                    ),
+                                    width="auto",
+                                ),
+                            ],
+                            align="center",
+                            className="g-2 mt-2",
                         ),
                         dcc.Store(id={"type": "LAYER_REFRESH", "index": self.component_id}, data=0)
                     ])
@@ -148,6 +177,8 @@ class VirtualLayerAdder:
             )
         @app.callback(
             Output({"type":"LAYER_OUTPUT","index":self.component_id}, "children", allow_duplicate=True),
+            Output({"type":"LAYER_OUTPUT","index":self.component_id}, "is_open", allow_duplicate=True),
+            Output({"type":"LAYER_OUTPUT","index":self.component_id}, "color", allow_duplicate=True),
             Output({"type":"LAYER_REFRESH","index":self.component_id}, "data", allow_duplicate=True),
             Output("vg-layer-refresh-trigger", "data", allow_duplicate=True),
             Output(f"{self.component_id}-layer-name", "value", allow_duplicate=True),
@@ -164,6 +195,32 @@ class VirtualLayerAdder:
         def _apply(nc, target_list, source_names, flat_cells, refresh, glob_ref, layer_name, cell_ids):
             if nc is None or not target_list:
                 raise PreventUpdate
+
+            source_names = [
+                name.strip() if isinstance(name, str) else ""
+                for name in source_names
+            ]
+
+            if any(not name for name in source_names):
+                return (
+                    "Virtual gate names cannot be empty.",
+                    True,
+                    "danger",
+                    no_update,
+                    no_update,
+                    no_update,
+                )
+
+            if len(source_names) != len(set(source_names)):
+                return (
+                    "Virtual gate names must be unique.",
+                    True,
+                    "danger",
+                    no_update,
+                    no_update,
+                    no_update,
+                )
+
             new_idx = len(self.gateset.layers)
             layer_name = layer_name if layer_name else f"Layer {new_idx + 1}"
 
@@ -171,7 +228,7 @@ class VirtualLayerAdder:
             K = len(source_names)
             if len(flat_cells) != M * K:
                 app.logger.error(f"Wrong shape: Expected {M*K} cells, got {len(flat_cells)}")
-                return no_update, no_update, no_update, no_update
+                return no_update, False, no_update, no_update, no_update, no_update
 
             coord_vals = { (cid["row"], cid["col"]): v for cid, v in zip(cell_ids, flat_cells) }
             apply_mat = [[ float(coord_vals.get((i, j), 0.0)) for j in range(K)] for i in range(M)]
@@ -205,11 +262,11 @@ class VirtualLayerAdder:
 
                 app.logger.exception("add_layer failed")
 
-                return f"Error: {e}", no_update, no_update, no_update
+                return f"Error: {e}", True, "danger", no_update, no_update, no_update
             
             
             self.layer_names.append({"label": layer_name, "value": new_idx})
-            return "Layer Added!", (refresh or 0)+1, (glob_ref or 0)+1, ""
+            return "Layer Added!", True, "success", (refresh or 0)+1, (glob_ref or 0)+1, ""
         
         @app.callback(
             Output(f"{self.component_id}-tgt-dd", "options"),

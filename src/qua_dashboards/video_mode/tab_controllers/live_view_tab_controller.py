@@ -2,11 +2,9 @@ import logging
 import uuid
 from typing import Any, Dict, Union, Optional
 import numpy as np
-
 import dash_bootstrap_components as dbc
 import dash
 from dash import Dash, Input, Output, State, html, ctx, ALL, dcc
-
 from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import (
     BaseDataAcquirer,
     ModifiedFlags,
@@ -17,29 +15,25 @@ from qua_dashboards.video_mode.tab_controllers.base_tab_controller import (
 )
 from qua_dashboards.video_mode import data_registry
 
-
 logger = logging.getLogger(__name__)
 
 __all__ = ["LiveViewTabController"]
 
-
 class LiveViewTabController(BaseTabController):
     """
     Controls the 'Live View' tab in the Video Mode application.
-
     This tab allows users to start and stop the data acquisition process
     using a single toggle button and view the current status. It also allows
     configuration of the data acquirer parameters and sets the
     shared viewer to display live data from the acquirer.
     """
-
     _TAB_LABEL = "Live View"
     _TAB_VALUE = "live-view-tab"
-
     _TOGGLE_ACQ_BUTTON_ID_SUFFIX = "toggle-acq-button"
     _ACQUIRER_CONTROLS_DIV_ID_SUFFIX = "acquirer-controls-div"
     _ACQUIRER_STATUS_INDICATOR_ID_SUFFIX = "acquirer-status-indicator"
     _DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX = "dummy-output-acquirer-updates"
+    _GATE_AXIS_REFRESH_INTERVAL_SUFFIX = "gate-axis-refresh-interval"
 
     def __init__(
         self,
@@ -50,7 +44,6 @@ class LiveViewTabController(BaseTabController):
         **kwargs: Any,
     ) -> None:
         """Initializes the LiveViewTabController.
-
         Args:
             component_id: A unique string identifier for this component instance.
             data_acquirer: The data acquirer instance that this tab will control
@@ -60,188 +53,241 @@ class LiveViewTabController(BaseTabController):
         super().__init__(component_id=component_id, is_active=is_active, **kwargs)
         self._data_acquirer_instance: BaseDataAcquirer = data_acquirer
         self._show_inner_loop_controls = show_inner_loop_controls
+        gate_set = getattr(self._data_acquirer_instance, "gate_set", None)
+        self._known_gate_names = (
+            tuple(gate_set.valid_channel_names)
+            if gate_set is not None and hasattr(gate_set, "valid_channel_names")
+            else tuple()
+        )
         self._last_overlay_text: Optional[str] = None
         self._last_overlay_version: Optional[str] = None
         self._last_gridlines_state: Optional[str] = None
-
         logger.info(
             f"LiveViewTabController '{self.component_id}' initialized with "
             f"Data Acquirer '{self._data_acquirer_instance.component_id}'."
         )
 
     def get_layout(self) -> dbc.Card:
-        """
-        Generates the Dash layout for the Live View control panel.
-
-        The layout includes a single toggle button for starting/stopping data
-        acquisition, a status indicator, and embeds the data acquirer's
-        specific parameter controls.
-
-        Returns:
-            An html.Div component containing the controls.
-        """
+        """Generates the Dash layout for the Live View control panel."""
         logger.debug(
             f"Generating layout for LiveViewTabController '{self.component_id}'"
         )
-
-        toggle_button_and_status = dbc.Row(
+        acquisition_section = html.Div(
             [
-                dbc.Col(
-                    dbc.Button(
-                        "Start Acquisition",  # Initial text
-                        id=self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX),
-                        color="success",  # Initial color for "Start"
-                        className="me-1",
-                        style={"width": "100%"},
-                    ),
-                    width=8,  # Adjusted width
-                ),
-                dbc.Col(
+                html.H6("Acquisition", className="text-light mb-2"),
+                dbc.Row(
                     [
-                        html.Div(
-                            dbc.Badge(
-                                "STOPPED",  # Initial status text
-                                id=self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX),
-                                color="secondary",  # Initial color for STOPPED
-                                className="ms-1 p-2",  # Added padding
+                        dbc.Col(
+                            dbc.Button(
+                                "Start",
+                                id=self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX),
+                                color="success",
                                 style={
-                                    "fontSize": "0.9rem",
-                                    "width": "100%",
-                                    "textAlign": "center",
+                                    "width": "110px",
+                                    "height": "38px",
                                 },
                             ),
-                            className=(
-                                "d-flex align-items-center justify-content-center h-100"
-                            ),
+                            width="auto",
                         ),
-                        html.Div(
-                            [
-                                dbc.Row(
-                                    [
-                                    dbc.Button(
-                                        "Set DC center",
-                                        id=self._get_id("set-dc-center-button"),
-                                        color="primary",
-                                        size="sm",
-                                        className="mt-2",
-                                        disabled=True,
+                        dbc.Col(html.Div(), width=True),
+                        dbc.Col(
+                            dbc.Button(
+                                "Set DC point",
+                                id=self._get_id("set-dc-center-button"),
+                                color="primary",
+                                disabled=True,
+                                style={
+                                    "width": "145px",
+                                    "height": "38px",
+                                    "whiteSpace": "nowrap",
+                                },
+                            ),
+                            width="auto",
+                        ),
+                        dbc.Col(
+                            html.Div(
+                                [
+                                    html.Div(
+                                        "Status:",
+                                        style={
+                                            "fontSize": "0.8rem",
+                                            "marginBottom": "3px",
+                                            "textAlign": "center",
+                                        },
                                     ),
-                                    dcc.Store(
-                                        id=self._get_id("set-dc-center-armed"),
-                                        data=False,
+                                    dbc.Badge(
+                                        "STOPPED",
+                                        id=self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX),
+                                        color="secondary",
+                                        className="p-2 d-flex align-items-center justify-content-center",
+                                        style={
+                                            "fontSize": "0.9rem",
+                                            "width": "120px",
+                                            "height": "38px",
+                                            "textAlign": "center",
+                                        },
                                     ),
-                                    dbc.Col(
-                                        dbc.Checklist(
-                                            id=self._get_id("center-marker-toggle"),
-                                            options=[{"label": "Crosshairs", "value": "on"}],
-                                            value=[],
-                                            switch=True,
-                                        ),
-                                        width="auto",
-                                    ),
-                                    dbc.Col(
-                                        dbc.Checklist(
-                                            id=self._get_id("mouse-crosshairs-toggle"),
-                                            options=[{"label": "Mouse crosshairs", "value": "on"}],
-                                            value=[],
-                                            switch=True,
-                                        ),
-                                        width="auto",
-                                    ),
-                                    dbc.Col(
-                                        dbc.Checklist(
-                                            id=self._get_id("show-full-grid-toggle"),
-                                            options=[{"label": "Full grid", "value": "on"}],
-                                            value=[],
-                                            switch=True,
-                                        ),
-                                        width="auto",
-                                    )],
-                                    className="align-items-center g-2",
-                                ),
-
-                                dbc.Row(
-                                    dbc.Col(
-                                        html.Div(
-                                            dcc.Slider(
-                                                id=self._get_id("grid_opacity"),
-                                                min=0, max=100, step=5, value=40,
-                                                marks={0: "0%", 100: "100%"},
-                                                tooltip={"always_visible": False, "placement": "bottom"},
-                                                updatemode="drag",
-                                            ),
-                                            style={"width": "140px"},
-                                        ),
-                                        width="auto",
-                                    ),
-                                    className="mt-2", 
-                                ),
-                            ],
-                            className="mt-4",
-                        )
+                                ]
+                            ),
+                            width="auto",
+                        ),
                     ],
-                    width=4,
+                    className="g-2 align-items-end",
+                ),
+                dcc.Store(
+                    id=self._get_id("set-dc-center-armed"),
+                    data=False,
                 ),
             ],
-            className="mb-3 align-items-center",
+            className="mb-2",
         )
-
         acquirer_specific_controls = (
-            self._data_acquirer_instance.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
+            self._data_acquirer_instance.get_dash_components(
+                include_subcomponents=True,
+                include_inner_loop_controls=self._show_inner_loop_controls,
+            )
             if self._data_acquirer_instance
             else [html.P("Data acquirer components could not be loaded.")]
         )
-
-        acquirer_controls_div = html.Div(
-            id=self._get_id(self._ACQUIRER_CONTROLS_DIV_ID_SUFFIX),  # type: ignore
-            children=acquirer_specific_controls,
-            className="mt-3 p-3 border rounded",
-        )
-
-        card_body = dbc.CardBody(
+        acquirer_section = html.Div(
             [
-                html.H5("Live Acquisition Control", className="card-title text-light"),
-                toggle_button_and_status,
-                html.Hr(),
-                html.H6("Acquirer Parameters", className="text-light"),
-                acquirer_controls_div,
+                html.H6("Acquirer Parameters", className="text-light mb-2"),
                 html.Div(
-                    id=self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX),  # type: ignore
-                    style={"display": "none"},
+                    id=self._get_id(self._ACQUIRER_CONTROLS_DIV_ID_SUFFIX),
+                    children=acquirer_specific_controls,
+                    className="p-3 border rounded",
                 ),
-            ]
+            ],
+            className="mb-2",
+        )
+        display_section = html.Div(
+            [
+                html.H6("Display helper", className="text-light mb-2"),
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            dbc.Checklist(
+                                id=self._get_id("center-marker-toggle"),
+                                options=[{
+                                    "label": html.Span(["✛ ", "Crosshair"]),
+                                    "value": "on",
+                                }],
+                                value=[],
+                                switch=True,
+                                inline=True,
+                                className="mb-0",
+                            ),
+                            width="auto",
+                        ),
+                        dbc.Col(
+                            dbc.Checklist(
+                                id=self._get_id("mouse-crosshairs-toggle"),
+                                options=[{
+                                    "label": html.Span(["✛🖱 ", "Mouse"]),
+                                    "value": "on",
+                                }],
+                                value=[],
+                                switch=True,
+                                inline=True,
+                                className="mb-0",
+                            ),
+                            width="auto",
+                        ),
+                        dbc.Col(
+                            dbc.Checklist(
+                                id=self._get_id("show-full-grid-toggle"),
+                                options=[{
+                                    "label": html.Span(["▦ ", "Grid"]),
+                                    "value": "on",
+                                }],
+                                value=[],
+                                switch=True,
+                                inline=True,
+                                className="mb-0",
+                            ),
+                            width="auto",
+                        ),
+                    ],
+                    className="g-3 align-items-center flex-nowrap",
+                ),
+                dbc.Row(
+                    [
+                        dbc.Col("Grid opacity", width=4),
+                        dbc.Col(
+                            dcc.Slider(
+                                id=self._get_id("grid_opacity"),
+                                min=0,
+                                max=100,
+                                step=5,
+                                value=40,
+                                marks={0: "0%", 100: "100%"},
+                                tooltip={"always_visible": False, "placement": "bottom"},
+                                updatemode="drag",
+                            ),
+                            width=8,
+                        ),
+                    ],
+                    className="g-2 align-items-center mt-1",
+                ),
+            ],
+            className="mb-2",
+        )
+        saving_section = getattr(self, "saving_section", None)
+        card_children = [
+            acquisition_section,
+            html.Hr(className="my-3"),
+            acquirer_section,
+            html.Hr(className="my-3"),
+            display_section,
+        ]
+        if saving_section is not None:
+            card_children.extend([
+                html.Hr(className="my-3"),
+                saving_section,
+            ])
+        if self._supports_dynamic_gate_axis_refresh():
+            card_children.append(
+                dcc.Interval(
+                    id=self._get_id(self._GATE_AXIS_REFRESH_INTERVAL_SUFFIX),
+                    interval=1000,
+                    n_intervals=0,
+                )
+            )
+
+        card_children.append(
+            html.Div(
+                id=self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX),
+                style={"display": "none"},
+            )
         )
         return dbc.Card(
-            card_body, color="dark", inverse=True, className="tab-card-dark"
+            dbc.CardBody(card_children, className="p-3"),
+            color="dark",
+            inverse=True,
+            className="tab-card-dark",
         )
 
     def on_tab_activated(self) -> Dict[str, Any]:
         """
         Called by the orchestrator when this tab becomes active.
-
         Sets the shared viewer to point to the live data stream from the
         data_registry.
         """
         from qua_dashboards.video_mode.video_mode_component import VideoModeComponent
-
         logger.info(f"LiveViewTabController '{self.component_id}' activated.")
-
         current_live_version = data_registry.get_current_version(
             data_registry.LIVE_DATA_KEY
         )
-
         if current_live_version is None:
             current_live_version = str(uuid.uuid4())
             logger.debug(
                 f"{self.component_id}: No current live data version found. "
                 f"Using placeholder: {current_live_version}"
             )
-
         viewer_data_payload = {
             "key": data_registry.LIVE_DATA_KEY,
             "version": current_live_version,
         }
-
         updates = {
             VideoModeComponent.VIEWER_DATA_STORE_SUFFIX: viewer_data_payload,
             VideoModeComponent.VIEWER_UI_STATE_STORE_SUFFIX: {},
@@ -263,7 +309,6 @@ class LiveViewTabController(BaseTabController):
     ) -> None:
         """
         Registers Dash callbacks for the Live View tab.
-
         Args:
             app: The main Dash application instance.
             orchestrator_stores: Dictionary of orchestrator-level store IDs.
@@ -275,6 +320,8 @@ class LiveViewTabController(BaseTabController):
         self._register_acquisition_control_callback(app, orchestrator_stores)
         self._register_parameter_update_callback(app)
         self._register_gate_selection_callback(app)
+        if self._supports_dynamic_gate_axis_refresh():
+            self._register_dynamic_gate_axis_refresh_callback(app)
         self._register_set_dc_button_callback(app)
         self._register_gridlines_callback(app, shared_viewer_store_ids)
         self._register_readoutparams_callback(app)
@@ -288,28 +335,26 @@ class LiveViewTabController(BaseTabController):
             Input(self._data_acquirer_instance._get_id("readouts"), "value"),
             prevent_initial_call=True,
         )
+
         def _refresh_readout_params(selected_names):
             names = selected_names or []
             if not isinstance(names, list):
                 names = [names]
-
             self._data_acquirer_instance.selected_readout_channels = [
                 self._data_acquirer_instance.available_readout_channels[n]
                 for n in names
                 if n in self._data_acquirer_instance.available_readout_channels
             ]
             self._data_acquirer_instance.inner_loop_action.selected_readout_channels = self._data_acquirer_instance.selected_readout_channels
-
             return self._data_acquirer_instance.inner_loop_action.build_readout_controls()
-        
-    def _register_click_to_centre_callback(
-            self, 
-            app: Dash, 
-            shared_viewer_graph_id: str,
-            *, 
-            tabs_id: str,
-    ) -> None: 
 
+    def _register_click_to_centre_callback(
+            self,
+            app: Dash,
+            shared_viewer_graph_id: str,
+            *,
+            tabs_id: str,
+    ) -> None:
         @app.callback(
             Output(
                 self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX),
@@ -331,11 +376,17 @@ class LiveViewTabController(BaseTabController):
                 "color",
                 allow_duplicate=True,
             ),
+            Output(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "children", allow_duplicate=True),
+            Output(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "color", allow_duplicate=True),
+            Output(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "disabled", allow_duplicate=True),
+            Output(self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX), "children", allow_duplicate=True),
+            Output(self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX), "color", allow_duplicate=True),
             Input(shared_viewer_graph_id, "clickData"),
             State(self._get_id("set-dc-center-armed"), "data"),
             State(tabs_id, "value"),
             prevent_initial_call=True,
         )
+
         def _centre_on_click(click_data, armed, active_tab_value):
             if not armed:
                 return (
@@ -343,50 +394,61 @@ class LiveViewTabController(BaseTabController):
                     dash.no_update,
                     dash.no_update,
                     dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
                 )
-
             if active_tab_value != "live-view-tab":
                 return (
                     dash.no_update,
                     dash.no_update,
                     dash.no_update,
                     dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
                 )
-
             if not click_data or "points" not in click_data:
                 return (
                     dash.no_update,
                     dash.no_update,
                     dash.no_update,
                     dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
                 )
-
             pt = click_data["points"][0]
             x_val = pt.get("x")
             y_val = pt.get("y")
-
             da = self._data_acquirer_instance
             voltage_control = getattr(da, "voltage_control_component", None)
-
             if voltage_control is None or voltage_control.dc_set is None:
                 return (
                     dash.no_update,
                     dash.no_update,
                     dash.no_update,
                     dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
                 )
-
             dc_set = voltage_control.dc_set
             current = dc_set.all_current_voltages.copy()
-
             targets = {}
-
             if x_val is not None and da.x_axis_name in dc_set.valid_channel_names:
                 targets[da.x_axis_name] = (
                     current.get(da.x_axis_name, 0.0)
                     + float(x_val)
                 )
-
             if (
                 y_val is not None
                 and da.y_axis_name is not None
@@ -396,23 +458,28 @@ class LiveViewTabController(BaseTabController):
                     current.get(da.y_axis_name, 0.0)
                     + float(y_val)
                 )
-
             if targets:
                 print("Current DC:", current)
                 print("Clicked delta:", {"x": x_val, "y": y_val})
                 print("Targets:", targets)
-
                 dc_set.set_voltages(targets)
-
                 print("Updated DC:", dc_set.all_current_voltages)
-
             da.start_acquisition()
+            return (
+                "",
+                False,
+                "Set DC point",
+                "primary",
+                "Stop",
+                "danger",
+                False,
+                "RUNNING",
+                "success",
+            )
 
-            return "", False, "Set DC center", "primary"
-            
     def _register_gridlines_callback(
-            self, 
-            app: Dash, 
+            self,
+            app: Dash,
             shared_viewer_store_ids: Dict[str, Any]
         ) -> None:
         @app.callback(
@@ -424,6 +491,7 @@ class LiveViewTabController(BaseTabController):
             State(shared_viewer_store_ids["layout_config_store"], "data"),
             prevent_initial_call=True,
         )
+
         def _toggle_gridlines(toggle_val, mouse_val, full_val, opacity, existing_layout):
             layout = existing_layout or {}
             show = "on" in (toggle_val or [])
@@ -432,13 +500,10 @@ class LiveViewTabController(BaseTabController):
             shapes = []
             alpha = float(opacity)/100
             n_subplots = max(1, len(self._data_acquirer_instance.selected_readout_channels))
-
             def axis_layout_name(axis: str, i: int) -> str:
                 return axis if i == 1 else f"{axis}{i}"
-
             da = self._data_acquirer_instance
             is_1d = da.y_axis_name is None
-
             cache_key = (
                 show,
                 show_mouse,
@@ -451,24 +516,19 @@ class LiveViewTabController(BaseTabController):
             if cache_key == self._last_gridlines_state:
                 return dash.no_update
             self._last_gridlines_state = cache_key
-
             if show or show_full:
                 def ax_suffix(i):
                     return "" if i == 1 else str(i)
-
                 xr = list(self._data_acquirer_instance.x_axis.sweep_values_with_offset)
                 xs = np.linspace(xr[0], xr[-1], 15).tolist()
-
                 if not is_1d:
                     yr = list(self._data_acquirer_instance.y_axis.sweep_values_with_offset)
                     ys = np.linspace(yr[0], yr[-1], 15).tolist()
-
                 for i in range(1, n_subplots + 1):
                     sfx = ax_suffix(i)
                     xref = f"x{sfx}"
                     grid_color = f"rgba(0,0,0,{alpha})"
                     grid_color_1d = f"rgba(255,255,255,{alpha})"
-
                     if show:
                         if is_1d:
                             shapes.append({
@@ -497,7 +557,6 @@ class LiveViewTabController(BaseTabController):
                                 "layer": "above",
                                 "name": "crosshair-x",
                             })
-
                             shapes.append({
                                 "type": "line",
                                 "xref": f"{xref} domain",
@@ -510,7 +569,6 @@ class LiveViewTabController(BaseTabController):
                                 "layer": "above",
                                 "name": "crosshair-y",
                             })
-
                     if show_full:
                         if is_1d:
                             for xv in xs:
@@ -544,12 +602,9 @@ class LiveViewTabController(BaseTabController):
                                     "layer": "above",
                                     "name": "grid-y",
                                 })
-
             layout["shapes"] = shapes
-
             for i in range(1, n_subplots + 1):
                 xaxis = axis_layout_name("xaxis", i)
-
                 layout[xaxis] = {
                     **layout.get(xaxis, {}),
                     "showspikes": show_mouse,
@@ -557,10 +612,8 @@ class LiveViewTabController(BaseTabController):
                     "spikemode": "across",
                     "spikethickness": 1,
                 }
-
                 if not is_1d:
                     yaxis = axis_layout_name("yaxis", i)
-
                     layout[yaxis] = {
                         **layout.get(yaxis, {}),
                         "showspikes": show_mouse,
@@ -570,56 +623,93 @@ class LiveViewTabController(BaseTabController):
                     }
             return layout
 
+    def _supports_dynamic_gate_axis_refresh(self) -> bool:
+        """Return True when the data acquirer exposes dynamic gate axes."""
+        da = self._data_acquirer_instance
+        return (
+            hasattr(da, "gate_set")
+            and hasattr(da, "ensure_axis")
+            and hasattr(da, "_build_dropdown_options")
+            and hasattr(da, "_display_x_sweep_axes")
+            and hasattr(da, "_display_y_sweep_axes")
+        )
+
+    def _register_dynamic_gate_axis_refresh_callback(self, app: Dash) -> None:
+        """Keep X/Y gate dropdowns synchronized with a mutable GateSet."""
+        da = self._data_acquirer_instance
+
+        @app.callback(
+            Output(da._get_id("gate-select-x"), "options"),
+            Output(da._get_id("gate-select-y"), "options"),
+            Output(da._get_id("gate-select-x"), "value"),
+            Output(da._get_id("gate-select-y"), "value"),
+            Input(self._get_id(self._GATE_AXIS_REFRESH_INTERVAL_SUFFIX), "n_intervals"),
+            prevent_initial_call=True,
+        )
+        def _refresh_gate_axes(_n_intervals):
+            current_gate_names = tuple(da.gate_set.valid_channel_names)
+
+            if current_gate_names == self._known_gate_names:
+                raise dash.exceptions.PreventUpdate
+
+            if hasattr(da, "mark_virtual_layer_changed"):
+                da.mark_virtual_layer_changed(affects_config=False)
+
+            da.ensure_axis()
+            self._known_gate_names = current_gate_names
+
+            return (
+                da._build_dropdown_options(da._display_x_sweep_axes),
+                da._build_dropdown_options(da._display_y_sweep_axes),
+                da.x_axis_name,
+                da.y_axis_name,
+            )
+
     def _register_gate_selection_callback(
             self, app:Dash
     ) -> None:
         """Registers callback for gate selection"""
-
         @app.callback(
-            Output(self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX), "children", allow_duplicate=True), 
+            Output(self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX), "children", allow_duplicate=True),
             Output(self._get_id(self._ACQUIRER_CONTROLS_DIV_ID_SUFFIX), "children", allow_duplicate=True),
-            Input(self._data_acquirer_instance._get_id("gate-select-x"), "value"), 
-            Input(self._data_acquirer_instance._get_id("gate-select-y"), "value"), 
+            Input(self._data_acquirer_instance._get_id("gate-select-x"), "value"),
+            Input(self._data_acquirer_instance._get_id("gate-select-y"), "value"),
             prevent_initial_call = True
         )
-        def on_gate_select(x_gate, y_gate):
-            logger.info(f"New Gate Selected: x_axis {x_gate}, y_axis {y_gate}")           
 
+        def on_gate_select(x_gate, y_gate):
+            logger.info(f"New Gate Selected: x_axis {x_gate}, y_axis {y_gate}")
             params = {
                 self._data_acquirer_instance.component_id: {
-                    "gate-select-x": x_gate, 
+                    "gate-select-x": x_gate,
                     "gate-select-y": y_gate
                 }
             }
             self._data_acquirer_instance.update_parameters(params)
             return "", self._data_acquirer_instance.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
+
     def _register_mode_callback(
             self, app: Dash
     ) -> None:
         """Registers callback for mode selection"""
-
         @app.callback(
-            Output(self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX), "children", allow_duplicate=True), 
+            Output(self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX), "children", allow_duplicate=True),
             Output(self._get_id(self._ACQUIRER_CONTROLS_DIV_ID_SUFFIX), "children", allow_duplicate=True),
-            Input(self._data_acquirer_instance._get_id("x-mode"), "value"), 
-            Input(self._data_acquirer_instance._get_id("y-mode"), "value"), 
+            Input(self._data_acquirer_instance._get_id("x-mode"), "value"),
+            Input(self._data_acquirer_instance._get_id("y-mode"), "value"),
             prevent_initial_call = True
         )
 
         def on_mode_select(x_mode, y_mode):
             da = self._data_acquirer_instance
-
             da.x_mode = x_mode
             da.y_mode = y_mode
-
             x_names = [ax.name for ax in da._display_x_sweep_axes]
             y_names = [ax.name for ax in da._display_y_sweep_axes]
-
             if da.x_axis_name not in x_names:
                 da.x_axis_name = x_names[0] if x_names else None
             if da.y_axis_name not in y_names:
                 da.y_axis_name = None
-
             params = {
                 da.component_id: {
                     "x-mode": x_mode,
@@ -628,7 +718,6 @@ class LiveViewTabController(BaseTabController):
                     "gate-select-y": da.y_axis_name,
                 }
             }
-
             da.update_parameters(params)
             return "", da.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
 
@@ -637,29 +726,53 @@ class LiveViewTabController(BaseTabController):
             Output(self._get_id("set-dc-center-armed"), "data"),
             Output(self._get_id("set-dc-center-button"), "children"),
             Output(self._get_id("set-dc-center-button"), "color"),
+            Output(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "children", allow_duplicate=True),
+            Output(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "color", allow_duplicate=True),
+            Output(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "disabled", allow_duplicate=True),
+            Output(self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX), "children", allow_duplicate=True),
+            Output(self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX), "color", allow_duplicate=True),
             Input(self._get_id("set-dc-center-button"), "n_clicks"),
+            State(self._get_id("set-dc-center-armed"), "data"),
             prevent_initial_call=True,
         )
-        def _arm_set_dc(_n_clicks):
+        def _toggle_set_dc(_n_clicks, armed):
             da = self._data_acquirer_instance
+
+            if armed:
+                da.start_acquisition()
+                return (
+                    False,
+                    "Set DC point",
+                    "primary",
+                    "Stop",
+                    "danger",
+                    False,
+                    "RUNNING",
+                    "success",
+                )
 
             state = da.get_latest_data()
             status = state.get("status", "unknown").upper()
-
-            # Only allow parking from a live, currently running image
             if status != "RUNNING":
                 raise dash.exceptions.PreventUpdate
 
             da.stop_acquisition()
-
-            return True, "Click new center on plot", "warning"
+            return (
+                True,
+                "Cancel",
+                "danger",
+                "Paused",
+                "secondary",
+                True,
+                "Pick DC point",
+                "secondary",
+            )
 
     def _register_acquisition_control_callback(
         self, app: Dash, orchestrator_stores: Dict[str, Any]
     ) -> None:
         """Registers callback for acquisition control and status updates."""
         from qua_dashboards.video_mode.video_mode_component import VideoModeComponent
-
         main_status_alert_id = orchestrator_stores.get(
             VideoModeComponent._MAIN_STATUS_ALERT_ID_SUFFIX
         )
@@ -668,20 +781,21 @@ class LiveViewTabController(BaseTabController):
                 f"Could not find {VideoModeComponent._MAIN_STATUS_ALERT_ID_SUFFIX} "
                 "in orchestrator_stores. Status synchronization might be affected."
             )
-
         @app.callback(
             Output(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "children"),
             Output(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "color"),
             Output(self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX), "children"),
             Output(self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX), "color"),
             Output(self._get_id("set-dc-center-button"), "disabled"),
+            Output(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "disabled"),
             Input(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "n_clicks"),
             Input(main_status_alert_id, "children"),
             prevent_initial_call=True,
         )
+
         def handle_acquisition_control_and_status_update(
             _toggle_clicks: Any, _status_alert_trigger: Any
-        ) -> tuple[str, str, str, str, bool]:
+        ) -> tuple[str, str, str, str, bool, bool]:
             """
             Handles acquisition toggle and updates UI based on acquirer status.
             """
@@ -697,7 +811,6 @@ class LiveViewTabController(BaseTabController):
                     self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX)
                     == triggered_input_id_obj
                 )
-
             acquirer_state = self._data_acquirer_instance.get_latest_data()
             current_status = acquirer_state.get("status", "unknown").upper()
             error_details = acquirer_state.get("error")
@@ -707,18 +820,17 @@ class LiveViewTabController(BaseTabController):
                 and "STOPPED" in str(_status_alert_trigger).upper()
             ):
                 return (
-                    "Start Acquisition",
+                    "Start",
                     "success",
                     "STOPPED",
                     "secondary",
                     True,
+                    False,
                 )
-
             button_text: str
             button_color: str
             status_text: str
             status_color: str
-
             if is_button_click:
                 logger.debug(
                     f"LiveViewTab: Toggle acquisition button clicked. "
@@ -730,7 +842,7 @@ class LiveViewTabController(BaseTabController):
                         f"'{self._data_acquirer_instance.component_id}'"
                     )
                     self._data_acquirer_instance.stop_acquisition()
-                    button_text, button_color = "Start Acquisition", "success"
+                    button_text, button_color = "Start", "success"
                     status_text, status_color = "STOPPED", "secondary"
                 else:  # Was STOPPED, ERROR, or UNKNOWN
                     logger.info(
@@ -740,7 +852,7 @@ class LiveViewTabController(BaseTabController):
                     if current_status == "ERROR":
                         self._data_acquirer_instance.reset()
                     self._data_acquirer_instance.start_acquisition()
-                    button_text, button_color = "Stop Acquisition", "danger"
+                    button_text, button_color = "Stop", "danger"
                     status_text, status_color = "RUNNING", "success"
             else:
                 if current_status != "STOPPED":
@@ -749,14 +861,14 @@ class LiveViewTabController(BaseTabController):
                         f"Acquirer status: {current_status}"
                     )
                 if current_status == "RUNNING":
-                    button_text, button_color = "Stop Acquisition", "danger"
+                    button_text, button_color = "Stop", "danger"
                     status_text, status_color = "RUNNING", "success"
                 elif current_status == "STOPPED":
-                    button_text, button_color = "Start Acquisition", "success"
+                    button_text, button_color = "Start", "success"
                     status_text, status_color = "STOPPED", "secondary"
                 elif current_status == "ERROR":
                     button_text, button_color = (
-                        "Start Acquisition",
+                        "Start",
                         "success",
                     )
                     status_text = (
@@ -765,24 +877,19 @@ class LiveViewTabController(BaseTabController):
                     status_text = status_text[:100]
                     status_color = "danger"
                 else:  # Unknown or other states
-                    button_text, button_color = "Start Acquisition", "warning"
+                    button_text, button_color = "Start", "warning"
                     status_text, status_color = current_status, "warning"
-
             set_dc_disabled = status_text != "RUNNING"
-
-            return button_text, button_color, status_text, status_color, set_dc_disabled
+            return button_text, button_color, status_text, status_color, set_dc_disabled, False
 
     def _register_parameter_update_callback(self, app: Dash) -> None:
         """Hybrid callback: pattern-matching for sweep axes, static inputs for inner loop/scan mode."""
-        
         all_acquirer_components = self._data_acquirer_instance.get_components()
         static_components = [
-            comp for comp in all_acquirer_components 
+            comp for comp in all_acquirer_components
             if not hasattr(comp, 'span')  # Exclude SweepAxis components
             and getattr(comp, 'component_id', None) != 'inner-loop'
         ]
-
-
         static_inputs = []
         static_states = []
         if static_components:
@@ -791,10 +898,9 @@ class LiveViewTabController(BaseTabController):
                 for component in static_components
             ]
             static_states = [
-                State(component._get_id(ALL), "id") 
+                State(component._get_id(ALL), "id")
                 for component in static_components
             ]
-
         @app.callback(
             Output(self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX), "children", allow_duplicate=True),
             Output(self._get_id(self._ACQUIRER_CONTROLS_DIV_ID_SUFFIX), "children", allow_duplicate=True),
@@ -806,22 +912,19 @@ class LiveViewTabController(BaseTabController):
             *static_states,
             prevent_initial_call=True,
         )
+
         def handle_hybrid_parameter_update(*args):
             """Handle both pattern-matched axis parameters and static component parameters."""
-
             num_pattern_inputs = 2
             num_static_inputs = len(static_inputs)
             num_pattern_states = 2
             num_static_states = len(static_states)
-
             pattern_values = args[:num_pattern_inputs]
             static_values = args[num_pattern_inputs:num_pattern_inputs + num_static_inputs]
             pattern_states = args[num_pattern_inputs + num_static_inputs:
                                 num_pattern_inputs + num_static_inputs + num_pattern_states]
             static_states_data = args[num_pattern_inputs + num_static_inputs + num_pattern_states:]
-
             parameters_to_update = {}
-
             toggle_values = pattern_values[1]
             toggle_ids = pattern_states[1]
             rebuild = False
@@ -834,7 +937,6 @@ class LiveViewTabController(BaseTabController):
                         parameters_to_update.setdefault(comp_id, {})[param] = value
                         if param.endswith("dbm-toggle"):
                             rebuild = True
-
             if len(pattern_values) >= 1 and len(pattern_states) >= 1:
                 number_values = pattern_values[0]
                 number_ids = pattern_states[0]
@@ -846,7 +948,6 @@ class LiveViewTabController(BaseTabController):
                                 component_id, param_name = self._parse_param_id(param_key)
                                 if component_id and param_name:
                                     parameters_to_update.setdefault(component_id, {})[param_name] = value
-
             for i, component in enumerate(static_components):
                 if i < len(static_values) and i < len(static_states_data):
                     component_params = self._parse_component_parameters(
@@ -856,10 +957,9 @@ class LiveViewTabController(BaseTabController):
                     )
                     if component_params:
                         parameters_to_update[component.component_id] = component_params
-
             if parameters_to_update:
                 self._data_acquirer_instance.update_parameters(parameters_to_update)
-            if rebuild == True: 
+            if rebuild == True:
                 new_children = self._data_acquirer_instance.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
                 return dash.no_update, new_children
             return dash.no_update, dash.no_update
@@ -873,6 +973,7 @@ class LiveViewTabController(BaseTabController):
             return None, None
         except:
             return None, None
+
     @staticmethod
     def _parse_component_parameters(
         component_id: Union[str, dict],
@@ -881,7 +982,6 @@ class LiveViewTabController(BaseTabController):
     ) -> Dict[str, Any]:
         if not values or not ids:
             return {}
-
         current_type_params: Dict[str, Any] = {}
         for idx, param_id_dict in enumerate(ids):
             if isinstance(param_id_dict, dict) and "index" in param_id_dict:

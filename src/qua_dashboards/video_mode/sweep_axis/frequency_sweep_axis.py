@@ -70,19 +70,20 @@ class FrequencySweepAxis(BaseSweepAxis):
 
     def create_axis_layout(self, min_span: float, max_span: Optional[float] = None):
         col = super().create_axis_layout(min_span=min_span, max_span=max_span)
-        # Use pattern-matching IDs instead of regular IDs
-        ids = {
-            "offset": {"type": "number-input", "index": f"{self.component_id}::offset"},
+
+        offset_id = {
+            "type": "number-input",
+            "index": f"{self.component_id}::offset",
         }
-        offset_input = create_input_field(
-            id=ids["offset"],
-            label="Offset",
-            value=self.offset,
-            input_style={"width": "150px"},
-            units=self.units if self.units is not None else "",
+
+        col.children.children.append(
+            self._create_parameter_row(
+                label="Offset",
+                input_id=offset_id,
+                value=self.offset,
+                units=self.units or "",
+            )
         )
-        body = col.children.children[0]
-        body.children.extend([offset_input])
 
         return col
 

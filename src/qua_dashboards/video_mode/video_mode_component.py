@@ -193,10 +193,73 @@ class VideoModeComponent(BaseComponent):
         """Generates a namespaced Dash component ID for internal stores."""
         return self._get_id(suffix)
 
+    def _build_saving_section(self):
+        return html.Div(
+            [
+                html.H6("Saving", className="text-light mb-2"),
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            dbc.Button(
+                                "Save Data",
+                                id=self._get_id("save-button"),
+                                color="success",
+                                style={
+                                    "width": "100%",
+                                    "height": "38px",
+                                },
+                            ),
+                            width=4,
+                        ),
+                        dbc.Col(
+                            dbc.Button(
+                                "Save QUAM State",
+                                id=self._get_id("save-quam-button"),
+                                color="info",
+                                style={
+                                    "width": "100%",
+                                    "height": "38px",
+                                },
+                            ),
+                            width=4,
+                        ),
+                        dbc.Col(
+                            dcc.Input(
+                                value=self.save_path,
+                                id=self._get_id("save-quam-path"),
+                                className="form-control",
+                                debounce=True,
+                                placeholder="C:/Users/ ...",
+                                style={"width": "100%"},
+                            ),
+                            width=4,
+                        ),
+                    ],
+                    className="g-2",
+                ),
+                html.Div(
+                    id=self._get_id(self._MAIN_STATUS_ALERT_ID_SUFFIX),
+                    style={
+                        "marginTop": "6px",
+                        "fontSize": "0.8rem",
+                    },
+                ),
+                # Keep the notes component hidden so existing save callbacks
+                # remain compatible while notes are removed from the Live View UI.
+                dcc.Textarea(
+                    id=self._get_id("save-notes-textarea"),
+                    value="",
+                    style={"display": "none"},
+                ),
+            ],
+            className="mb-0",
+        )
+
     def get_layout(self) -> Component:
         """Generates the Dash layout for the VideoModeComponent."""
         logger.debug(f"Generating layout for VideoModeComponent '{self.component_id}'")
 
+        saving_section = self._build_saving_section()
         tabs_children = []
         if not self.tab_controllers:
             tabs_children.append(
@@ -213,6 +276,9 @@ class VideoModeComponent(BaseComponent):
             )
         else:
             for tc in self.tab_controllers:
+                if isinstance(tc, LiveViewTabController):
+                    tc.saving_section = saving_section
+
                 tabs_children.append(
                     dcc.Tab(
                         label=tc.get_tab_label(),
@@ -221,7 +287,7 @@ class VideoModeComponent(BaseComponent):
                         children=[
                             html.Div(
                                 tc.get_layout(),  # type: ignore
-                                style={"padding": "10px"},
+                                style={"padding": "10px 0 0 0"},
                                 className="tab-controller-content-wrapper",
                             )
                         ],
@@ -234,69 +300,12 @@ class VideoModeComponent(BaseComponent):
             id=self._get_id(self._TABS_ID_SUFFIX),
             value=self._active_tab_value,
             children=tabs_children,
-            className="mb-3",
+            className="",
             # persistence=True, # Optional: persist active tab
             # persistence_type="session",
         )
 
-        shutdown_button = html.Div([
-            dbc.Button(
-                "CLOSE", 
-                id=self._get_id("shutdown-button"),
-                color="danger", 
-                size="sm", 
-                style={"position": "fixed", "top": "10px", "zIndex": 9999}
-            ), 
-            html.Div(id=self._get_id("shutdown-output"))
-        ])
 
-        bottom_left_row = dbc.Row(
-            [
-                dbc.Col(
-                    dbc.Button(
-                        "Save Data",
-                        id=self._get_id("save-button"),
-                        color="success",
-                        className="me-2",
-                    ),
-                    width=3,
-                ),
-                dbc.Col(
-                    dbc.Button(
-                        "Save QUAM State",
-                        id=self._get_id("save-quam-button"),
-                        color="info",
-                        className="me-2",
-                    ),
-                    width=4,
-                ),
-                dbc.Col(
-                    dcc.Input(
-                        value = self.save_path,
-                        id = self._get_id("save-quam-path"), 
-                        className="form-control me-2 w-150",
-                        debounce=True,
-                        placeholder= r"C:/Users/ ... "
-                    )
-                )
-            ],
-            className="mb-3 g-2 justify-content-start",
-        )
-        notes_row = dbc.Row(
-            dbc.Col(
-                [
-                    dbc.Label("Experiment Notes"), 
-                    dbc.Textarea(
-                        id = self._get_id("save-notes-textarea"), 
-                        rows = 6, 
-                        placeholder = "Add notes about this run (e.g. B_field = 10mT, temp = 20mK)", 
-                        style = {"width": "100%", "minHeight": "200px"},
-                    ),
-                ], 
-                width = 12,
-            ), 
-            className = "mb-3",
-        )
 
         right_panel_viewer = self.shared_viewer.get_layout()
 
@@ -321,51 +330,72 @@ class VideoModeComponent(BaseComponent):
         main_layout = dbc.Container(
             fluid=True,
             children=[
-                html.Div(
-                    id=self._get_id(self._MAIN_STATUS_ALERT_ID_SUFFIX), className="mb-2"
-                ),
                 dbc.Row(
                     [
                         dbc.Col(
                             [
                                 left_panel_controls,
-                                bottom_left_row,
-                                notes_row,
-                                shutdown_button,
                             ],
                             width=12,
-                            lg=4,
+                            lg="auto",
                             className="mb-3 mb-lg-0",
                             style={
-                                "maxHeight": "calc(100vh - 70px)",
+                                "width": "min(580px, 100%)",
+                                "maxWidth": "580px",
+                                "height": "100%",
+                                "minHeight": "0",
                                 "overflowY": "auto",
+                                "overflowX": "hidden",
+                                "flexShrink": "0",
                             },
                         ),
                         dbc.Col(
                             right_panel_viewer,
                             width=12,
-                            lg=8,
+                            lg=True,
                             style={
-                                "maxHeight": "calc(100vh - 70px)",
-                                # "overflowY": "hidden",  # Graph usually handles its own scroll
+                                "minWidth": "0",
+                                "height": "100%",
+                                "minHeight": "0",
+                                "overflow": "hidden",
+                                "display": "flex",
+                                "alignItems": "stretch",
+                                "justifyContent": "stretch",
                             },
                         ),
                     ],
-                    className="g-3",  # Gutters
+                    className="g-3 flex-grow-1",
+                    style={
+                        "flex": "1 1 auto",
+                        "minHeight": "0",
+                        "height": "100%",
+                        "overflow": "hidden",
+                        "alignItems": "stretch",
+                    },
                 ),
                 dcc.Interval(
                     id=self._get_id(self._DATA_POLLING_INTERVAL_ID_SUFFIX),
                     interval=self.data_polling_interval_ms,
                     n_intervals=0,
-                    disabled=False,  # Initially disabled, enabled by acquirer status
+                    disabled=False,
                 ),
                 *shared_stores_for_layout,
                 dcc.Store(
-                id=self._get_store_id("auto-poll-config-store"),
-                data={"poll_ms": self.data_polling_interval_ms},
+                    id=self._get_store_id("auto-poll-config-store"),
+                    data={"poll_ms": self.data_polling_interval_ms},
                 ),
             ],
-            style={"paddingTop": "10px"},
+            style={
+                "height": "100vh",
+                "minHeight": "100vh",
+                "width": "100%",
+                "display": "flex",
+                "flexDirection": "column",
+                "overflow": "hidden",
+                "boxSizing": "border-box",
+                "paddingTop": "5px",
+                "paddingBottom": "0px",
+            },
         )
         return main_layout
 
@@ -428,33 +458,6 @@ class VideoModeComponent(BaseComponent):
         self._register_quam_save_button_callback(app)
 
         @app.callback(
-            Output(self._get_id("shutdown-output"), "children"),
-            Input(self._get_id("shutdown-button"), "n_clicks"),
-            prevent_initial_call=True,
-        )
-        def shutdown_button_cb(n_clicks):
-            if not n_clicks:
-                raise PreventUpdate
-            
-            logger.info("Shutdown button clicked - calling shutdown callback")
-            
-            if self.shutdown_callback:
-                def full_shutdown():
-                    time.sleep(0.3)
-                    
-                    if hasattr(self.data_acquirer, 'shutdown'):
-                        self.data_acquirer.shutdown()
-                    else:
-                        self.data_acquirer.stop_acquisition()
-                    
-                    if self.shutdown_callback:
-                        self.shutdown_callback()
-                
-                threading.Thread(target=full_shutdown, daemon=True).start()
-                return "Shutting down video mode..."
-            else:
-                return "Shutdown not available"
-        @app.callback(
             Output(self._get_id(self._DATA_POLLING_INTERVAL_ID_SUFFIX), "interval"),
             Input(self._get_store_id("auto-poll-config-store"), "data"),
             prevent_initial_call=False,
@@ -504,9 +507,23 @@ class VideoModeComponent(BaseComponent):
 
                 message = self.save_backend.error_message(e)
 
-                return dbc.Alert(message, color="danger", dismissable=True)
+                return dbc.Alert(
+                    message,
+                    color="danger",
+                    dismissable=True,
+                    duration=5000,
+                    className="py-1 px-2 mb-0",
+                    style={"height": "38px", "display": "flex", "alignItems": "center"},
+                )
 
-            return dbc.Alert(message, color="success", dismissable=True)
+            return dbc.Alert(
+                message,
+                color="success",
+                dismissable=True,
+                duration=3000,
+                className="py-1 px-2 mb-0",
+                style={"height": "38px", "display": "flex", "alignItems": "center"},
+            )
 
     def _register_quam_save_button_callback(self, app: Dash) -> None:
         @app.callback(
@@ -540,6 +557,9 @@ class VideoModeComponent(BaseComponent):
                 message,
                 color=color,
                 dismissable=True,
+                duration=3000 if color == "success" else 5000,
+                className="py-1 px-2 mb-0",
+                style={"height": "38px", "display": "flex", "alignItems": "center"},
             )
         @app.callback(
             Output(self._get_id(self._MAIN_STATUS_ALERT_ID_SUFFIX), "children", allow_duplicate = True), 
@@ -554,7 +574,9 @@ class VideoModeComponent(BaseComponent):
                 f"Save Path Updated to {input_path}", 
                 color = "info", 
                 dismissable = True, 
-                duration = 2000
+                duration = 2000,
+                className="py-1 px-2 mb-0",
+                style={"height": "38px", "display": "flex", "alignItems": "center"},
             )
         
     def _register_data_polling_interval_callback(self, app: Dash) -> None:

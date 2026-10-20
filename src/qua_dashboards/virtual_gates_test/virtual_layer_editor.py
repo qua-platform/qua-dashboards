@@ -422,7 +422,7 @@ class VirtualLayerEditor(BaseComponent):
 
             if layer_idx != len(self.gateset.layers) - 1:
                 return (
-                    dbc.Alert("Only the top layer can be deleted.", color="warning"),
+                    dbc.Alert("Only the top layer can be deleted.", color="warning", duration=3000),
                     no_update,
                     False,
                 )
@@ -438,6 +438,7 @@ class VirtualLayerEditor(BaseComponent):
                 dbc.Alert(
                     "Layer deleted (Save QuAM state to keep it).",
                     color="success",
+                    duration=3000,
                 ),
                 (vg_val or 0) + 1,
                 False,
@@ -452,10 +453,10 @@ class VirtualLayerEditor(BaseComponent):
             if not n_clicks:
                 raise PreventUpdate
             if not self.save_path:
-                return dbc.Alert("save_path is not set.", color="danger", dismissable=True)
+                return dbc.Alert("save_path is not set.", color="danger", dismissable=True, duration=3000)
             try:
                 machine = self.gateset.get_root()
                 machine.save(self.save_path)
-                return dbc.Alert(f"Saved to {self.save_path}", color="success", dismissable=True)
+                return dbc.Alert(f"Saved to {self.save_path}", color="success", dismissable=True, duration=3000)
             except Exception as e:
-                return dbc.Alert(f"Save failed: {e}", color="danger", dismissable=True)
+                return dbc.Alert(f"Save failed: {e}", color="danger", dismissable=True, duration=3000)

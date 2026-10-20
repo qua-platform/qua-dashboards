@@ -74,10 +74,8 @@ class AmplitudeSweepAxis(BaseSweepAxis):
         pass
 
     def create_axis_layout(self, min_span: float, max_span: Optional[float] = None):
-        """Modified to use pattern-matching IDs"""
-
         col = super().create_axis_layout(min_span=min_span, max_span=max_span)
-        # Use pattern-matching IDs instead of regular IDs
+
         ids = {
             "offset": {"type": "number-input", "index": f"{self.component_id}::offset"},
             "dbm-toggle": {
@@ -85,32 +83,40 @@ class AmplitudeSweepAxis(BaseSweepAxis):
                 "index": f"{self.component_id}::dbm-toggle",
             },
         }
-        toggle = dbc.Row(
-            [
-                dbc.Col("V", width="auto", className="me-2"),
-                dbc.Col(
-                    dbc.Checklist(
-                        id=ids["dbm-toggle"],
-                        options=[{"label": "", "value": "on"}],
-                        value=["on"] if self.dbm else [],
-                        switch=True,
-                    ),
-                    width="auto",
-                ),
-                dbc.Col("dBm", width="auto", className="ms-2"),
-            ],
-            className="align-items-center g-1",
+
+        col.children.children.append(
+            self._create_parameter_row(
+                label="Offset",
+                input_id=ids["offset"],
+                value=self.offset,
+                units=self.units or "",
+            )
         )
 
-        offset_input = create_input_field(
-            id=ids["offset"],
-            label="Offset",
-            value=self.offset,
-            input_style={"width": "150px"},
-            units=self.units if self.units is not None else "",
+        col.children.children.append(
+            dbc.Row(
+                [
+                    dbc.Col(
+                        "Units",
+                        width="auto",
+                        style={"width": "72px", "flex": "0 0 72px"},
+                    ),
+                    dbc.Col("V", width="auto", className="px-0"),
+                    dbc.Col(
+                        dbc.Checklist(
+                            id=ids["dbm-toggle"],
+                            options=[{"label": "", "value": "on"}],
+                            value=["on"] if self.dbm else [],
+                            switch=True,
+                            className="mb-0",
+                        ),
+                        width="auto",
+                    ),
+                    dbc.Col("dBm", width="auto", className="px-0"),
+                ],
+                className="g-2 align-items-center mb-2 flex-nowrap",
+            )
         )
-        body = col.children.children[0]
-        body.children.extend([offset_input, toggle])
 
         return col
 

@@ -721,6 +721,8 @@ class AnnotationTabController(BaseTabController):
                 
                 name = selector = duration = component_id = custom_name = None
                 for sid, val in zip(spv_ids or [], spv_vals or []):
+                    if not isinstance(sid, dict):
+                        continue
                     if sid.get("field") == "name": name = val
                     elif sid.get("field") == "selector": selector = val
                     elif sid.get("field") == "duration": duration = None if val in (None, "") else float(val)
@@ -773,27 +775,18 @@ class AnnotationTabController(BaseTabController):
                         if not name:
                             raise ValueError("No point name")
 
+                        # Annotation coordinates are the OPX sweep excursions shown on
+                        # the Video Mode axes (relative to the current DC operating point).
+                        # Store them directly for the VirtualGateSet. VirtualDCSet.add_point
+                        # will add the current DC level when relative_to_current=True.
                         ac_voltages_dict = {}
-                        dc_voltages_dict = {}
                         if axis_modes.get("x_mode") == "voltage":
-                            x_sweep_axis = self._data_acquirer.x_axis
-                            if x_sweep_axis.offset_parameter: 
-                                x_dc_offset = float(x_sweep_axis.offset_parameter.get_latest())
-                            else: 
-                                x_dc_offset = 0
                             gate = self._data_acquirer.x_axis.name
-                            dc_voltages_dict[gate] = float(x_dc_offset)
-                            ac_voltages_dict[gate] = float(point["x"]) - x_dc_offset
+                            ac_voltages_dict[gate] = float(point["x"])
                         if axis_modes.get("y_mode") == "voltage":
-                            y_sweep_axis = self._data_acquirer.y_axis
-                            if y_sweep_axis.offset_parameter: 
-                                y_dc_offset = float(y_sweep_axis.offset_parameter.get_latest())
-                            else: 
-                                y_dc_offset = 0
                             gate = self._data_acquirer.y_axis.name
-                            dc_voltages_dict[gate] = float(y_dc_offset)
                             if gate != "dummy":
-                                ac_voltages_dict[gate] = float(point["y"]) - y_dc_offset
+                                ac_voltages_dict[gate] = float(point["y"])
                         if not ac_voltages_dict:
                             raise ValueError("No voltage axes found")
                         dc_set = None
@@ -804,7 +797,12 @@ class AnnotationTabController(BaseTabController):
                         if component_id is None: 
                             vgs.add_point(name, ac_voltages_dict, duration=duration)
                             if dc_set is not None: 
-                                dc_set.add_point(name, dc_voltages_dict, duration = duration)
+                                dc_set.add_point(
+                                    name,
+                                    ac_voltages_dict,
+                                    duration=duration,
+                                    relative_to_current=True,
+                                )
                             return dbc.Alert("Update Applied", color = "success", dismissable = True, duration = 4000)
 
                         # If component is not in the machine, it would not be an option anyway. 
@@ -816,7 +814,12 @@ class AnnotationTabController(BaseTabController):
                                 )
                                 if dc_set is not None: 
                                     dc_full_name = f"{component_id}_{name}"
-                                    dc_set.add_point(dc_full_name, dc_voltages_dict, duration = duration)
+                                    dc_set.add_point(
+                                        dc_full_name,
+                                        ac_voltages_dict,
+                                        duration=duration,
+                                        relative_to_current=True,
+                                    )
                                     return dbc.Alert(
                                         f"Point '{component_id}_{name}' added via {type(component).__name__} '{component_id}'",
                                         color = "success"
@@ -828,7 +831,12 @@ class AnnotationTabController(BaseTabController):
                             full_name = f"{component_id}_{name}"
                             vgs.add_point(full_name, ac_voltages_dict, duration=duration)
                             if dc_set is not None:
-                                dc_set.add_point(full_name, dc_voltages_dict, duration=duration)
+                                dc_set.add_point(
+                                    full_name,
+                                    ac_voltages_dict,
+                                    duration=duration,
+                                    relative_to_current=True,
+                                )
                             return dbc.Alert(f"Point '{full_name}' added to GateSet (component has no add_point method)", 
                                              color = "warning")
                     elif action == "frequency":

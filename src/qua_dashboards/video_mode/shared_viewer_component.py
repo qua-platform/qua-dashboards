@@ -23,6 +23,7 @@ class SharedViewerComponent(BaseComponent):
     """
 
     _MAIN_GRAPH_ID_SUFFIX = "main-graph"
+    _VIEWER_CONTAINER_ID_SUFFIX = "viewer-container"
 
     def __init__(self, component_id: str, **kwargs: Any) -> None:
         """Initializes the SharedViewerComponent.
@@ -45,25 +46,49 @@ class SharedViewerComponent(BaseComponent):
         """
         return go.Figure().update_layout(template="plotly_dark")
 
+    @staticmethod
+    def _viewer_grid_shape(data_object: Optional[dict]) -> tuple[int, int]:
+        """Return (rows, cols) for the current readout grid."""
+        base = None
+        if isinstance(data_object, dict):
+            base = data_object.get("base_image_data")
+            if base is None:
+                base = data_object.get("data")
+
+        try:
+            if base is not None and "readout" in base.dims:
+                n = int(base.sizes["readout"])
+            else:
+                n = 1
+        except Exception:
+            n = 1
+
+        if n <= 1:
+            return 1, 1
+        if n == 2:
+            return 1, 2
+        return (n + 1) // 2, 2
+
+    @classmethod
+    def _viewer_container_style(cls, data_object: Optional[dict] = None) -> Dict[str, str]:
+        """Fill the space provided by VideoModeComponent."""
+        return {
+            "width": "100%",
+            "height": "100%",
+            "minWidth": "0",
+            "minHeight": "0",
+            "flex": "1 1 auto",
+        }
+
     def get_layout(self) -> html.Div:
-        viewer_size = "min(calc(100vh - 160px), 900px)"
         return html.Div(
-            style={
-                "width": viewer_size,
-                "height": viewer_size,
-                "maxWidth": "100%",
-                "maxHeight": viewer_size,
-                "marginLeft": "auto",
-                "marginRight": "auto",
-            },
+            id=self._get_id(self._VIEWER_CONTAINER_ID_SUFFIX),
+            style=self._viewer_container_style(),
             children=[
                 dcc.Graph(
                     id=self._get_id(self._MAIN_GRAPH_ID_SUFFIX),
                     figure=self._current_figure,
-                    style={
-                        "height": "100%",
-                        "width": "100%",
-                    },
+                    style={"height": "100%", "width": "100%"},
                     responsive=True,
                     config={
                         "scrollZoom": True,
@@ -98,17 +123,22 @@ class SharedViewerComponent(BaseComponent):
             y_range = [float(min(y_vals)), float(max(y_vals))]
             break
 
-        x_axis = {"constrain": "domain", "autorange": False}
-        y_axis = {"constrain": "domain", "autorange": False}
+        # Line-profile figures do not contain a heatmap. In that case, leave
+        # Plotly autorange untouched; forcing autorange=False without an explicit
+        # range produces the oversized/default axis range seen in profile mode.
+        if x_range is None or y_range is None:
+            return fig
 
-        if x_range is not None:
-            x_axis["range"] = x_range
-
-        if y_range is not None:
-            y_axis["range"] = y_range
-
-        fig.update_xaxes(**x_axis)
-        fig.update_yaxes(**y_axis)
+        fig.update_xaxes(
+            range=x_range,
+            constrain="domain",
+            autorange=False,
+        )
+        fig.update_yaxes(
+            range=y_range,
+            constrain="domain",
+            autorange=False,
+        )
 
         fig.layout.yaxis.scaleanchor = None
 
@@ -190,6 +220,7 @@ class SharedViewerComponent(BaseComponent):
 
         @app.callback(
             Output(self._get_id(self._MAIN_GRAPH_ID_SUFFIX), "figure"),
+            Output(self._get_id(self._VIEWER_CONTAINER_ID_SUFFIX), "style"),
             Input(viewer_data_store_id, "data"),
             Input(viewer_ui_state_store_id, "data"),
             Input(layout_config_store_id, "data"),
@@ -201,8 +232,9 @@ class SharedViewerComponent(BaseComponent):
             viewer_ui_state_input: Optional[Dict[str, Any]],
             layout_updates_input: Optional[Dict[str, Any]],
             current_fig_state_dict: Optional[Dict[str, Any]],
-        ) -> go.Figure:
+        ) -> tuple[go.Figure, Dict[str, str]]:
             fig_to_display = self._get_default_figure()  # Default to empty dark figure
+            viewer_style = self._viewer_container_style()
 
             if viewer_data_ref is None or not isinstance(viewer_data_ref, dict):
                 logger.debug(
@@ -213,7 +245,7 @@ class SharedViewerComponent(BaseComponent):
                 if isinstance(layout_updates_input, dict):
                     fig_to_display.update_layout(layout_updates_input)
                 self._current_figure = fig_to_display  # Store the figure
-                return fig_to_display
+                return fig_to_display, viewer_style
 
             data_key = viewer_data_ref.get("key")
             # version = viewer_data_ref.get("version") # Version can be used for debugging
@@ -224,6 +256,8 @@ class SharedViewerComponent(BaseComponent):
                 )
             else:
                 data_object = data_registry.get_data(data_key)
+                if data_object is not None:
+                    viewer_style = self._viewer_container_style(data_object)
                 if data_object is None:
                     logger.warning(
                         f"SharedViewer ({self.component_id}): Data not found in registry "
@@ -282,7 +316,7 @@ class SharedViewerComponent(BaseComponent):
             #         )
             #     fig_to_display.layout.uirevision = previous_uirevision
             self._current_figure = fig_to_display  # Store the figure
-            return fig_to_display
+            return fig_to_display, viewer_style
 
     def get_figures(self) -> List[go.Figure]:
         """

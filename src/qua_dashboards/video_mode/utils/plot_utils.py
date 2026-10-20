@@ -5,6 +5,133 @@ from qua_dashboards.video_mode.utils.dash_utils import xarray_to_plotly
 from plotly.subplots import make_subplots
 from math import ceil
 
+import math
+
+
+def _clamp01(x: float) -> float:
+    return max(0.0, min(1.0, x))
+
+
+def _make_subplot_boxes_square(
+    fig,
+    rows: int,
+    cols: int,
+    left: float = 0.06,
+    right: float = 0.08,
+    top: float = 0.08,
+    bottom: float = 0.10,
+    hspace: float = 0.04,
+    vspace: float = 0.08,
+):
+    """
+    Make every subplot box square in paper coordinates.
+
+    This makes each subplot panel square visually.
+    It does NOT force the data aspect ratio to 1:1.
+    """
+
+    usable_w = 1.0 - left - right - (cols - 1) * hspace
+    usable_h = 1.0 - top - bottom - (rows - 1) * vspace
+
+    cell_w = usable_w / cols
+    cell_h = usable_h / rows
+    side = min(cell_w, cell_h)
+
+    total_grid_w = cols * side + (cols - 1) * hspace
+    total_grid_h = rows * side + (rows - 1) * vspace
+
+    x0 = left + (usable_w - total_grid_w) / 2
+    y0 = bottom + (usable_h - total_grid_h) / 2
+
+    for r in range(rows):
+        for c in range(cols):
+            idx = r * cols + c + 1
+
+            x_start = x0 + c * (side + hspace)
+            x_end = x_start + side
+
+            # plotly row 1 is the top row
+            y_end = 1.0 - (y0 + r * (side + vspace))
+            y_start = y_end - side
+
+            xaxis_name = "xaxis" if idx == 1 else f"xaxis{idx}"
+            yaxis_name = "yaxis" if idx == 1 else f"yaxis{idx}"
+
+            if hasattr(fig.layout, xaxis_name):
+                getattr(fig.layout, xaxis_name).domain = [_clamp01(x_start),_clamp01(x_end)]
+
+            if hasattr(fig.layout, yaxis_name):
+                getattr(fig.layout, yaxis_name).domain = [_clamp01(y_start),_clamp01(y_end)]
+
+    return fig
+
+
+
+def _axis_ref(axis: str, axis_num: int) -> str:
+    """Return Plotly axis reference name: x, x2, x3, ... / y, y2, y3, ..."""
+    return axis if axis_num == 1 else f"{axis}{axis_num}"
+
+
+def _make_subplot_pixel_square(fig, row: int, col: int, axis_num: int, x_vals, y_vals) -> None:
+    """Keep one subplot plotting box square in screen pixels.
+
+    The data ranges are fixed explicitly, and Plotly is told to satisfy the
+    linked x/y scale by shrinking the axis *domain* rather than expanding a
+    data range. This avoids the extra blank axis area that appeared around
+    3-sensor plots and also keeps a single-sensor plot square.
+    """
+    try:
+        x = np.asarray(x_vals, dtype=float)
+        y = np.asarray(y_vals, dtype=float)
+        x_min, x_max = float(np.nanmin(x)), float(np.nanmax(x))
+        y_min, y_max = float(np.nanmin(y)), float(np.nanmax(y))
+        x_span = x_max - x_min
+        y_span = y_max - y_min
+    except Exception:
+        x_min, x_max = 0.0, 1.0
+        y_min, y_max = 0.0, 1.0
+        x_span = y_span = 1.0
+
+    if not np.isfinite(x_span) or x_span <= 0:
+        x_min, x_max, x_span = 0.0, 1.0, 1.0
+    if not np.isfinite(y_span) or y_span <= 0:
+        y_min, y_max, y_span = 0.0, 1.0, 1.0
+
+    # Keep the physical scan ranges unchanged.  ``constrain=domain`` makes
+    # Plotly resize the plotting box instead of widening one of the ranges.
+    fig.update_xaxes(
+        range=[x_min, x_max],
+        autorange=False,
+        constrain="domain",
+        row=row,
+        col=col,
+    )
+    fig.update_yaxes(
+        range=[y_min, y_max],
+        autorange=False,
+        scaleanchor=_axis_ref("x", axis_num),
+        scaleratio=x_span / y_span,
+        constrain="domain",
+        row=row,
+        col=col,
+    )
+
+
+def _add_subplot_title(fig, title: str, axis_num: int) -> None:
+    """Add a title tied to the subplot's axis domains so it follows resizing."""
+    xref = f'{_axis_ref("x", axis_num)} domain'
+    yref = f'{_axis_ref("y", axis_num)} domain'
+    fig.add_annotation(
+        text=str(title),
+        x=0.5,
+        y=1.04,
+        xref=xref,
+        yref=yref,
+        showarrow=False,
+        xanchor="center",
+        yanchor="bottom",
+        font=dict(size=13),
+    )
 
 def rc(i: int) -> tuple[int, int]:
     """
@@ -16,16 +143,18 @@ def make_readout_subplots_with_profile(
     da: xr.DataArray, profile: dict
 ) -> go.Figure:
     """
-    Builds a multi-subplot figure from a 3D array, with 'readout' as one of the dimensions; except one target subplot if replaced by a profile line plot.
+    Build the same readout grid used by the normal viewer, replacing one
+    sensor panel with its line profile. Heatmap panels stay square and the
+    profile view intentionally hides colorbars to keep the mixed layout clean.
     """
-
     assert isinstance(da, xr.DataArray) and da.ndim == 3 and "readout" in da.dims
+
     y_name, x_name = [d for d in da.dims if d != "readout"]
-    rd_vals = list(da.coords["readout"].values)
-    labels = [str(v) for v in rd_vals]
+    labels = [str(v) for v in da.coords["readout"].values]
     n = len(labels)
-    if "subplot_col" in profile:
-        target_idx = max(0, int(profile["subplot_col"]) - 1)
+
+    if profile.get("subplot_col") is not None:
+        target_idx = max(0, min(int(profile["subplot_col"]) - 1, n - 1))
     else:
         target_label = str(profile.get("readout", labels[0]))
         try:
@@ -33,77 +162,180 @@ def make_readout_subplots_with_profile(
         except ValueError:
             target_idx = 0
 
-    # fig = make_subplots(
-    #     rows=1,
-    #     cols=n,
-    #     subplot_titles=labels,
-    #     horizontal_spacing=min(0.06, 1.0 / (max(n - 1, 1)) - 1e-6),
-    # )
-
     cols = 2 if n > 2 else n
     rows = 1 if n <= 2 else ceil(n / 2)
     fig = make_subplots(
         rows=rows,
         cols=cols,
-        subplot_titles=labels,
-        horizontal_spacing=0.08,
-        vertical_spacing=0.16,
+        horizontal_spacing=0.04 if n > 2 else safe_hspace(n),
+        vertical_spacing=0.12 if rows > 1 else 0.08,
         shared_xaxes=False,
         shared_yaxes=False,
     )
 
     yc, xc = da.coords[y_name], da.coords[x_name]
-    y_lab = yc.attrs.get("long_name", y_name)
-    y_unit = yc.attrs.get("units", "")
-    x_lab = xc.attrs.get("long_name", x_name)
-    x_unit = xc.attrs.get("units", "")
-    y_title = f"{y_lab} ({y_unit})" if y_unit else y_lab
-    x_title = f"{x_lab} ({x_unit})" if x_unit else x_lab
-    for i in range(n):
+    y_units = yc.attrs.get("units")
+    x_units = xc.attrs.get("units")
+    y_title = (
+        f"{yc.attrs.get('long_name', y_name)} ({y_units})"
+        if y_units
+        else yc.attrs.get("long_name", y_name)
+    )
+    x_title = (
+        f"{xc.attrs.get('long_name', x_name)} ({x_units})"
+        if x_units
+        else xc.attrs.get("long_name", x_name)
+    )
+    x_vals = np.asarray(xc.values)
+    y_vals = np.asarray(yc.values)
+
+    for i, label in enumerate(labels):
         r, c = rc(i)
+        axis_num = i + 1
+
         if i == target_idx:
-            s = np.asarray(profile.get("s", []))
-            vals = np.asarray(profile.get("vals", []))
+            s_vals = np.asarray(profile.get("s", []), dtype=float)
+            signal_vals = np.asarray(profile.get("vals", []), dtype=float)
             fig.add_trace(
                 go.Scatter(
-                    x=s,
-                    y=vals,
+                    x=s_vals,
+                    y=signal_vals,
                     mode="lines",
-                    name=f"profile_{labels[i]}",
+                    name=f"profile_{label}",
                     showlegend=False,
                 ),
                 row=r,
                 col=c,
             )
             fig.update_xaxes(
-                title_text=profile.get("x_label", "Distance"), row=r, col=c
+                title_text=profile.get("x_label", "Distance"),
+                autorange=True,
+                row=r,
+                col=c,
             )
             fig.update_yaxes(
-                title_text=profile.get("y_label", "Value"), row=r, col=c
+                title_text=profile.get("y_label", "Signal"),
+                autorange=True,
+                row=r,
+                col=c,
             )
         else:
             sub = da.isel(readout=i).reset_coords("readout", drop=True)
             small = xarray_to_plotly(sub)
             if small.data:
                 tr = small.data[0]
-                tr.update(showscale=(i == n - 1))
+                # A shared colorbar is useful for normal 2D viewing, but in a
+                # mixed heatmap/profile figure it consumes too much layout space.
+                tr.update(showscale=False)
                 try:
                     z = np.asarray(tr["z"])
-                    rows, cols = z.shape
-                    #tr["customdata"] = [[i + 1] * cols for _ in range(rows)]
-                    tr["customdata"] = np.full((rows, cols), i + 1, dtype=np.int16)
+                    z_rows, z_cols = z.shape
+                    tr["customdata"] = np.full(
+                        (z_rows, z_cols), i + 1, dtype=np.int16
+                    )
                 except Exception:
                     pass
                 fig.add_trace(tr, row=r, col=c)
                 fig.update_xaxes(title_text=x_title, row=r, col=c)
-        if c == 1:
-            fig.update_yaxes(title_text=y_title, row=r, col=c)
+                if c == 1:
+                    fig.update_yaxes(title_text=y_title, row=r, col=c)
+                _make_subplot_pixel_square(
+                    fig, r, c, axis_num, x_vals, y_vals
+                )
+
+        _add_subplot_title(fig, label, axis_num)
+
+    # Line-profile views need more breathing room than the normal heatmap
+    # layout so subplot titles, tick labels, and axis titles are not clipped.
+    if n <= 2:
+        left_margin = 70
+        right_margin = 35
+        top_margin = 70
+        bottom_margin = 80
+    else:
+        left_margin = 55
+        right_margin = 30
+        top_margin = 55
+        bottom_margin = 90
+
+    fig.update_xaxes(title_standoff=12)
+    fig.update_yaxes(title_standoff=12)
 
     fig.update_layout(
         template="plotly_dark",
         showlegend=False,
-        margin=dict(l=60, r=30, t=40, b=40),
+        margin=dict(
+            l=left_margin,
+            r=right_margin,
+            t=top_margin,
+            b=bottom_margin,
+        ),
     )
+    return fig
+
+
+def _square_subplot_domains(
+    fig: go.Figure,
+    rows: int,
+    cols: int,
+    *,
+    x_pad: float = 0.06,
+    y_pad: float = 0.10,
+) -> go.Figure:
+    """Keep each cartesian subplot square in screen pixels.
+
+    The outer viewer uses an aspect ratio of ``cols / rows``. Plotly axis
+    domains are normalized independently in x and y, so equal normalized
+    widths/heights are not square when the full figure is rectangular. This
+    helper compensates for the figure aspect ratio while preserving the
+    physical x/y data ranges.
+    """
+    if rows < 1 or cols < 1:
+        return fig
+
+    # The responsive outer viewer is cols:rows (1:1, 2:1, 2:2, ...).
+    figure_aspect = cols / rows  # figure width / figure height
+
+    # Maximum normalized space available to one cell after subplot gaps.
+    max_cell_w = (1.0 - x_pad * max(cols - 1, 0)) / cols
+    max_cell_h = (1.0 - y_pad * max(rows - 1, 0)) / rows
+
+    # For a square in pixels:
+    #   x_domain_width * figure_width == y_domain_height * figure_height
+    # therefore y_domain_height = x_domain_width * figure_aspect.
+    cell_w = min(max_cell_w, max_cell_h / figure_aspect)
+    cell_h = cell_w * figure_aspect
+
+    total_w = cols * cell_w + x_pad * max(cols - 1, 0)
+    total_h = rows * cell_h + y_pad * max(rows - 1, 0)
+    x0 = (1.0 - total_w) / 2.0
+    y0 = (1.0 - total_h) / 2.0
+
+    for idx in range(rows * cols):
+        r = idx // cols
+        c = idx % cols
+        axis_num = idx + 1
+        x_name = "xaxis" if axis_num == 1 else f"xaxis{axis_num}"
+        y_name = "yaxis" if axis_num == 1 else f"yaxis{axis_num}"
+
+        if not hasattr(fig.layout, x_name) or not hasattr(fig.layout, y_name):
+            continue
+
+        x_left = x0 + c * (cell_w + x_pad)
+        x_right = x_left + cell_w
+        y_top = 1.0 - y0 - r * (cell_h + y_pad)
+        y_bottom = y_top - cell_h
+
+        # Clamp tiny floating-point overshoots (e.g. -5e-17 or 1+5e-17)
+        # because Plotly requires axis domains to lie strictly within [0, 1].
+        x_left = max(0.0, min(1.0, x_left))
+        x_right = max(0.0, min(1.0, x_right))
+        y_bottom = max(0.0, min(1.0, y_bottom))
+        y_top = max(0.0, min(1.0, y_top))
+
+        getattr(fig.layout, x_name).domain = [x_left, x_right]
+        getattr(fig.layout, y_name).domain = [y_bottom, y_top]
+
     return fig
 
 def safe_hspace(n: int, default: float = 0.06) -> float:
@@ -225,11 +457,12 @@ def make_readout_line_subplots(da: xr.DataArray) -> go.Figure:
         showlegend=False,
         margin=dict(l=60, r=30, t=40, b=40),
     )
-    return fig
+    return _square_subplot_domains(fig, rows, cols)
 
 def make_readout_subplots(da: xr.DataArray) -> go.Figure:
     """
-    For true 3D data (one dimension is 'readout'), builds 1xN grid of 2Dplots
+    For true 3D data (one dimension is 'readout'), build a 1xN grid of 2D plots.
+    Each plotting box is kept square in screen pixels.
     """
     if not (isinstance(da, xr.DataArray) and da.ndim == 3 and "readout" in da.dims):
         return xarray_to_plotly(da)
@@ -238,19 +471,30 @@ def make_readout_subplots(da: xr.DataArray) -> go.Figure:
     labels = [str(v) for v in da.coords["readout"].values]
     n = len(labels)
 
+    rows = 1
+    cols = n
     fig = make_subplots(
-        rows=1,
-        cols=n,
-        subplot_titles=labels,
+        rows=rows,
+        cols=cols,
         horizontal_spacing=safe_hspace(n),
     )
+
     yc, xc = da.coords[y_name], da.coords[x_name]
     y_units = yc.attrs.get("units")
-    y_title = f"{yc.attrs.get('long_name', y_name)} ({y_units})" if y_units else yc.attrs.get("long_name", y_name)
-
+    y_title = (
+        f"{yc.attrs.get('long_name', y_name)} ({y_units})"
+        if y_units
+        else yc.attrs.get("long_name", y_name)
+    )
     x_units = xc.attrs.get("units")
-    x_title = f"{xc.attrs.get('long_name', x_name)} ({x_units})" if x_units else xc.attrs.get("long_name", x_name)
+    x_title = (
+        f"{xc.attrs.get('long_name', x_name)} ({x_units})"
+        if x_units
+        else xc.attrs.get("long_name", x_name)
+    )
 
+    x_vals = np.asarray(xc.values)
+    y_vals = np.asarray(yc.values)
 
     for i in range(n):
         sub = da.isel(readout=i).reset_coords("readout", drop=True)
@@ -261,19 +505,25 @@ def make_readout_subplots(da: xr.DataArray) -> go.Figure:
         tr.update(showscale=(i == n - 1))
         try:
             z = np.asarray(tr["z"])
-            rows, cols = z.shape
-            #tr["customdata"] = [[i + 1] * cols for _ in range(rows)]
-            tr["customdata"] = np.full((rows, cols), i + 1, dtype=np.int16)
+            z_rows, z_cols = z.shape
+            tr["customdata"] = np.full((z_rows, z_cols), i + 1, dtype=np.int16)
         except Exception:
             pass
-        fig.add_trace(tr, row=1, col=i + 1)
-    for col in range(1, n + 1):
+
+        col = i + 1
+        axis_num = i + 1
+        fig.add_trace(tr, row=1, col=col)
         fig.update_xaxes(title_text=x_title, row=1, col=col)
-    fig.update_yaxes(title_text=y_title, row=1, col=1)
+        if col == 1:
+            fig.update_yaxes(title_text=y_title, row=1, col=col)
+
+        _make_subplot_pixel_square(fig, 1, col, axis_num, x_vals, y_vals)
+        _add_subplot_title(fig, labels[i], axis_num)
+
     fig.update_layout(
         template="plotly_dark",
         showlegend=False,
-        margin=dict(l=60, r=30, t=40, b=40),
+        margin=dict(l=50, r=25, t=48, b=52),
     )
     return fig
 
@@ -391,13 +641,16 @@ def figure_with_profile(da: xr.DataArray | None, profile: dict) -> go.Figure:
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=s, y=vals, mode="lines"))
 
-    return fig.update_layout(
+    fig.update_layout(
         template="plotly_dark",
-        margin=dict(l=40, r=10, t=10, b=40),
-        xaxis_title="Arbitrary Units",
+        margin=dict(l=70, r=35, t=60, b=80),
+        xaxis_title=profile.get("x_label", "Distance"),
         yaxis_title=y_label,
         showlegend=False,
     )
+    fig.update_xaxes(autorange=True, title_standoff=12)
+    fig.update_yaxes(autorange=True, title_standoff=12)
+    return fig
 
 def apply_annotations(
     fig: go.Figure,
@@ -472,6 +725,7 @@ def apply_annotations(
                     showlegend=False,
                     hoverinfo="skip",
                     line=dict(width=2, color="white"),
+                    customdata=[[str(ln.get("id", "")), col], [str(ln.get("id", "")), col]],
                 ),
                 col,
             )
@@ -511,7 +765,7 @@ def apply_annotations(
                     marker=dict(
                         size=10, symbol="circle", color="white", line=dict(width=2)
                     ),
-                    customdata=[[pid] for pid in ids],
+                    customdata=[[pid, col] for pid in ids],
                 ),
                 col,
             )
@@ -527,7 +781,7 @@ def apply_annotations(
                         name="annotations_point_labels",
                         showlegend=False,
                         hoverinfo="skip",
-                        customdata=[[pid] for pid in ids],
+                        customdata=[[pid, col] for pid in ids],
                     ),
                     col,
                 )
@@ -557,69 +811,77 @@ def resolve_profile_col(
         except ValueError:
             return None
 
-def build_two_col_readout_grid(data_xr: xr.DataArray) -> go.Figure:
-    """
-    Builds a 2 column wide grid for 3+ readouts acquired
+def build_two_col_readout_grid(da: xr.DataArray) -> go.Figure:
+    """Build a 2-column grid for 3+ readouts with consistent square panels."""
+    assert isinstance(da, xr.DataArray) and da.ndim == 3 and "readout" in da.dims
 
-    Args:
-    data_xr: xr.DaraArray
-        3D array with 'readout' in dims
-    """
-    assert "readout" in data_xr.dims
-    readouts = list(map(str, data_xr.coords["readout"].values))
-    n = len(readouts)
-
-    cols = 2 if n > 2 else n
-    rows = 1 if n <= 2 else ceil(n / 2)
-
-    ydim, xdim = [d for d in data_xr.dims if d != "readout"]
-    x_vals = data_xr.coords.get(xdim, np.arange(data_xr.sizes[xdim])).values
-    y_vals = data_xr.coords.get(ydim, np.arange(data_xr.sizes[ydim])).values
+    y_name, x_name = [d for d in da.dims if d != "readout"]
+    labels = [str(v) for v in da.coords["readout"].values]
+    n = len(labels)
+    cols = 2
+    rows = ceil(n / 2)
 
     fig = make_subplots(
         rows=rows,
         cols=cols,
-        subplot_titles=readouts,
-        horizontal_spacing=0.08,
-        vertical_spacing=0.16,
+        horizontal_spacing=0.04,
+        vertical_spacing=0.12,
         shared_xaxes=False,
         shared_yaxes=False,
     )
-    for i, rname in enumerate(readouts):
-        r = i // 2 + 1
-        c = i % 2 + 1
-        z = data_xr.sel(readout=rname).values
 
-        fig.add_trace(
-            go.Heatmap(
-                x=x_vals,
-                y=y_vals,
-                z=z,
-                showscale=(i == n - 1),
-                name=f"readout_{rname}",
-                customdata=np.full((len(y_vals), len(x_vals)), i + 1),
-                hovertemplate="x=%{x}<br>y=%{y}<br>z=%{z}<extra>"
-                + rname
-                + "</extra>",
-            ),
-            row=r,
-            col=c,
-        )
-
-    for cc in range(1, cols + 1):
-        fig.update_xaxes(
-            title_text=data_xr.coords.get(xdim, {}).attrs.get("label", xdim),
-            row=rows,
-            col=cc,
-        )
-    fig.update_yaxes(
-        title_text=data_xr.coords.get(ydim, {}).attrs.get("label", ydim),
-        row=1,
-        col=1,
+    yc, xc = da.coords[y_name], da.coords[x_name]
+    y_units = yc.attrs.get("units")
+    y_title = (
+        f"{yc.attrs.get('long_name', y_name)} ({y_units})"
+        if y_units
+        else yc.attrs.get("long_name", y_name)
     )
+    x_units = xc.attrs.get("units")
+    x_title = (
+        f"{xc.attrs.get('long_name', x_name)} ({x_units})"
+        if x_units
+        else xc.attrs.get("long_name", x_name)
+    )
+
+    x_vals = np.asarray(xc.values)
+    y_vals = np.asarray(yc.values)
+
+    for i, label in enumerate(labels):
+        row, col = rc(i)
+        axis_num = i + 1
+
+        sub = da.isel(readout=i).reset_coords("readout", drop=True)
+        small = xarray_to_plotly(sub)
+        if not small.data:
+            continue
+
+        tr = small.data[0]
+        tr.update(showscale=(i == n - 1))
+        try:
+            z = np.asarray(tr["z"])
+            z_rows, z_cols = z.shape
+            tr["customdata"] = np.full((z_rows, z_cols), i + 1, dtype=np.int16)
+        except Exception:
+            pass
+
+        fig.add_trace(tr, row=row, col=col)
+        fig.update_xaxes(title_text=x_title, row=row, col=col)
+        if col == 1:
+            fig.update_yaxes(title_text=y_title, row=row, col=col)
+
+        _make_subplot_pixel_square(fig, row, col, axis_num, x_vals, y_vals)
+        _add_subplot_title(fig, label, axis_num)
+
+    # Multi-row (3/4-sensor) layouts need a little more room below the
+    # bottom row for x tick labels and the x-axis title. Keep the 1-row
+    # layout unchanged so 1/2-sensor plots retain their current size.
+    bottom_margin = 82 if rows > 1 else 52
 
     fig.update_layout(
         template="plotly_dark",
-        margin=dict(l=40, r=40, t=60, b=40),
+        showlegend=False,
+        margin=dict(l=50, r=25, t=48, b=bottom_margin),
     )
     return fig
+

@@ -41,6 +41,20 @@ class VirtualLayerEditor(BaseComponent):
         """Returns gateset or dc_set based on current selection. Default is gateset"""
         return getattr(self, "_current_target_set", self.gateset)
     
+    @staticmethod
+    def _clean_display_value(value, tol=1e-10):
+        """Normalize floating-point noise for matrix values shown in the UI only.
+
+        The stored QuAM matrix is left untouched. Values extremely close to an
+        integer are displayed as that integer; otherwise only insignificant
+        floating-point noise is removed.
+        """
+        value = float(value)
+        nearest_int = round(value)
+        if abs(value - nearest_int) < tol:
+            return nearest_int
+        return round(value, 10)
+
     def _render_matrix_editor(self, layer_idx, use_dc=False):
         target_set = self.dc_set if (use_dc and self.dc_set) else self.gateset
 
@@ -53,6 +67,10 @@ class VirtualLayerEditor(BaseComponent):
         layer = target_set.layers[layer_idx]
 
         matrix_shown = to_apply_matrix(layer.matrix)
+        matrix_shown = [
+            [self._clean_display_value(value) for value in row]
+            for row in matrix_shown
+        ]
 
         header = html.Tr(
             [
@@ -233,11 +251,16 @@ class VirtualLayerEditor(BaseComponent):
                     centered=True,
                 ),
                 html.Div(id=f"{self.component_id}-edit-output", style={"display": "none"}),
+                html.Div(id=f"{self.component_id}-blur-output", style={"display": "none"}),
                 html.Div(id=f"{self.component_id}-save-status", className="mt-2")
             ])
         ])
 
         return html.Div([
+            dcc.Store(
+                id=f"{self.component_id}-layer-refresh-trigger",
+                data=0,
+            ),
             self._adder.get_layout(), 
             opx_dc_toggle_switch,
             editor_card, 
@@ -246,6 +269,33 @@ class VirtualLayerEditor(BaseComponent):
 
     def register_callbacks(self, app):
         self._adder.register_callbacks(app)
+
+        # When Enter is pressed in any matrix cell, the server-side callback below
+        # applies the matrix. This small client-side callback removes focus from
+        # the active input so the UI clearly indicates that the edit was submitted.
+        app.clientside_callback(
+            """
+            function(n_submit) {
+                if (!n_submit || !n_submit.some(function(v) { return v > 0; })) {
+                    return window.dash_clientside.no_update;
+                }
+
+                setTimeout(function() {
+                    if (document.activeElement && document.activeElement.blur) {
+                        document.activeElement.blur();
+                    }
+                }, 0);
+
+                return Date.now();
+            }
+            """,
+            Output(f"{self.component_id}-blur-output", "children"),
+            Input(
+                {"type": "edit-matrix-cell", "layer": ALL, "row": ALL, "col": ALL},
+                "n_submit",
+            ),
+            prevent_initial_call=True,
+        )
 
         @app.callback(
             Output(f"{self.component_id}-layer-matrix-editor", "children"),

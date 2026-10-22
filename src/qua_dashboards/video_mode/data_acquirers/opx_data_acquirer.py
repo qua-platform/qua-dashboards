@@ -111,6 +111,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
             )
         else:
             self.inner_loop_action = inner_loop_action
+
         self._compiled_xy = None
         # Caching the scan mode indices for faster python side operation
         self._scan_idx_cache: Optional[Tuple[Tuple[int,int,int], np.ndarray, np.ndarray]] = None

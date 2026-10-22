@@ -34,6 +34,7 @@ class LiveViewTabController(BaseTabController):
     _ACQUIRER_STATUS_INDICATOR_ID_SUFFIX = "acquirer-status-indicator"
     _DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX = "dummy-output-acquirer-updates"
     _GATE_AXIS_REFRESH_INTERVAL_SUFFIX = "gate-axis-refresh-interval"
+    _NUM_PULSE_OFFSET_SLOTS = 5
 
     def __init__(
         self,
@@ -65,6 +66,228 @@ class LiveViewTabController(BaseTabController):
         logger.info(
             f"LiveViewTabController '{self.component_id}' initialized with "
             f"Data Acquirer '{self._data_acquirer_instance.component_id}'."
+        )
+
+    def _scan_supports_fast_axis_direction(self) -> bool:
+        """Return True when the currently selected scan mode has a directional fast axis."""
+        scan_mode = getattr(self._data_acquirer_instance, "scan_mode", None)
+        return scan_mode is not None and hasattr(scan_mode, "fast_axis_direction")
+
+    @staticmethod
+    def _component_contains_id_fragment(component: Any, fragment: str) -> bool:
+        """Recursively check whether a Dash component tree contains an ID fragment."""
+        if component is None:
+            return False
+
+        component_id = getattr(component, "id", None)
+        if component_id is not None and fragment in str(component_id):
+            return True
+
+        children = getattr(component, "children", None)
+        if children is None:
+            return False
+        if isinstance(children, (list, tuple)):
+            return any(
+                LiveViewTabController._component_contains_id_fragment(child, fragment)
+                for child in children
+            )
+        return LiveViewTabController._component_contains_id_fragment(children, fragment)
+
+    def _build_swap_xy_row(self) -> dbc.Row:
+        """Build a compact Swap X/Y button aligned below the Y Points control."""
+        return dbc.Row(
+            [
+                dbc.Col(html.Div(), width=2),
+                dbc.Col(html.Div(), width=5),
+                dbc.Col(
+                    html.Div(
+                        dbc.Button(
+                            "⇄ Swap",
+                            id=self._get_id("swap-xy-button"),
+                            color="secondary",
+                            outline=True,
+                            size="sm",
+                            style={
+                                "width": "50%",
+                                "minWidth": "78px",
+                                "height": "32px",
+                                "whiteSpace": "nowrap",
+                            },
+                        ),
+                        className="d-flex justify-content-end",
+                    ),
+                    width=5,
+                ),
+            ],
+            className="g-2 mb-2 align-items-center",
+        )
+
+    def _build_fast_axis_direction_row(self) -> dbc.Row:
+        """Build the fast-axis direction control inside Acquirer Parameters."""
+        scan_mode = getattr(self._data_acquirer_instance, "scan_mode", None)
+        direction = str(
+            getattr(scan_mode, "fast_axis_direction", "forward")
+        ).lower()
+        is_reverse = direction == "reverse"
+
+        return dbc.Row(
+            [
+                dbc.Col(
+                    "Fast-axis direction",
+                    width=4,
+                    className="d-flex align-items-center",
+                ),
+                dbc.Col(
+                    dbc.Button(
+                        "← Reverse" if is_reverse else "→ Forward",
+                        id=self._get_id("fast-axis-direction-button"),
+                        color="warning" if is_reverse else "secondary",
+                        outline=True,
+                        size="sm",
+                        style={
+                            "minWidth": "125px",
+                            "height": "36px",
+                            "whiteSpace": "nowrap",
+                        },
+                    ),
+                    width="auto",
+                ),
+            ],
+            id=self._get_id("fast-axis-direction-row"),
+            className="g-2 mb-2 align-items-center",
+            style={} if self._scan_supports_fast_axis_direction() else {"display": "none"},
+        )
+
+    def _build_acquirer_controls(self):
+        """Order Live View controls as axes -> direction -> software averages -> others."""
+        if not self._data_acquirer_instance:
+            return [html.P("Data acquirer components could not be loaded.")]
+
+        raw_controls = list(
+            self._data_acquirer_instance.get_dash_components(
+                include_subcomponents=True,
+                include_inner_loop_controls=self._show_inner_loop_controls,
+            )
+        )
+
+        axis_controls = []
+        software_average_controls = []
+        other_controls = []
+
+        for control in raw_controls:
+            if self._component_contains_id_fragment(control, "gate-select-x"):
+                axis_controls.append(control)
+            elif self._component_contains_id_fragment(control, "num_software_averages"):
+                software_average_controls.append(control)
+            else:
+                other_controls.append(control)
+
+        return (
+            axis_controls
+            + [self._build_swap_xy_row()]
+            + [self._build_fast_axis_direction_row()]
+            + software_average_controls
+            + other_controls
+        )
+
+    def _get_pulse_offset_gate_names(self):
+        """Return physical and virtual gate names while preserving GateSet ordering."""
+        gate_set = getattr(self._data_acquirer_instance, "gate_set", None)
+        if gate_set is None:
+            return [], []
+
+        physical_gate_names = list(getattr(gate_set, "channels", {}).keys())
+        valid_names = list(getattr(gate_set, "valid_channel_names", []) or [])
+        physical_name_set = set(physical_gate_names)
+        virtual_gate_names = [
+            name for name in valid_names if name not in physical_name_set
+        ]
+        return physical_gate_names, virtual_gate_names
+
+    def _build_pulse_offsets_section(self):
+        """Build five optional physical/virtual-gate pulse-offset controls."""
+        inner = getattr(self._data_acquirer_instance, "inner_loop_action", None)
+        current_offsets = dict(getattr(inner, "pulse_offsets", {}) or {})
+        current_items = list(current_offsets.items())[: self._NUM_PULSE_OFFSET_SLOTS]
+
+        physical_gate_names, virtual_gate_names = self._get_pulse_offset_gate_names()
+        selectable_gate_names = physical_gate_names + virtual_gate_names
+
+        gate_options = [{"label": "None", "value": ""}]
+        if physical_gate_names:
+            gate_options.append(
+                {"label": "Physical", "value": "__physical_header__", "disabled": True}
+            )
+            gate_options.extend(
+                {"label": name, "value": name} for name in physical_gate_names
+            )
+        if virtual_gate_names:
+            gate_options.append(
+                {"label": "Virtual", "value": "__virtual_header__", "disabled": True}
+            )
+            gate_options.extend(
+                {"label": name, "value": name} for name in virtual_gate_names
+            )
+
+        rows = []
+        for slot in range(self._NUM_PULSE_OFFSET_SLOTS):
+            if slot < len(current_items):
+                gate_name, offset_value = current_items[slot]
+            else:
+                gate_name, offset_value = "", 0.0
+
+            rows.append(
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            dcc.Dropdown(
+                                id=self._get_id(f"pulse-offset-gate-{slot}"),
+                                options=gate_options,
+                                value=gate_name if gate_name in selectable_gate_names else "",
+                                clearable=False,
+                                searchable=True,
+                                placeholder="Gate",
+                                style={
+                                    "color": "#212529",
+                                    "width": "100px",
+                                    "height": "38px",
+                                },
+                            ),
+                            width="auto",
+                            className="pe-0",
+                        ),
+                        dbc.Col(
+                            dbc.InputGroup(
+                                [
+                                    dbc.Input(
+                                        id=self._get_id(f"pulse-offset-value-{slot}"),
+                                        type="number",
+                                        value=float(offset_value),
+                                        step="any",
+                                        debounce=True,
+                                        disabled=not bool(gate_name),
+                                        style={"width": "78px"},
+                                    ),
+                                    dbc.InputGroupText("V"),
+                                ],
+                                size="sm",
+                                style={"width": "112px",
+                                       "height": "38px"
+                                },
+                            ),
+                            width="auto",
+                        ),
+                    ],
+                    className="g-2 mb-2 align-items-center justify-content-start",
+                )
+            )
+
+        return html.Div(
+            [
+                html.H6("Pulse offsets", className="text-light mb-2"),
+                html.Div(rows),
+            ],
+            className="mb-2",
         )
 
     def get_layout(self) -> dbc.Card:
@@ -141,14 +364,7 @@ class LiveViewTabController(BaseTabController):
             ],
             className="mb-2",
         )
-        acquirer_specific_controls = (
-            self._data_acquirer_instance.get_dash_components(
-                include_subcomponents=True,
-                include_inner_loop_controls=self._show_inner_loop_controls,
-            )
-            if self._data_acquirer_instance
-            else [html.P("Data acquirer components could not be loaded.")]
-        )
+        acquirer_specific_controls = self._build_acquirer_controls()
         acquirer_section = html.Div(
             [
                 html.H6("Acquirer Parameters", className="text-light mb-2"),
@@ -160,6 +376,7 @@ class LiveViewTabController(BaseTabController):
             ],
             className="mb-2",
         )
+        pulse_offsets_section = self._build_pulse_offsets_section()
         display_section = html.Div(
             [
                 html.H6("Display helper", className="text-light mb-2"),
@@ -237,6 +454,8 @@ class LiveViewTabController(BaseTabController):
             acquisition_section,
             html.Hr(className="my-3"),
             acquirer_section,
+            html.Hr(className="my-3"),
+            pulse_offsets_section,
             html.Hr(className="my-3"),
             display_section,
         ]
@@ -326,6 +545,12 @@ class LiveViewTabController(BaseTabController):
         self._register_gridlines_callback(app, shared_viewer_store_ids)
         self._register_readoutparams_callback(app)
         self._register_mode_callback(app)
+        self._register_fast_axis_direction_callback(app)
+        self._register_swap_xy_callback(app)
+        self._register_pulse_offsets_callback(app)
+        self._register_fast_axis_direction_visibility_callback(
+            app, orchestrator_stores.get("control-tabs")
+        )
         if shared_viewer_graph_id is not None:
             self._register_click_to_centre_callback(app, shared_viewer_graph_id, tabs_id=orchestrator_stores.get("control-tabs"),)
 
@@ -665,36 +890,85 @@ class LiveViewTabController(BaseTabController):
                 da.y_axis_name,
             )
 
+    def _pause_for_axis_change(self) -> bool:
+        """Pause acquisition before changing the scan coordinate system.
+
+        Returns True when acquisition was running and was stopped by this call.
+        Numeric changes such as span/points/offset do not use this helper and
+        therefore keep their existing live-update behaviour.
+        """
+        da = self._data_acquirer_instance
+        state = da.get_latest_data() or {}
+        was_running = str(state.get("status", "")).lower() == "running"
+        if was_running:
+            logger.info(
+                "Pausing acquisition before changing the X/Y scan coordinate system."
+            )
+            da.stop_acquisition()
+        return was_running
+
     def _register_gate_selection_callback(
             self, app:Dash
     ) -> None:
-        """Registers callback for gate selection"""
+        """Pause a running scan when the selected X or Y axis changes."""
         @app.callback(
             Output(self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX), "children", allow_duplicate=True),
             Output(self._get_id(self._ACQUIRER_CONTROLS_DIV_ID_SUFFIX), "children", allow_duplicate=True),
+            Output(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "children", allow_duplicate=True),
+            Output(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "color", allow_duplicate=True),
+            Output(self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX), "children", allow_duplicate=True),
+            Output(self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX), "color", allow_duplicate=True),
+            Output(self._get_id("set-dc-center-button"), "disabled", allow_duplicate=True),
             Input(self._data_acquirer_instance._get_id("gate-select-x"), "value"),
             Input(self._data_acquirer_instance._get_id("gate-select-y"), "value"),
             prevent_initial_call = True
         )
 
         def on_gate_select(x_gate, y_gate):
+            da = self._data_acquirer_instance
+
+            # Dynamic control rebuilds can fire the dropdown callbacks even when
+            # the effective selection did not change. Do not pause in that case.
+            if x_gate == da.x_axis_name and y_gate == da.y_axis_name:
+                raise dash.exceptions.PreventUpdate
+
             logger.info(f"New Gate Selected: x_axis {x_gate}, y_axis {y_gate}")
+            was_running = self._pause_for_axis_change()
+
             params = {
-                self._data_acquirer_instance.component_id: {
+                da.component_id: {
                     "gate-select-x": x_gate,
                     "gate-select-y": y_gate
                 }
             }
-            self._data_acquirer_instance.update_parameters(params)
-            return "", self._data_acquirer_instance.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
+            da.update_parameters(params)
+            children = self._build_acquirer_controls()
+
+            if was_running:
+                return "", children, "Start", "success", "STOPPED", "secondary", True
+
+            return (
+                "",
+                children,
+                dash.no_update,
+                dash.no_update,
+                dash.no_update,
+                dash.no_update,
+                dash.no_update,
+            )
 
     def _register_mode_callback(
             self, app: Dash
     ) -> None:
-        """Registers callback for mode selection"""
+        """Pause a running scan when the X or Y sweep mode changes."""
         @app.callback(
             Output(self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX), "children", allow_duplicate=True),
             Output(self._get_id(self._ACQUIRER_CONTROLS_DIV_ID_SUFFIX), "children", allow_duplicate=True),
+            Output(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "children", allow_duplicate=True),
+            Output(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "color", allow_duplicate=True),
+            Output(self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX), "children", allow_duplicate=True),
+            Output(self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX), "color", allow_duplicate=True),
+            Output(self._get_id("set-dc-center-button"), "disabled", allow_duplicate=True),
             Input(self._data_acquirer_instance._get_id("x-mode"), "value"),
             Input(self._data_acquirer_instance._get_id("y-mode"), "value"),
             prevent_initial_call = True
@@ -702,6 +976,12 @@ class LiveViewTabController(BaseTabController):
 
         def on_mode_select(x_mode, y_mode):
             da = self._data_acquirer_instance
+
+            if x_mode == da.x_mode and y_mode == da.y_mode:
+                raise dash.exceptions.PreventUpdate
+
+            was_running = self._pause_for_axis_change()
+
             da.x_mode = x_mode
             da.y_mode = y_mode
             x_names = [ax.name for ax in da._display_x_sweep_axes]
@@ -719,7 +999,237 @@ class LiveViewTabController(BaseTabController):
                 }
             }
             da.update_parameters(params)
-            return "", da.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
+            children = self._build_acquirer_controls()
+
+            if was_running:
+                return "", children, "Start", "success", "STOPPED", "secondary", True
+
+            return (
+                "",
+                children,
+                dash.no_update,
+                dash.no_update,
+                dash.no_update,
+                dash.no_update,
+                dash.no_update,
+            )
+
+    def _register_swap_xy_callback(self, app: Dash) -> None:
+        """Swap the complete X/Y sweep selections and pause a running acquisition.
+
+        Span and points are properties of the selected sweep-axis objects, so swapping
+        the X/Y mode + axis selections also brings each axis' remembered span/points
+        with it.
+        """
+        @app.callback(
+            Output(self._get_id(self._ACQUIRER_CONTROLS_DIV_ID_SUFFIX), "children", allow_duplicate=True),
+            Output(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "children", allow_duplicate=True),
+            Output(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "color", allow_duplicate=True),
+            Output(self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX), "children", allow_duplicate=True),
+            Output(self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX), "color", allow_duplicate=True),
+            Output(self._get_id("set-dc-center-button"), "disabled", allow_duplicate=True),
+            Input(self._get_id("swap-xy-button"), "n_clicks"),
+            prevent_initial_call=True,
+        )
+        def _swap_xy(n_clicks):
+            if not n_clicks:
+                raise dash.exceptions.PreventUpdate
+
+            da = self._data_acquirer_instance
+            old_x_mode = getattr(da, "x_mode", None)
+            old_y_mode = getattr(da, "y_mode", None)
+            old_x_name = getattr(da, "x_axis_name", None)
+            old_y_name = getattr(da, "y_axis_name", None)
+
+            # A 1D scan has no Y axis to swap with.
+            if old_y_name is None:
+                logger.info("Swap X/Y ignored because the current scan is 1D.")
+                raise dash.exceptions.PreventUpdate
+
+            was_running = self._pause_for_axis_change()
+
+            params = {
+                da.component_id: {
+                    "x-mode": old_y_mode,
+                    "y-mode": old_x_mode,
+                    "gate-select-x": old_y_name,
+                    "gate-select-y": old_x_name,
+                }
+            }
+            da.update_parameters(params)
+
+            if hasattr(da, "_scan_idx_cache"):
+                da._scan_idx_cache = None
+
+            new_children = self._build_acquirer_controls()
+
+            if was_running:
+                return (
+                    new_children,
+                    "Start",
+                    "success",
+                    "STOPPED",
+                    "secondary",
+                    True,
+                )
+
+            return (
+                new_children,
+                dash.no_update,
+                dash.no_update,
+                dash.no_update,
+                dash.no_update,
+                dash.no_update,
+            )
+
+    def _register_pulse_offsets_callback(self, app: Dash) -> None:
+        """Update fixed virtual-gate offsets and pause before recompiling."""
+        gate_inputs = [
+            Input(self._get_id(f"pulse-offset-gate-{slot}"), "value")
+            for slot in range(self._NUM_PULSE_OFFSET_SLOTS)
+        ]
+        value_inputs = [
+            Input(self._get_id(f"pulse-offset-value-{slot}"), "value")
+            for slot in range(self._NUM_PULSE_OFFSET_SLOTS)
+        ]
+        disabled_outputs = [
+            Output(self._get_id(f"pulse-offset-value-{slot}"), "disabled")
+            for slot in range(self._NUM_PULSE_OFFSET_SLOTS)
+        ]
+
+        @app.callback(
+            *disabled_outputs,
+            Output(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "children", allow_duplicate=True),
+            Output(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "color", allow_duplicate=True),
+            Output(self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX), "children", allow_duplicate=True),
+            Output(self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX), "color", allow_duplicate=True),
+            Output(self._get_id("set-dc-center-button"), "disabled", allow_duplicate=True),
+            *gate_inputs,
+            *value_inputs,
+            prevent_initial_call=True,
+        )
+        def _update_pulse_offsets(*args):
+            n = self._NUM_PULSE_OFFSET_SLOTS
+            gates = args[:n]
+            values = args[n:2 * n]
+
+            offsets = {}
+            for gate_name, value in zip(gates, values):
+                if not gate_name:
+                    continue
+                numeric_value = 0.0 if value in (None, "") else float(value)
+                # If a gate is selected in more than one slot, contributions add.
+                offsets[gate_name] = offsets.get(gate_name, 0.0) + numeric_value
+
+            inner = getattr(self._data_acquirer_instance, "inner_loop_action", None)
+            if inner is None or not hasattr(inner, "pulse_offsets"):
+                logger.warning("Pulse-offset update ignored: inner loop has no pulse_offsets attribute.")
+                raise dash.exceptions.PreventUpdate
+
+            disabled = [not bool(gate_name) for gate_name in gates]
+            current = dict(getattr(inner, "pulse_offsets", {}) or {})
+            if current == offsets:
+                return (*disabled, *(dash.no_update for _ in range(5)))
+
+            was_running = self._pause_for_axis_change()
+            inner.pulse_offsets = offsets
+
+            da = self._data_acquirer_instance
+            if hasattr(da, "_compilation_flags"):
+                da._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
+            if hasattr(da, "_clear_queue"):
+                da._clear_queue()
+
+            logger.info("Updated pulse offsets: %s", offsets)
+
+            if was_running:
+                return (*disabled, "Start", "success", "STOPPED", "secondary", True)
+            return (*disabled, *(dash.no_update for _ in range(5)))
+
+    def _register_fast_axis_direction_visibility_callback(
+        self, app: Dash, tabs_id
+    ) -> None:
+        """Show direction only for scan modes that expose fast_axis_direction."""
+        if tabs_id is None:
+            return
+
+        @app.callback(
+            Output(self._get_id("fast-axis-direction-row"), "style"),
+            Input(tabs_id, "value"),
+            prevent_initial_call=False,
+        )
+        def _sync_fast_axis_direction_visibility(_active_tab):
+            if self._scan_supports_fast_axis_direction():
+                return {}
+            return {"display": "none"}
+
+    def _register_fast_axis_direction_callback(self, app: Dash) -> None:
+        """Toggle the X fast-axis acquisition direction for raster-like scans.
+
+        The direction is applied to every registered scan mode that exposes a
+        ``fast_axis_direction`` attribute so Raster and Switch Raster share the
+        same user setting. Changing direction pauses a running acquisition and
+        marks the QUA program for recompilation.
+        """
+        @app.callback(
+            Output(self._get_id("fast-axis-direction-button"), "children"),
+            Output(self._get_id("fast-axis-direction-button"), "color"),
+            Output(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "children", allow_duplicate=True),
+            Output(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "color", allow_duplicate=True),
+            Output(self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX), "children", allow_duplicate=True),
+            Output(self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX), "color", allow_duplicate=True),
+            Output(self._get_id("set-dc-center-button"), "disabled", allow_duplicate=True),
+            Input(self._get_id("fast-axis-direction-button"), "n_clicks"),
+            prevent_initial_call=True,
+        )
+        def _toggle_fast_axis_direction(n_clicks):
+            if not n_clicks:
+                raise dash.exceptions.PreventUpdate
+
+            da = self._data_acquirer_instance
+            current_mode = getattr(da, "scan_mode", None)
+            if current_mode is None or not hasattr(current_mode, "fast_axis_direction"):
+                logger.info(
+                    "Fast-axis direction toggle ignored: current scan mode does not "
+                    "support a directional fast axis."
+                )
+                raise dash.exceptions.PreventUpdate
+
+            current = str(getattr(current_mode, "fast_axis_direction", "forward")).lower()
+            new_direction = "reverse" if current == "forward" else "forward"
+
+            was_running = self._pause_for_axis_change()
+
+            # Keep Raster and Switch Raster consistent when the user later
+            # changes scan mode in Settings. Other scan modes are untouched.
+            for mode in getattr(da, "scan_modes", {}).values():
+                if hasattr(mode, "fast_axis_direction"):
+                    mode.fast_axis_direction = new_direction
+
+            # Direction changes both acquisition order and sample-to-pixel
+            # indexing, so invalidate the scan-index cache and recompile QUA.
+            if hasattr(da, "_scan_idx_cache"):
+                da._scan_idx_cache = None
+            if hasattr(da, "_compilation_flags"):
+                da._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
+
+            if new_direction == "reverse":
+                label, color = "← Reverse", "warning"
+            else:
+                label, color = "→ Forward", "secondary"
+
+            if was_running:
+                return label, color, "Start", "success", "STOPPED", "secondary", True
+
+            return (
+                label,
+                color,
+                dash.no_update,
+                dash.no_update,
+                dash.no_update,
+                dash.no_update,
+                dash.no_update,
+            )
 
     def _register_set_dc_button_callback(self, app: Dash) -> None:
         @app.callback(
@@ -960,7 +1470,7 @@ class LiveViewTabController(BaseTabController):
             if parameters_to_update:
                 self._data_acquirer_instance.update_parameters(parameters_to_update)
             if rebuild == True:
-                new_children = self._data_acquirer_instance.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
+                new_children = self._build_acquirer_controls()
                 return dash.no_update, new_children
             return dash.no_update, dash.no_update
 

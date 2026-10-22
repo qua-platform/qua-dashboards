@@ -54,6 +54,49 @@ class BasicInnerLoopAction(InnerLoopAction):
         self.point_duration = 1000
         self.row_settle_time_ns = 0
 
+        # Optional fixed logical-voltage offsets applied at every scan point.
+        # Keys may be physical or virtual gate names understood by GateSet.
+        # Example for testing:
+        #     inner_loop_action.pulse_offsets = {"vB12": 5e-3}
+        # Leave empty for the original behavior.
+        self.pulse_offsets: Dict[str, Any] = {}
+
+    @staticmethod
+    def _merge_voltage_coordinates(*coordinate_dicts: Dict[str, Any]) -> Dict[str, Any]:
+        """Add voltage-coordinate contributions without overwriting duplicates.
+
+        This is important when, for example, X scans ``vP1`` while a fixed
+        pulse offset is also applied to ``vP1``: the target should be
+        ``x + offset`` rather than one value replacing the other.
+        """
+        merged: Dict[str, Any] = {}
+        for coordinates in coordinate_dicts:
+            if not coordinates:
+                continue
+            for gate_name, value in coordinates.items():
+                if gate_name in merged:
+                    merged[gate_name] = merged[gate_name] + value
+                else:
+                    merged[gate_name] = value
+        return merged
+
+    def _build_voltage_coordinates(
+        self,
+        x_apply: Dict[str, Any],
+        y_apply: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Build the logical voltage target for one scan point / row start.
+
+        X, Y and fixed pulse-offset contributions are summed first. The
+        resulting logical coordinates are then resolved by VoltageGateSequence
+        / GateSet in the usual way.
+        """
+        return self._merge_voltage_coordinates(
+            x_apply.get("voltage", {}),
+            y_apply.get("voltage", {}) if y_apply is not None else {},
+            self.pulse_offsets,
+        )
+
     def _pulse_for(self, ch):
         if ch.name not in self.readout_pulse_mapping.keys():
             raise ValueError("Channel not in registered readout pulses")
@@ -91,11 +134,12 @@ class BasicInnerLoopAction(InnerLoopAction):
         x_apply = self.x_axis.apply(x)
         y_apply = self.y_axis.apply(y) if (self.y_axis and y is not None) else None
 
-        voltage_coordinates = {
-            **x_apply.get("voltage", {}),
-            **(y_apply.get("voltage", {}) or {}),
-        } if y_apply is not None else {**x_apply.get("voltage", {})}
-        self.voltage_sequence.ramp_to_voltages(voltage_coordinates, duration = self.point_duration, ramp_duration = self.ramp_duration)
+        voltage_coordinates = self._build_voltage_coordinates(x_apply, y_apply)
+        self.voltage_sequence.ramp_to_voltages(
+            voltage_coordinates,
+            duration=self.point_duration,
+            ramp_duration=self.ramp_duration,
+        )
 
         self.loop_action(self)
 
@@ -148,10 +192,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         x_apply = self.x_axis.apply(x)
         y_apply = self.y_axis.apply(y) if (self.y_axis and y is not None) else None
 
-        voltage_coordinates = {
-            **x_apply.get("voltage", {}),
-            **(y_apply.get("voltage", {}) or {}),
-        } if y_apply is not None else {**x_apply.get("voltage", {})}
+        voltage_coordinates = self._build_voltage_coordinates(x_apply, y_apply)
         self.voltage_sequence.ramp_to_voltages(
             voltage_coordinates,
             duration=self.row_settle_time_ns,

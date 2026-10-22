@@ -793,24 +793,49 @@ class VideoModeComponent(BaseComponent):
         if data is None:
             raise ValueError("No base_image_data found for saving.")
 
-        metadata = {
-            "result_type": getattr(
-                self.data_acquirer,
-                "result_type",
-                None,
-            ),
-        }
-
-        notes = (notes or "").strip()
-        if notes:
-            metadata["notes"] = notes
-
+        result_type = getattr(self.data_acquirer, "result_type", None)
         selected_readouts = getattr(
             self.data_acquirer,
             "selected_readout_channels",
             [],
         )
 
+        # Use one canonical saved-data name across all save backends.
+        # Example: S1_resonator + amplitude -> S1_resonator_amplitude.
+        # Work on a shallow copy so saving does not change the live viewer's DataArray name.
+        data = data.copy(deep=False)
+        readout_result_name = None
+        readout_result_names = []
+
+        if result_type is not None:
+            readout_result_names = [
+                f"{channel.name}_{result_type}"
+                for channel in selected_readouts
+            ]
+
+            if len(readout_result_names) == 1:
+                readout_result_name = readout_result_names[0]
+                data = data.rename(readout_result_name)
+
+        metadata = {
+            "result_type": result_type,
+        }
+
+        if len(selected_readouts) == 1:
+            metadata["readout_channel"] = selected_readouts[0].name
+        elif selected_readouts:
+            metadata["readout_channels"] = [
+                channel.name for channel in selected_readouts
+            ]
+
+        if readout_result_name is not None:
+            metadata["readout_result_name"] = readout_result_name
+        elif readout_result_names:
+            metadata["readout_result_names"] = readout_result_names
+
+        notes = (notes or "").strip()
+        if notes:
+            metadata["notes"] = notes
 
         return self.save_backend.save(
             data,

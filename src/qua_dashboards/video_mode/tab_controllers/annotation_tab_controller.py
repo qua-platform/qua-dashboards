@@ -120,7 +120,7 @@ class AnnotationTabController(BaseTabController):
             "translate": False,
             "clicked_point": None,
         }
-        self._show_labels = ['points']
+        self._show_labels = ["points"]  # Point labels are always visible; UI checkbox intentionally removed.
         self._data_acquirer = data_acquirer
         self._axis_modes = {"x_mode": None, "y_mode": None}
 
@@ -258,7 +258,7 @@ class AnnotationTabController(BaseTabController):
         axis_modes = self._get_axis_modes
         xm, ym = axis_modes.get("x_mode"), axis_modes.get("y_mode")
         if xm == "voltage" or ym == "voltage":
-            opts.append({"label": "Save points to VirtualGateSet", "value": "save_points_to_vgs"})
+            opts.append({"label": "Save point", "value": "save_points_to_vgs"})
         if xm == "frequency" or ym == "frequency":
             opts.append({"label": "Frequency", "value": "frequency"})
         if xm == "amplitude" or ym == "amplitude":
@@ -278,19 +278,25 @@ class AnnotationTabController(BaseTabController):
     def get_layout(self) -> html.Div:
         """Generates the Dash layout for the Annotation tab."""
         logger.debug(f"Generating layout for {self.component_id}")
-        checklist_options = [
-            {"label": "point labels", "value": "points"},  # For point labels
-            #{"label": "line labels", "value": "lines"},   # If we also want to introduce line labels            
-        ]
+
         radio_options = [
             {"label": "Add/Move Points", "value": "point"},
+            {"label": "Add point by coordinates", "value": "point-by-coordinates"},
             {"label": "Add Lines", "value": "line"},
             {"label": "Delete", "value": "delete"},
             {"label": "Translate all points and lines", "value": "translate-all"},
         ]
 
-        controls_layout = dbc.CardBody(
+        section_style = {
+            "outline": "1px solid #666",
+            "borderRadius": "8px",
+            "padding": "12px",
+            "marginBottom": "12px",
+        }
+
+        annotation_section = html.Div(
             [
+                html.H6("Annotation", className="text-light mb-3"),
                 dbc.Row(
                     [
                         dbc.Col(
@@ -298,7 +304,7 @@ class AnnotationTabController(BaseTabController):
                                 "Import Live Frame",
                                 id=self._get_id(self._IMPORT_LIVE_FRAME_BUTTON_SUFFIX),
                                 color="primary",
-                                className="mb-3 w-100",
+                                className="w-100",
                             ),
                             width=6,
                         ),
@@ -307,77 +313,168 @@ class AnnotationTabController(BaseTabController):
                                 [
                                     dbc.Button(
                                         "Load from Disk",
-                                        id=self._get_id(
-                                            self._LOAD_FROM_DISK_BUTTON_SUFFIX
-                                        ),
+                                        id=self._get_id(self._LOAD_FROM_DISK_BUTTON_SUFFIX),
                                         color="secondary",
                                     ),
                                     dbc.Input(
-                                        id=self._get_id(
-                                            self._LOAD_FROM_DISK_INPUT_SUFFIX
-                                        ),
+                                        id=self._get_id(self._LOAD_FROM_DISK_INPUT_SUFFIX),
                                         placeholder="idx",
                                         type="text",
                                     ),
-                                ],
-                                className="mb-3",
+                                ]
                             ),
                             width=6,
                         ),
                     ],
-                    className="g-2 mb-2",
+                    className="g-2 mb-3",
                 ),
-                html.Hr(),
-                html.H6("Show labels"),
-                dbc.Checklist(
-                    id=self._get_id(self._SHOW_LABELS_CHECKLIST_SUFFIX),
-                    options = checklist_options,
-                    value = ["points"],
-                    className="mb-3 me-2",
-                ),
-                html.Hr(),                
                 dbc.RadioItems(
                     id=self._get_id(self._MODE_SELECTOR_SUFFIX),
                     options=radio_options,
                     value="point",
                     className="mb-3",
                 ),
-                dbc.Button(
-                    "Clear Annotations",
-                    id=self._get_id(self._CLEAR_BUTTON_SUFFIX),
-                    color="warning",
-                    size="sm",
-                    className="mb-3 me-2",
+                html.Div(
+                    [
+                        html.Div(
+                            [
+                                html.Div(
+                                    [
+                                        html.Span("X", className="text-light", style={"marginRight": "5px"}),
+                                        dbc.InputGroup(
+                                            [
+                                                dbc.Input(
+                                                    id=self._get_id("coordinate-point-x"),
+                                                    type="number",
+                                                    persistence=True,
+                                                    persistence_type="session",
+                                                    style={"height": "32px"},
+                                                ),
+                                                dbc.InputGroupText(
+                                                    "V",
+                                                    style={"height": "32px", "paddingLeft": "7px", "paddingRight": "7px"},
+                                                ),
+                                            ],
+                                            style={"width": "118px", "height": "32px"},
+                                        ),
+                                    ],
+                                    style={"display": "flex", "alignItems": "center"},
+                                ),
+                                html.Div(
+                                    [
+                                        html.Span("Y", className="text-light", style={"marginRight": "5px"}),
+                                        dbc.InputGroup(
+                                            [
+                                                dbc.Input(
+                                                    id=self._get_id("coordinate-point-y"),
+                                                    type="number",
+                                                    persistence=True,
+                                                    persistence_type="session",
+                                                    style={"height": "32px"},
+                                                ),
+                                                dbc.InputGroupText(
+                                                    "V",
+                                                    style={"height": "32px", "paddingLeft": "7px", "paddingRight": "7px"},
+                                                ),
+                                            ],
+                                            style={"width": "118px", "height": "32px"},
+                                        ),
+                                    ],
+                                    style={"display": "flex", "alignItems": "center"},
+                                ),
+                                dbc.Button(
+                                    "Add Point",
+                                    id=self._get_id("add-coordinate-point-button"),
+                                    color="primary",
+                                    size="sm",
+                                    style={"height": "32px", "whiteSpace": "nowrap"},
+                                ),
+                            ],
+                            id=self._get_id("coordinate-point-controls"),
+                            style={
+                                "display": "none",
+                                "alignItems": "center",
+                                "gap": "10px",
+                                "flexWrap": "wrap",
+                            },
+                        ),
+                        dbc.Button(
+                            "Clear Annotations",
+                            id=self._get_id(self._CLEAR_BUTTON_SUFFIX),
+                            color="warning",
+                            size="sm",
+                            style={"marginLeft": "auto", "whiteSpace": "nowrap"},
+                        ),
+                    ],
+                    style={
+                        "display": "flex",
+                        "alignItems": "center",
+                        "width": "100%",
+                        "gap": "12px",
+                        "flexWrap": "wrap",
+                    },
                 ),
-                html.Hr(), 
-                dbc.Row([
-                    dbc.Col(
+            ],
+            style=section_style,
+        )
+
+        point_section = html.Div(
+            [
+                html.H6("Point Management", className="text-light mb-3"),
+                html.Div(
+                    [
+                        html.Small("Point action", className="text-light"),
                         dcc.Dropdown(
                             id=self._get_id("analysis-apply-action"),
                             options=[],
-                            placeholder="Select action…",
+                            value="save_points_to_vgs",
+                            placeholder="Select action...",
                             clearable=True,
-                            style={"color": "black"},
+                            persistence=True,
+                            persistence_type="session",
+                            style={"color": "black", "width": "260px", "height": "36px", "maxWidth": "100%"},
                         ),
-                        width=8,
-                    ),
-                    dbc.Col(
-                        dbc.Button(
-                            "Apply to QUAM state",
-                            id=self._get_id("apply-analysis-button"),
-                            color="primary",
-                            className="w-100",
-                        ),
-                        width=4,
-                    ),
-                ], className="mb-2"),
+                    ],
+                    className="mb-3",
+                ),
                 html.Div(
                     id=self._get_id("analysis-param-editor"),
-                    className="mt-2",
                 ),
-                html.Div(id=self._get_id("apply-analysis-status"), className="text-muted", style={"fontSize":"0.8em"}),
-                html.Hr(),
-                html.H6("Analysis"),
+                html.Div(
+                    [
+                        dbc.Button(
+                            "Apply",
+                            id=self._get_id("apply-analysis-button"),
+                            color="primary",
+                            style={"minWidth": "90px", "height": "36px"},
+                        ),
+                        html.Div(
+                            id=self._get_id("apply-analysis-status"),
+                            className="text-muted",
+                            style={
+                                "fontSize": "0.8em",
+                                "height": "36px",
+                                "minHeight": "36px",
+                                "display": "flex",
+                                "alignItems": "center",
+                            },
+                        ),
+                    ],
+                    style={
+                        "display": "flex",
+                        "alignItems": "center",
+                        "gap": "12px",
+                        "flexWrap": "wrap",
+                        "marginTop": "12px",
+                    },
+                ),
+            ],
+            style=section_style,
+        )
+
+        line_section = html.Div(
+            [
+                html.H6("Line Analysis", className="text-light mb-3"),
                 dbc.Button(
                     "Calculate Slopes",
                     id=self._get_id(self._CALCULATE_BUTTON_SUFFIX),
@@ -394,50 +491,52 @@ class AnnotationTabController(BaseTabController):
                         "fontSize": "0.8em",
                     },
                 ),
-                html.Hr(), 
-                html.H6("Select Line to Plot"), 
-                dbc.Col(
-                    dcc.Dropdown(
-                        id = f"{self.component_id}-line-selector", 
-                        options = [],  
-                        value = None, 
-                        placeholder = "Select line", 
-                        clearable = True, 
-                        style = {"color": "black"}
-                    ), 
-                width = 12),
-                dbc.Col(
-                    dcc.Checklist(
-                        id = self._get_id("interpolation_toggle"), 
-                        options = [{"label":"Toggle Interpolation", "value":"on"}], 
-                        value = [], 
-                        inline = True, 
-                        inputStyle={"margin":"0 5px 0 0"},
-                    )
+                html.Small("Select line to plot", className="text-light"),
+                dcc.Dropdown(
+                    id=f"{self.component_id}-line-selector",
+                    options=[],
+                    value=None,
+                    placeholder="Select line",
+                    clearable=True,
+                    style={"color": "black"},
                 ),
-                dbc.Row([
-                    dbc.Col(
-                        dbc.Button(
-                            "Plot Line Profile",
-                            id=self._get_id(self._LINE_PROFILE_BUTTON_SUFFIX),
-                            color="success",
-                            className="mt-2 w-100",
+                dcc.Checklist(
+                    id=self._get_id("interpolation_toggle"),
+                    options=[{"label": "Interpolation", "value": "on"}],
+                    value=[],
+                    inline=True,
+                    inputStyle={"margin": "0 5px 0 0"},
+                    className="mt-2",
+                ),
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            dbc.Button(
+                                "Plot Line Profile",
+                                id=self._get_id(self._LINE_PROFILE_BUTTON_SUFFIX),
+                                color="success",
+                                className="mt-2 w-100",
+                            ),
+                            width=6,
                         ),
-                        width=6,
-                    ),
-                    dbc.Col(
-                        dbc.Button(
-                            "Show Original Plot",
-                            id=self._get_id("reset-2d-button"),
-                            color="secondary",
-                            className="mt-2 w-100",
+                        dbc.Col(
+                            dbc.Button(
+                                "Show Original Plot",
+                                id=self._get_id("reset-2d-button"),
+                                color="secondary",
+                                className="mt-2 w-100",
+                            ),
+                            width=6,
                         ),
-                        width=6,
-                    ),
-                ]),
+                    ]
+                ),
             ],
+            style=section_style,
         )
-        other_components = []
+
+        controls_layout = dbc.CardBody(
+            [annotation_section, point_section, line_section]
+        )
 
         return html.Div(
             [
@@ -446,11 +545,10 @@ class AnnotationTabController(BaseTabController):
                     color="dark",
                     inverse=True,
                     className="h-100 tab-card-dark",
-                ),
-                *other_components,
+                )
             ]
         )
-    
+
     def _get_active_point(self, annotations: dict):
         pts = (annotations or {}).get("points", []) or []
         sel_id = None
@@ -641,6 +739,8 @@ class AnnotationTabController(BaseTabController):
         self._register_mode_change(
             app, viewer_ui_state_store_id
         )
+        self._register_coordinate_point_controls_callback(app)
+        self._register_add_coordinate_point_callback(app, viewer_data_store_id)
         self._register_line_select(
             app, viewer_data_store_id
         )
@@ -651,6 +751,7 @@ class AnnotationTabController(BaseTabController):
             app, viewer_data_store_id
         )
         self._register_param_editor_callback(app, viewer_data_store_id)
+        self._register_selected_point_sync_callback(app, viewer_data_store_id, viewer_ui_state_store_id)
         self._register_apply_options_callback(app, viewer_data_store_id)
         self._register_apply_quam_callback(app, viewer_data_store_id)
         self._register_point_preview_callback(app)
@@ -673,23 +774,124 @@ class AnnotationTabController(BaseTabController):
             else:
                 return f"Preview: Will save as '{name}' (no component prefix)"
             
-    def _register_custom_name_callback(
-            self, app:Dash,
-    ) -> None: 
+    def _register_custom_name_callback(self, app: Dash) -> None:
         @app.callback(
-            Output({"comp": self.component_id, "kind": "save_points_to_vgs", "field": "custom_name_container"}, "children"),
+            Output({"comp": self.component_id, "kind": "save_points_to_vgs", "field": "custom_name_container"}, "style"),
+            Output({"comp": self.component_id, "kind": "save_points_to_vgs", "field": "custom_name"}, "disabled"),
             Input({"comp": self.component_id, "kind": "save_points_to_vgs", "field": "name"}, "value"),
-            prevent_initial_call=True,
+            prevent_initial_call=False,
         )
         def _toggle_custom_input(name_value: Optional[str]):
-            if name_value == "__custom__":
-                return dbc.Input(
-                    id={"comp": self.component_id, "kind": "save_points_to_vgs", "field": "custom_name"},
-                    type="text",
-                    placeholder="Enter custom point name",
-                    className="mt-2",
-                )
-            return None
+            show_custom = name_value == "__custom__"
+            return (
+                {"visibility": "visible" if show_custom else "hidden", "width": "210px"},
+                not show_custom,
+            )
+
+    def _register_coordinate_point_controls_callback(self, app: Dash) -> None:
+        """Show coordinate inputs only while the coordinate-add mode is selected."""
+        @app.callback(
+            Output(self._get_id("coordinate-point-controls"), "style"),
+            Input(self._get_id(self._MODE_SELECTOR_SUFFIX), "value"),
+            prevent_initial_call=False,
+        )
+        def _toggle_coordinate_controls(mode: Optional[str]):
+            return {
+                "display": "flex" if mode == "point-by-coordinates" else "none",
+                "alignItems": "center",
+                "gap": "10px",
+                "flexWrap": "wrap",
+            }
+
+    def _register_add_coordinate_point_callback(
+        self,
+        app: Dash,
+        viewer_data_store_id: Dict[str, Any],
+    ) -> None:
+        """Add an arbitrary x/y coordinate as a normal annotation point."""
+        @app.callback(
+            Output(viewer_data_store_id, "data", allow_duplicate=True),
+            Input(self._get_id("add-coordinate-point-button"), "n_clicks"),
+            State(self._get_id("coordinate-point-x"), "value"),
+            State(self._get_id("coordinate-point-y"), "value"),
+            State(viewer_data_store_id, "data"),
+            prevent_initial_call=True,
+        )
+        def _add_coordinate_point(n_clicks, x_value, y_value, viewer_ref):
+            if not n_clicks or x_value in (None, "") or y_value in (None, ""):
+                raise PreventUpdate
+            if not viewer_ref or viewer_ref.get("key") != data_registry.STATIC_DATA_KEY:
+                raise PreventUpdate
+
+            static_obj = data_registry.get_data(data_registry.STATIC_DATA_KEY) or {}
+            annotations = static_obj.get("annotations", {}) or {}
+            points = list(annotations.get("points", []) or [])
+            lines = list(annotations.get("lines", []) or [])
+
+            new_point = {
+                "id": self._get_new_point_id(),
+                "x": float(x_value),
+                "y": float(y_value),
+            }
+            if self._is_subplot_mode():
+                active = self._get_active_point(annotations)
+                new_point["subplot_col"] = int((active or {}).get("subplot_col", 1))
+
+            points.append(new_point)
+            new_static = dict(static_obj)
+            new_static["annotations"] = {"points": points, "lines": lines}
+            new_version = data_registry.set_data(data_registry.STATIC_DATA_KEY, new_static)
+            self._next_point_id_counter = get_next_index(points, "p")
+
+            return {"key": data_registry.STATIC_DATA_KEY, "version": new_version}
+
+    def _register_selected_point_sync_callback(
+        self,
+        app: Dash,
+        viewer_data_store_id: Dict[str, Any],
+        viewer_ui_state_store_id: Dict[str, Any],
+    ) -> None:
+        """Refresh point options without rebuilding the editor, and sync graph selection."""
+
+        selector_id = {
+            "comp": self.component_id,
+            "kind": "save_points_to_vgs",
+            "field": "selector",
+        }
+
+        @app.callback(
+            Output(selector_id, "options"),
+            Output(selector_id, "value"),
+            Input(viewer_data_store_id, "data"),
+            Input(viewer_ui_state_store_id, "data"),
+            State(selector_id, "value"),
+            prevent_initial_call=True,
+        )
+        def _refresh_and_sync_selector(_viewer_ref, ui_state, current_value):
+            static_obj = data_registry.get_data(data_registry.STATIC_DATA_KEY) or {}
+            annotations = static_obj.get("annotations", {}) or {}
+            points = annotations.get("points", []) or []
+            opts = [
+                {"label": p.get("id", f"p?{i}"), "value": p.get("id", f"p?{i}")}
+                for i, p in enumerate(points)
+            ]
+            valid_ids = {opt["value"] for opt in opts}
+
+            # A point explicitly clicked on the graph takes priority.
+            selected_id = ui_state.get("selected_point_to_move") if isinstance(ui_state, dict) else None
+            if selected_id in valid_ids:
+                return opts, selected_id
+
+            # Otherwise keep the user's current dropdown selection whenever possible.
+            if current_value in valid_ids:
+                return opts, current_value
+
+            active_pt = self._get_active_point(annotations)
+            active_id = active_pt.get("id") if active_pt else None
+            if active_id in valid_ids:
+                return opts, active_id
+
+            return opts, (opts[0]["value"] if opts else None)
 
     def _register_apply_quam_callback(self, app: Dash, viewer_data_store_id: Dict[str, str]) -> None: 
         @app.callback(
@@ -716,6 +918,26 @@ class AnnotationTabController(BaseTabController):
                 amp_ids,
                 amp_vals,
             ):
+                def _status_alert(message: str, color: str = "success", duration: Optional[int] = None):
+                    # Status is transient and already disappears automatically; no close button
+                    # avoids squeezing/overlap in the compact 36 px status row.
+                    return dbc.Alert(
+                        message,
+                        color=color,
+                        dismissable=False,
+                        duration=duration,
+                        className="mb-0",
+                        style={
+                            "height": "36px",
+                            "minHeight": "36px",
+                            "display": "flex",
+                            "alignItems": "center",
+                            "padding": "4px 10px",
+                            "whiteSpace": "nowrap",
+                            "lineHeight": "1.2",
+                        },
+                    )
+
                 if not n_clicks or not action:
                     raise PreventUpdate
                 
@@ -732,11 +954,14 @@ class AnnotationTabController(BaseTabController):
                 if name == "__custom__": 
                     name = custom_name
 
-                if duration is not None:
-                    duration_int = int(duration)
-                    if duration_int % 4 != 0: 
-                        raise ValueError("Duration must be multiple of 4")
-                    duration = duration_int
+                if duration is None:
+                    duration = 1000
+                duration_int = int(duration)
+                if duration_int < 16:
+                    raise ValueError("Duration must be at least 16 ns")
+                if duration_int % 4 != 0:
+                    raise ValueError("Duration must be a multiple of 4 ns")
+                duration = duration_int
                                 
                 freq_map = {}
                 for sid, val in zip(freq_ids or [], freq_vals or []):
@@ -756,7 +981,7 @@ class AnnotationTabController(BaseTabController):
                 amp_x,  amp_y  = amp_map.get("x"),  amp_map.get("y")
                 
                 if not viewer_ref or viewer_ref.get("key") != data_registry.STATIC_DATA_KEY:
-                    return dbc.Alert("No static data available", color="warning", dismissable=True)
+                    return _status_alert("No static data available", color="warning", duration=3000)
                 
                 try:
                     static_obj = data_registry.get_data(data_registry.STATIC_DATA_KEY) or {}
@@ -803,7 +1028,7 @@ class AnnotationTabController(BaseTabController):
                                     duration=duration,
                                     relative_to_current=True,
                                 )
-                            return dbc.Alert("Update Applied", color = "success", dismissable = True, duration = 4000)
+                            return _status_alert("Update Applied", color="success", duration=4000)
 
                         # If component is not in the machine, it would not be an option anyway. 
                         component = self.available_components[component_id]
@@ -820,13 +1045,14 @@ class AnnotationTabController(BaseTabController):
                                         duration=duration,
                                         relative_to_current=True,
                                     )
-                                    return dbc.Alert(
-                                        f"Point '{component_id}_{name}' added via {type(component).__name__} '{component_id}'",
-                                        color = "success"
-                                    )
+                                return _status_alert(
+                                    f"Point '{component_id}_{name}' added via {type(component).__name__} '{component_id}'",
+                                    color="success",
+                                    duration=4000,
+                                )
                             except Exception as e:
                                 logger.error(f"Error adding point via component: {e}")
-                                return dbc.Alert(f"Error adding via component: {str(e)}", color = "danger")
+                                return _status_alert(f"Error adding via component: {str(e)}", color="danger", duration=3000)
                         else: 
                             full_name = f"{component_id}_{name}"
                             vgs.add_point(full_name, ac_voltages_dict, duration=duration)
@@ -837,8 +1063,11 @@ class AnnotationTabController(BaseTabController):
                                     duration=duration,
                                     relative_to_current=True,
                                 )
-                            return dbc.Alert(f"Point '{full_name}' added to GateSet (component has no add_point method)", 
-                                             color = "warning")
+                            return _status_alert(
+                                f"Point '{full_name}' added to GateSet (component has no add_point method)",
+                                color="warning",
+                                duration=4000,
+                            )
                     elif action == "frequency":
                 
                         if freq_x is not None and axis_modes.get("x_mode") == "frequency":
@@ -861,25 +1090,34 @@ class AnnotationTabController(BaseTabController):
                     else:
                         raise ValueError(f"Unknown action: {action}")
                     
-                    return dbc.Alert("Update Applied", color = "success", dismissable = True, duration = 4000)
+                    return _status_alert("Update Applied", color="success", duration=4000)
                 
                 except Exception as e:
                     logger.error(f"Error applying to QUAM: {e}")
-                    return dbc.Alert(f"Error: {str(e)}", color="danger", dismissable=True)
+                    return _status_alert(f"Error: {str(e)}", color="danger", duration=3000)
 
 
 
     def _register_param_editor_callback(self, app:Dash, viewer_data_store_id: Dict[str, str]) -> None: 
         @app.callback(
-            Output(self._get_id("analysis-param-editor"), "children"), 
-            Input(self._get_id("analysis-apply-action"), "value"), 
-            Input(viewer_data_store_id, "data"), 
-            prevent_initial_call = True, 
+            Output(self._get_id("analysis-param-editor"), "children"),
+            Input(self._get_id("analysis-apply-action"), "value"),
+            Input(viewer_data_store_id, "data"),
+            State(self._get_id("analysis-param-editor"), "children"),
+            prevent_initial_call=True,
         )
 
-        def _render_param_rows(selected_kind, viewer_ref):
+        def _render_param_rows(selected_kind, viewer_ref, current_children):
             if not viewer_ref or viewer_ref.get("key") != data_registry.STATIC_DATA_KEY:
                 raise PreventUpdate
+
+            # viewer_data_store changes frequently (graph clicks, Show Original Plot,
+            # tab activation, etc.). Rebuilding the whole dynamic editor on every
+            # change briefly renders its Python defaults before Dash persistence is
+            # restored, which causes the visible "flash". Keep the existing editor
+            # mounted unless the Point action itself changed.
+            if ctx.triggered_id == viewer_data_store_id and current_children:
+                return no_update
 
             static_obj = data_registry.get_data(data_registry.STATIC_DATA_KEY) or {}
             annotations = static_obj.get("annotations", {}) or {}
@@ -895,85 +1133,110 @@ class AnnotationTabController(BaseTabController):
             logger.info(f"selected_kind: {selected_kind}")
             logger.info(f"self._axis_modes: {self._axis_modes}")
             if selected_kind == "save_points_to_vgs":
-                opts = [{"label": p.get("id", f"p?{i}"), "value": p.get("id", f"p?{i}")} for i, p in enumerate(points)]
-                default_val = active_pt.get("id") if active_pt else None
+                opts = [
+                    {"label": p.get("id", f"p?{i}"), "value": p.get("id", f"p?{i}")}
+                    for i, p in enumerate(points)
+                ]
+                default_val = active_pt.get("id") if active_pt else (opts[0]["value"] if opts else None)
+
+                compact_label = {"display": "block", "marginBottom": "4px"}
+                control_height = "36px"
+
                 return [
-                    dbc.Row(
+                    html.Div(
                         [
-                            dbc.Col(html.Div("Point to save:"), width=4),
-                            dbc.Col(
-                                dcc.Dropdown(
-                                    id={"comp": self.component_id, "kind": "save_points_to_vgs", "field": "selector"},
-                                    options=opts,
-                                    value=default_val,
-                                    placeholder="Select a point (optional)",
-                                    clearable=True,
-                                    style={"color": "black"},
-                                ),
-                                width=8,
+                            html.Small("Point to save", className="text-light", style=compact_label),
+                            dcc.Dropdown(
+                                id={"comp": self.component_id, "kind": "save_points_to_vgs", "field": "selector"},
+                                options=opts,
+                                value=default_val,
+                                placeholder="Select point",
+                                clearable=False,
+                                persistence=True,
+                                persistence_type="session",
+                                style={"color": "black", "width": "220px", "height": control_height},
                             ),
                         ],
-                        className="g-2 mb-2",
-                    ),
-                    dbc.Row(
-                        [
-                            dbc.Col(html.Div("Associate with:"), width=4),
-                            dbc.Col(
-                                dcc.Dropdown(
-                                    id={"comp": self.component_id, "kind": "save_points_to_vgs", "field": "component"},
-                                    options=component_opts,
-                                    value="__none__",
-                                    placeholder="Select component (optional)",
-                                    clearable=False,
-                                    style={"color": "black"},
-                                ),
-                                width=8,
-                            ),
-                        ],
-                        className="g-2 mb-2",
-                    ),
-                    dbc.Row(
-                        [
-                            dbc.Col(html.Div("Point name:"), width=4),
-                            dbc.Col(
-                                dcc.Dropdown(
-                                    id={"comp": self.component_id, "kind": "save_points_to_vgs", "field": "name"},
-                                    options=[
-                                        *[{"label": n, "value": n} for n in self._STANDARD_POINT_NAMES],
-                                        {"label": "── Custom ──", "value": "__custom__"},
-                                    ],
-                                    value=None,
-                                    placeholder="Select point name",
-                                    clearable=True,
-                                    style={"color": "black"},
-                                ),
-                                width=8,
-                            ),
-                        ],
-                        className="g-2 mb-2",
+                        className="mb-3",
                     ),
                     html.Div(
-                        id={"comp": self.component_id, "kind": "save_points_to_vgs", "field": "custom_name_container"},
-                    ),
-                    dbc.Row(
                         [
-                            dbc.Col(html.Div("Point duration:"), width=4),
-                            dbc.Col(
-                                dbc.Input(
-                                    id={"comp": self.component_id, "kind": "save_points_to_vgs", "field": "duration"},
-                                    type="number",
-                                    value=None,
-                                    placeholder="Enter point duration",
-                                ),
-                                width=8,
+                            html.Div(
+                                [
+                                    html.Small("Point name", className="text-light", style=compact_label),
+                                    dcc.Dropdown(
+                                        id={"comp": self.component_id, "kind": "save_points_to_vgs", "field": "name"},
+                                        options=[
+                                            *[{"label": n, "value": n} for n in self._STANDARD_POINT_NAMES],
+                                            {"label": "Custom", "value": "__custom__"},
+                                        ],
+                                        value=None,
+                                        placeholder="Select name",
+                                        clearable=True,
+                                        persistence=True,
+                                        persistence_type="session",
+                                        style={"color": "black", "width": "190px", "height": control_height},
+                                    ),
+                                ],
+                                style={"width": "190px"},
+                            ),
+                            html.Div(
+                                [
+                                    html.Small("Custom name", className="text-light", style=compact_label),
+                                    dbc.Input(
+                                        id={"comp": self.component_id, "kind": "save_points_to_vgs", "field": "custom_name"},
+                                        type="text",
+                                        placeholder="Enter name",
+                                        disabled=True,
+                                        persistence=True,
+                                        persistence_type="session",
+                                        style={"width": "210px", "height": control_height},
+                                    ),
+                                ],
+                                id={"comp": self.component_id, "kind": "save_points_to_vgs", "field": "custom_name_container"},
+                                style={"visibility": "hidden", "width": "210px"},
                             ),
                         ],
-                        className="g-2 mb-2",
+                        style={"display": "flex", "gap": "12px", "alignItems": "flex-end", "flexWrap": "wrap"},
+                        className="mb-3",
+                    ),
+                    html.Div(
+                        [
+                            html.Small("Point duration (ns)", className="text-light", style=compact_label),
+                            dbc.Input(
+                                id={"comp": self.component_id, "kind": "save_points_to_vgs", "field": "duration"},
+                                type="number",
+                                value=1000,
+                                min=16,
+                                step=4,
+                                persistence=True,
+                                persistence_type="session",
+                                style={"width": "140px", "height": control_height},
+                            ),
+                        ],
+                        className="mb-3",
+                    ),
+                    html.Div(
+                        [
+                            html.Small("Associate with", className="text-light", style=compact_label),
+                            dcc.Dropdown(
+                                id={"comp": self.component_id, "kind": "save_points_to_vgs", "field": "component"},
+                                options=component_opts,
+                                value="__none__",
+                                placeholder="Select component (optional)",
+                                clearable=False,
+                                persistence=True,
+                                persistence_type="session",
+                                style={"color": "black", "width": "300px", "height": control_height},
+                            ),
+                        ],
+                        className="mb-2",
                     ),
                     html.Div(
                         id={"comp": self.component_id, "kind": "save_points_to_vgs", "field": "preview"},
                         className="text-muted mt-2",
-                        children="Select a point name (or enter custom name)",
+                        style={"fontSize": "0.8em"},
+                        children="Select a point name (or enter a custom name)",
                     ),
                 ]
 
@@ -1036,12 +1299,21 @@ class AnnotationTabController(BaseTabController):
             Output(self._get_id("analysis-apply-action"), "value"),
             Input(viewer_data_store_id, "data"),
             State(self._get_id("analysis-apply-action"), "value"),
+            State(self._get_id("analysis-apply-action"), "options"),
             prevent_initial_call=False,
         )
-        def _refresh_opts(_viewer_ref, current_value):
+        def _refresh_opts(_viewer_ref, current_value, current_options):
             opts = self._apply_dropdown_options()
             valid_values = {o["value"] for o in opts}
-            new_value = current_value if current_value in valid_values else None
+
+            # Do not make React rewrite the dropdown on every plot/store update.
+            # This is another source of the brief reset/restore flash.
+            if current_options == opts and (current_value is None or current_value in valid_values):
+                return no_update, no_update
+
+            if current_value is None:
+                return opts, None
+            new_value = current_value if current_value in valid_values else (opts[0]["value"] if opts else None)
             return opts, new_value
 
     def _register_mode_change(
@@ -1636,7 +1908,6 @@ class AnnotationTabController(BaseTabController):
             Output(viewer_ui_state_store_id, "data", allow_duplicate=True),
             Input(shared_viewer_graph_id, "clickData"),
             Input(shared_viewer_graph_id, "hoverData"),
-            Input(self._get_id(self._SHOW_LABELS_CHECKLIST_SUFFIX), "value"),
             State(self._get_id(self._MODE_SELECTOR_SUFFIX), "value"),
             State(viewer_data_store_id, "data"),  # Get current key and version
             prevent_initial_call=True,
@@ -1644,7 +1915,6 @@ class AnnotationTabController(BaseTabController):
         def _handle_graph_interactions(
             click_data: Optional[Dict[str, Any]],
             hover_data: Optional[Dict[str, Any]],
-            labels_list: List[str],
             mode: str,
             current_viewer_data_ref: Optional[Dict[str, str]],
         ) -> Tuple[Dict[str, Any],Dict[str, Any]]:
@@ -1765,12 +2035,6 @@ class AnnotationTabController(BaseTabController):
                 interaction_changed_data = self._handle_hover_interaction(
                     hover_data, mode, annotations_copy
                 )
-            elif (
-                interaction_type == "value"  # Checklist for showing labels
-            ):
-                self._show_labels = labels_list
-                logging.info(f"Callback triggered by checklist. Show labels: {self._show_labels}")
-
             # Potential improvement: Only update viewer_ui_state_store_payload, if there are changes.
             viewer_ui_state_store_payload = {
                 "selected_point_to_move": self._selected_point_to_move["point_id"],

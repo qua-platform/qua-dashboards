@@ -406,7 +406,13 @@ class SettingsTabController(BaseTabController):
             rows_data = list(zip(timings, point_names, durations, point_ramps))
             
             if trigger_id == f"{self.component_id}-add-point-btn":
-                rows_data.append(("pre", available_points[0]["value"] if available_points else None, 1000, 16))
+                first_point = available_points[0]["value"] if available_points else None
+                default_duration = 1000
+                if first_point:
+                    macro = gate_set.get_macros().get(first_point)
+                    if macro is not None:
+                        default_duration = int(macro.duration)
+                rows_data.append(("pre", first_point, default_duration, 16))
             else:
                 try:
                     trigger_dict = eval(trigger_id)
@@ -652,10 +658,9 @@ class SettingsTabController(BaseTabController):
             point_value = available_points[0]["value"] if available_points else None
 
         if duration_value is None:
-            duration_value = 1000 
-            if point_value and duration_value in macros:
-                macro = macros[point_value]
-                duration_value = macro.duration
+            duration_value = 1000
+            if point_value and point_value in macros:
+                duration_value = int(macros[point_value].duration)
         if ramp_value is None: 
             ramp_value = 16
 

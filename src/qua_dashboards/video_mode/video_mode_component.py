@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Literal
 import threading, time, requests
 from flask import url_for
 import time
@@ -32,6 +32,7 @@ from qua_dashboards.video_mode.tab_controllers.settings_tab_controller import (
 from qua_dashboards.video_mode.tab_controllers.voltage_control_tab import (
     VoltageControlTabController,
 )
+from qua_dashboards.video_mode.utils.plot_utils import AVAILABLE_COLORS
 
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,11 @@ class VideoModeComponent(BaseComponent):
     # Can also be an empty dictionary or dash.no_update.
     VIEWER_LAYOUT_CONFIG_STORE_SUFFIX = "viewer-layout-config-store"
 
+    # SUFFIX for the dcc.Store that holds the color scale applied to heatmaps
+    # in the shared viewer.
+    # Content: A Plotly color scale name (e.g., "plasma").
+    VIEWER_COLOR_SCALE_STORE_SUFFIX = "viewer-color-scale-store"
+
     DEFAULT_COMPONENT_ID = "video-mode-component"
 
     def __init__(
@@ -97,6 +103,7 @@ class VideoModeComponent(BaseComponent):
         layout_rows: int = 10,
         shutdown_callback: Optional[callable] = None,
         voltage_control_tab: Optional[VoltageControlTabController] = None,
+        color_scheme: str = "plasma",
         **kwargs: Any,
     ):
         """Initializes the VideoModeComponent.
@@ -109,6 +116,7 @@ class VideoModeComponent(BaseComponent):
             component_id: Unique ID for this component instance.
             data_polling_interval_s: Interval for polling data.
             layout_columns: Number of layout columns (for grid systems).
+            color_scheme: The default plotly color scheme to use for the 2Dplot. This can be changed in the Settings Tab.
             **kwargs: Additional keyword arguments for BaseComponent.
         """
         super().__init__(component_id=component_id, **kwargs)
@@ -118,6 +126,9 @@ class VideoModeComponent(BaseComponent):
             raise TypeError("data_acquirer must be an instance of BaseDataAcquirer.")
         self.save_path = save_path
         self.data_acquirer: BaseDataAcquirer = data_acquirer
+        if color_scheme not in AVAILABLE_COLORS: 
+            raise ValueError(f"Color scheme not in list of valid schemes. Received: {color_scheme}. Available: {AVAILABLE_COLORS}")
+        self.color_scheme = color_scheme
         self.shared_viewer: SharedViewerComponent = SharedViewerComponent(
             component_id=f"{self.component_id}-shared-viewer"
         )
@@ -143,7 +154,8 @@ class VideoModeComponent(BaseComponent):
             )
             settings_tab = SettingsTabController(
                 component_id = f"{self.component_id}-settings-tab",
-                data_acquirer=self.data_acquirer
+                data_acquirer=self.data_acquirer, 
+                default_color_scheme = self.color_scheme,
             )
             self.tab_controllers: List[BaseTabController] = [
                 live_view_tab,
@@ -314,6 +326,10 @@ class VideoModeComponent(BaseComponent):
             dcc.Store(
                 id=self._get_store_id(self.VIEWER_LAYOUT_CONFIG_STORE_SUFFIX), data={}
             ),
+            dcc.Store(
+                id=self._get_store_id(self.VIEWER_COLOR_SCALE_STORE_SUFFIX),
+                data=self.color_scheme,
+            ),
         ]
 
         main_layout = dbc.Container(
@@ -396,6 +412,9 @@ class VideoModeComponent(BaseComponent):
             "layout_config_store": self._get_store_id(
                 self.VIEWER_LAYOUT_CONFIG_STORE_SUFFIX
             ),
+            "color_scale_store": self._get_store_id(
+                self.VIEWER_COLOR_SCALE_STORE_SUFFIX
+            ),
         }
 
         self.shared_viewer.register_callbacks(
@@ -404,6 +423,9 @@ class VideoModeComponent(BaseComponent):
             viewer_ui_state_store_id=shared_viewer_store_ids_for_tabs["viewer_ui_state_store"],
             layout_config_store_id=shared_viewer_store_ids_for_tabs[
                 "layout_config_store"
+            ],
+            color_scale_store_id=shared_viewer_store_ids_for_tabs[
+                "color_scale_store"
             ],
         )
 

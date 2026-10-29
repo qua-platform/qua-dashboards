@@ -349,14 +349,14 @@ class LiveViewTabController(BaseTabController):
             n_subplots = max(1, len(da.selected_readout_channels))
             is_1d = da.y_axis_name is None
 
-            colour = f"rgba({'255,255,255' if is_1d else '0,0,0'},{alpha})"
+            color = f"rgba({'255,255,255' if is_1d else '0,0,0'},{alpha})"
             grid_fracs = np.linspace(0, 1, 15)[1:-1].tolist()
             def line(sfx, x0, x1, y0, y1, width, name):
                 return {
                     "type": "line",
                     "xref": f"x{sfx} domain", "yref": f"y{sfx} domain",
                     "x0": x0, "x1": x1, "y0": y0, "y1": y1,
-                    "line": {"width": width, "color": colour},
+                    "line": {"width": width, "color": color},
                     "layer": "above", "name": name,
                 }
 

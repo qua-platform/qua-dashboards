@@ -5,6 +5,26 @@ from qua_dashboards.video_mode.utils.dash_utils import xarray_to_plotly
 from plotly.subplots import make_subplots
 from math import ceil
 
+AVAILABLE_COLORS = [
+    "plasma", 
+    "plasma_r",
+    "viridis",
+    "viridis_r",
+    "cividis",
+    "cividis_r",
+    "greys",
+    "greys_r",
+    "spectral",
+    "spectral_r",
+    "inferno", 
+    "inferno_r", 
+    "turbo", 
+    "turbo_r", 
+    "RdBu", 
+    "RdBu_r", 
+    "icefire", 
+    "icefire_r"
+]
 
 def rc(i: int) -> tuple[int, int]:
     """

@@ -9,9 +9,7 @@ from dash import Dash, Input, Output, State, html, ctx, ALL, dcc
 
 from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import (
     BaseDataAcquirer,
-    ModifiedFlags,
 )
-import numpy as np
 from qua_dashboards.video_mode.tab_controllers.base_tab_controller import (
     BaseTabController,
 )
@@ -60,9 +58,6 @@ class LiveViewTabController(BaseTabController):
         super().__init__(component_id=component_id, is_active=is_active, **kwargs)
         self._data_acquirer_instance: BaseDataAcquirer = data_acquirer
         self._show_inner_loop_controls = show_inner_loop_controls
-        self._last_overlay_text: Optional[str] = None
-        self._last_overlay_version: Optional[str] = None
-        self._last_gridlines_state: Optional[str] = None
 
         logger.info(
             f"LiveViewTabController '{self.component_id}' initialized with "
@@ -230,7 +225,6 @@ class LiveViewTabController(BaseTabController):
     def on_tab_deactivated(self) -> None:
         """Called by the orchestrator when this tab is no longer active."""
         logger.info(f"LiveViewTabController '{self.component_id}' deactivated.")
-        pass
 
     def register_callbacks(
         self,
@@ -266,18 +260,13 @@ class LiveViewTabController(BaseTabController):
             prevent_initial_call=True,
         )
         def _refresh_readout_params(selected_names):
+            da = self._data_acquirer_instance
             names = selected_names or []
             if not isinstance(names, list):
                 names = [names]
 
-            self._data_acquirer_instance.selected_readout_channels = [
-                self._data_acquirer_instance.available_readout_channels[n]
-                for n in names
-                if n in self._data_acquirer_instance.available_readout_channels
-            ]
-            self._data_acquirer_instance.inner_loop_action.selected_readout_channels = self._data_acquirer_instance.selected_readout_channels
-
-            return self._data_acquirer_instance.inner_loop_action.build_readout_controls()
+            da.update_parameters({da.component_id: {"readouts": names}})
+            return da.inner_loop_action.build_readout_controls()
         
     def _register_click_to_centre_callback(
             self, 
@@ -340,115 +329,49 @@ class LiveViewTabController(BaseTabController):
             app: Dash, 
             shared_viewer_store_ids: Dict[str, Any]
         ) -> None:
+        da = self._data_acquirer_instance
+
         @app.callback(
             Output(shared_viewer_store_ids["layout_config_store"], "data", allow_duplicate = True),
             Input(self._get_id("center-marker-toggle"), "value"),
             Input(self._get_id("show-full-grid-toggle"), "value"),
             Input(self._get_id("grid_opacity"), "value"),
+            Input(da._get_id("readouts"), "value"),
+            Input(da._get_id("gate-select-y"), "value"),
             State(shared_viewer_store_ids["layout_config_store"], "data"),
             prevent_initial_call=True,
         )
-        def _toggle_gridlines(toggle_val, full_val, opacity, existing_layout):
-            layout = existing_layout or {}
-            show = "on" in toggle_val
+        def _toggle_gridlines(toggle_val, full_val, opacity, _readouts, _y_gate, existing_layout):
+            layout = dict(existing_layout or {})
+            show = "on" in (toggle_val or [])
             show_full = "on" in (full_val or [])
-            shapes = []
             alpha = float(opacity)/100
-            n_subplots = max(1, len(self._data_acquirer_instance.selected_readout_channels))
-
-            da = self._data_acquirer_instance
+            n_subplots = max(1, len(da.selected_readout_channels))
             is_1d = da.y_axis_name is None
 
-            cache_key = (show, show_full, opacity, tuple(self._data_acquirer_instance.x_axis.sweep_values_with_offset),
-                tuple(self._data_acquirer_instance.y_axis.sweep_values_with_offset),
-                len(self._data_acquirer_instance.selected_readout_channels))
-            if cache_key == self._last_gridlines_state:
-                return dash.no_update
-            self._last_gridlines_state = cache_key
+            colour = f"rgba({'255,255,255' if is_1d else '0,0,0'},{alpha})"
+            grid_fracs = np.linspace(0, 1, 15)[1:-1].tolist()
+            def line(sfx, x0, x1, y0, y1, width, name):
+                return {
+                    "type": "line",
+                    "xref": f"x{sfx} domain", "yref": f"y{sfx} domain",
+                    "x0": x0, "x1": x1, "y0": y0, "y1": y1,
+                    "line": {"width": width, "color": colour},
+                    "layer": "above", "name": name,
+                }
 
-            if show or show_full:
-                def ax_suffix(i):
-                    return "" if i == 1 else str(i)
-
-                xr = list(self._data_acquirer_instance.x_axis.sweep_values_with_offset)
-                x_centre = float(xr[len(xr) // 2])
-                xs = np.linspace(xr[0], xr[-1], 15).tolist()
-
-                if not is_1d:
-                    yr = list(self._data_acquirer_instance.y_axis.sweep_values_with_offset)
-                    y_centre = float(yr[len(yr) // 2])
-                    ys = np.linspace(yr[0], yr[-1], 15).tolist()
-
-                for i in range(1, n_subplots + 1):
-                    sfx = ax_suffix(i)
-                    xref = f"x{sfx}"
-                    grid_color = f"rgba(0,0,0,{alpha})"
-                    grid_color_1d = f"rgba(255,255,255,{alpha})"
-
-                    if show:
-                        if is_1d:
-                            shapes.append({
-                                "type": "line",
-                                "xref": xref,
-                                "yref": "paper",
-                                "x0": x_centre, "x1": x_centre,
-                                "y0": 0, "y1": 1,
-                                "line": {"width": 5, "color": grid_color_1d},
-                                "layer": "above",
-                                "name": "crosshair-x",
-                            })
-                        else:
-                            yref = f"y{sfx}"
-                            shapes.append({
-                                "type": "line",
-                                "xref": xref, "yref": yref,
-                                "x0": x_centre, "x1": x_centre, "y0": min(ys), "y1": max(ys),
-                                "line": {"width": 5, "color": grid_color},
-                                "layer": "above",
-                                "name": "crosshair-x",
-                            })
-                            shapes.append({
-                                "type": "line",
-                                "xref": xref, "yref": yref,
-                                "x0": min(xs), "x1": max(xs), "y0": y_centre, "y1": y_centre,
-                                "line": {"width": 5, "color": grid_color},
-                                "layer": "above",
-                                "name": "crosshair-y",
-                            })
-
-                    if show_full:
-                        if is_1d:
-                            for xv in xs:
-                                shapes.append({
-                                    "type": "line",
-                                    "xref": xref,
-                                    "yref": "paper",
-                                    "x0": xv, "x1": xv,
-                                    "y0": 0, "y1": 1,
-                                    "line": {"width": 2, "color": grid_color_1d},
-                                    "layer": "above",
-                                    "name": "grid-x",
-                                })
-                        else:
-                            yref = f"y{sfx}"
-                            for xv in xs:
-                                shapes.append({
-                                    "type": "line",
-                                    "xref": xref, "yref": yref,
-                                    "x0": xv, "x1": xv, "y0": min(ys), "y1": max(ys),
-                                    "line": {"width": 2, "color": grid_color},
-                                    "layer": "above",
-                                    "name": "grid-x",
-                                })
-                            for yv in ys:
-                                shapes.append({
-                                    "type": "line",
-                                    "xref": xref, "yref": yref,
-                                    "x0": min(xs), "x1": max(xs), "y0": yv, "y1": yv,
-                                    "line": {"width": 2, "color": grid_color},
-                                    "layer": "above",
-                                    "name": "grid-y",
-                                })
+            shapes = []
+            for i in range(1, n_subplots + 1):
+                sfx = "" if i == 1 else str(i)
+                if show:
+                    shapes.append(line(sfx, 0.5, 0.5, 0, 1, 5, "crosshair-x"))
+                    if not is_1d:
+                        shapes.append(line(sfx, 0, 1, 0.5, 0.5, 5, "crosshair-y"))
+                if show_full:
+                    for f in grid_fracs:
+                        shapes.append(line(sfx, f, f, 0, 1, 2, "grid-x"))
+                        if not is_1d:
+                            shapes.append(line(sfx, 0, 1, f, f, 2, "grid-y"))
 
             layout["shapes"] = shapes
             return layout

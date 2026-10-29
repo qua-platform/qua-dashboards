@@ -110,7 +110,7 @@ class VirtualLayerEditor(BaseComponent):
                         },
                         type="number",
                         value=layer.matrix[i][j],
-                        className="vg-matrix-input",
+                        className="vg-matrix-input no-scroll-input",
                         style={
                             "width": col,
                             "minWidth": "0",

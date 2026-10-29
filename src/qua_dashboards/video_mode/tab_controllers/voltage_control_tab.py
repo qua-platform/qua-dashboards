@@ -38,8 +38,15 @@ class VoltageControlTabController(BaseTabController):
         self.component_id = component_id
 
     def get_layout(self) -> dbc.Card: 
+        header = html.Div(
+            [
+                html.H5("Voltage Control", className="card-title text-light mb-0"),
+                self.voltage_control_component.get_display_preset_dropdown(),
+            ],
+            className="d-flex align-items-center justify-content-between mb-2",
+        )
         card_body = dbc.CardBody([
-            html.H5("Voltage Control", className="card-title text-light"),
+            header,
             self.voltage_control_component.get_layout()
         ])
         return dbc.Card(

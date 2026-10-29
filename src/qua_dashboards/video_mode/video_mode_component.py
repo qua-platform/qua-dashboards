@@ -809,6 +809,10 @@ class VideoModeComponent(BaseComponent):
                 )
         results = {"image_data": image_data}
 
+        voltage_control = getattr(self.data_acquirer, "voltage_control_component", None)
+        if voltage_control is not None:
+            results["dac_history"] = voltage_control.get_history()
+
         # Add plotly graphs from the shared viewer
         try:
             # Temporary import check since qualang tools does not yet support plotly

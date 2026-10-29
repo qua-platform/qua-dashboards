@@ -3,7 +3,8 @@ Dash component for displaying and controlling a series of voltage parameters.
 """
 
 import logging
-from typing import Dict, Sequence
+from datetime import datetime
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import dash
 from dash import (
@@ -25,7 +26,13 @@ from quam_builder.architecture.quantum_dots.components.virtual_dc_set import Vir
 logger = logging.getLogger(__name__)
 
 DEFAULT_INPUT_CLASS_NAME = ""  # Input fields will always have this class
-COMPONENT_MAX_WIDTH = "450px"
+COMPONENT_MAX_WIDTH = "600px"
+
+DISPLAY_PRESET_OPTIONS = [
+    {"label": "Physical gates", "value": "physical"},
+    {"label": "Virtual gates", "value": "virtual"},
+    {"label": "All gates", "value": "all"},
+]
 
 
 class VirtualGateParameter:
@@ -71,8 +78,8 @@ class VoltageControlComponent(BaseComponent):
         super().__init__(component_id=component_id)
         if voltage_parameters is None and dc_set is None: 
             raise ValueError("Please provide either a sequence of VoltageParameter objects, or a VirtualDCSet.")
+        self.dc_set = dc_set
         if voltage_parameters is None: 
-            self.dc_set = dc_set
             _ = self.dc_set.all_current_voltages
             voltage_parameters = []
             for ch in self.dc_set.valid_channel_names: 
@@ -96,19 +103,80 @@ class VoltageControlComponent(BaseComponent):
         self._initial_selected_names = [n for n in (preselected_gates or []) if n in all_names]
         self.gates_to_display = [p for p in self.voltage_parameters if p.name in self._initial_selected_names]
 
+        # History of applied voltages: (timestamp, {gate_name: voltage}) for every gate, oldest first.
+        self._history: List[Tuple[str, Dict[str, float]]] = []
+        self.record_history()
+
     def _get_id_type_str(self, element_name: str) -> str:
         return f"comp-{self.component_id}-{element_name}"
+
+    def _physical_and_virtual_names(self) -> Tuple[List[str], List[str]]:
+        if self.dc_set is None:
+            return [], [p.name for p in self.voltage_parameters]
+        physical_names = sorted(self.dc_set.channels.keys())
+        virtual_names = [n for n in self.dc_set.valid_channel_names if n not in physical_names]
+        return physical_names, virtual_names
+
+    def record_history(self) -> None:
+        """
+        Appends a timestamped snapshot of every gate's voltage to the history.
+
+        Skipped if no voltage differs from the most recent snapshot.
+        """
+        try:
+            snapshot = {
+                name: float(param.get_latest())
+                for name, param in self.voltage_parameters_by_name.items()
+            }
+        except Exception as e:
+            logger.error(f"Could not record voltage history: {e}", exc_info=True)
+            return
+        if self._history and self._history[-1][1] == snapshot:
+            return
+        self._history.append((datetime.now().isoformat(), snapshot))
+
+    def get_history(self) -> Dict[str, Dict[str, Optional[float]]]:
+        """
+        Returns the voltage history as {timestamp: {gate_name: voltage}}, oldest first.
+
+        Every snapshot lists the same gates. Gates that did not exist yet when a snapshot
+        was taken (e.g. from a virtual layer added later) are given as None.
+        """
+        all_names: List[str] = []
+        for _, snapshot in self._history:
+            all_names.extend(n for n in snapshot if n not in all_names)
+        return {
+            timestamp: {name: snapshot.get(name) for name in all_names}
+            for timestamp, snapshot in self._history
+        }
+
+    def get_display_preset_dropdown(self) -> dcc.Dropdown:
+        """Dropdown that selects all physical, all virtual, or all gates for display."""
+        return dcc.Dropdown(
+            id=self._get_id("display-preset"),
+            options=(
+                DISPLAY_PRESET_OPTIONS
+                if self.dc_set is not None
+                else [o for o in DISPLAY_PRESET_OPTIONS if o["value"] == "all"]
+            ),
+            value=None,
+            placeholder="Show gates...",
+            clearable=False,
+            searchable=False,
+            style={"color": "black", "minWidth": "160px"},
+        )
         
     def _build_dropdown_options(self) -> list:
         """Build dropdown options with physical/virtual grouping."""
+        if self.dc_set is None:
+            return [{"label": p.name, "value": p.name} for p in self.voltage_parameters]
         options = []
-        physical_names = set(self.dc_set.channels.keys()) if self.dc_set else set()
-        virtual_names = [n for n in self.dc_set.valid_channel_names if n not in physical_names]
+        physical_names, virtual_names = self._physical_and_virtual_names()
         
         # Physical gates section
         if physical_names:
             options.append({"label": "── Physical Gates ──", "value": "__physical_header__", "disabled": True})
-            for name in sorted(physical_names):
+            for name in physical_names:
                 options.append({"label": name, "value": name})
         
         # Virtual gates section  
@@ -180,6 +248,8 @@ class VoltageControlComponent(BaseComponent):
             return
 
         input_id_type_str = self._get_id_type_str("input")
+        last_value_id_type_str = f"{input_id_type_str}-last-value"
+        undo_id_type_str = f"{input_id_type_str}-undo"
 
         @app.callback(
             Output({"type": input_id_type_str, "index": ALL}, "value", allow_duplicate=True), 
@@ -214,6 +284,7 @@ class VoltageControlComponent(BaseComponent):
                 elif live_text != control_row.current_input_text:
                     control_row.current_input_text = live_text
                     control_row.last_committed_text = live_text
+                    control_row.current_value = live_value
                     values.append(live_text)
                 else: 
                     values.append(dash.no_update)
@@ -243,7 +314,24 @@ class VoltageControlComponent(BaseComponent):
             return rows, {"input_ids": input_ids, "step_size": self.step_size, "dummy_store_id": self._get_id("keyboard-dummy")}
         
         @app.callback(
+            Output(self._get_id("dc-gate-selector"), "value", allow_duplicate=True),
+            Input(self._get_id("display-preset"), "value"),
+            prevent_initial_call=True,
+        )
+        def apply_display_preset(preset):
+            physical_names, virtual_names = self._physical_and_virtual_names()
+            if preset == "physical":
+                return physical_names
+            if preset == "virtual":
+                return virtual_names
+            if preset == "all":
+                return physical_names + virtual_names
+            raise dash.exceptions.PreventUpdate
+
+        @app.callback(
             Output({"type": input_id_type_str, "index": MATCH}, "value", allow_duplicate=True), 
+            Output({"type": last_value_id_type_str, "index": MATCH}, "children", allow_duplicate=True),
+            Output({"type": undo_id_type_str, "index": MATCH}, "disabled", allow_duplicate=True),
             Input({"type": input_id_type_str, "index": MATCH}, "n_submit"), 
             State({"type": input_id_type_str, "index": MATCH}, "value"), 
             State({"type": input_id_type_str, "index": MATCH}, "id"),
@@ -263,19 +351,44 @@ class VoltageControlComponent(BaseComponent):
             
             try:
                 float_value = float(submitted_text_value)
-                param.set(float_value)
-                control_row.current_input_text = format_voltage(float_value)
-                control_row.last_committed_text = control_row.current_input_text
-                return control_row.current_input_text
+                text = control_row.apply_value(float_value)
+                self.record_history()
+                return text, control_row.get_last_value_text(), not control_row.can_undo
             except ValueError:
                 logger.warning(f"Invalid float: '{submitted_text_value}' for {param_name}")
-                return dash.no_update
+                return dash.no_update, dash.no_update, dash.no_update
             except Exception as e:
                 logger.error(f"Error during set for {param_name}: {e}", exc_info=True)
-                return dash.no_update
-            
+                return dash.no_update, dash.no_update, dash.no_update
+
+        @app.callback(
+            Output({"type": input_id_type_str, "index": MATCH}, "value", allow_duplicate=True),
+            Output({"type": last_value_id_type_str, "index": MATCH}, "children", allow_duplicate=True),
+            Output({"type": undo_id_type_str, "index": MATCH}, "disabled", allow_duplicate=True),
+            Input({"type": undo_id_type_str, "index": MATCH}, "n_clicks"),
+            State({"type": undo_id_type_str, "index": MATCH}, "id"),
+            prevent_initial_call=True,
+        )
+        def handle_undo(n_clicks, undo_id):
+            if not n_clicks:
+                raise dash.exceptions.PreventUpdate
+
+            control_row = self._row_components.get(undo_id["index"])
+            if control_row is None:
+                raise dash.exceptions.PreventUpdate
+
+            try:
+                text = control_row.undo()
+                self.record_history()
+                return text, control_row.get_last_value_text(), not control_row.can_undo
+            except Exception as e:
+                logger.error(f"Error during undo for {undo_id['index']}: {e}", exc_info=True)
+                return dash.no_update, dash.no_update, dash.no_update
+
         @app.callback(
             Output({"type": input_id_type_str, "index": ALL}, "value", allow_duplicate=True),
+            Output({"type": last_value_id_type_str, "index": ALL}, "children", allow_duplicate=True),
+            Output({"type": undo_id_type_str, "index": ALL}, "disabled", allow_duplicate=True),
             Input(self._get_id("keyboard-dummy"), "data"),
             State({"type": input_id_type_str, "index": ALL}, "id"),
             prevent_initial_call=True,
@@ -294,20 +407,21 @@ class VoltageControlComponent(BaseComponent):
                 raise dash.exceptions.PreventUpdate
             
             try:
-                float_value = float(new_value_str)
-                param.set(float_value)
-                formatted = format_voltage(float_value)
-                control_row.current_input_text = formatted
-                control_row.last_committed_text = formatted
+                formatted = control_row.apply_value(float(new_value_str))
             except (ValueError, Exception) as e:
                 logger.error(f"Arrow key set error for {param_name}: {e}")
                 raise dash.exceptions.PreventUpdate
+            self.record_history()
             
-            # Return updated value for the matching input, no_update for the rest
-            return [
-                formatted if iid["index"] == param_name else dash.no_update
-                for iid in input_ids
-            ]
+            # Return updated values for the matching row, no_update for the rest
+            def for_row(value):
+                return [value if iid["index"] == param_name else dash.no_update for iid in input_ids]
+
+            return (
+                for_row(formatted),
+                for_row(control_row.get_last_value_text()),
+                for_row(not control_row.can_undo),
+            )
 
         @app.callback(
             Output({"type": input_id_type_str, "index": MATCH}, "value", allow_duplicate=True),

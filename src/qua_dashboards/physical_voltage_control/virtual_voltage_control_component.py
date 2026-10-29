@@ -21,6 +21,7 @@ from qua_dashboards.core import BaseComponent
 from .physical_voltage_control_row import format_voltage_fixed
 from .virtual_voltage_control_row import VirtualVoltageControlRow
 
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ class VirtualVoltageControlComponent(BaseComponent):
             for name in (preselected_gates or [])
             if name in available
         ]
+        self._voltage_lock = threading.Lock()
 
     def _to_display_voltage(self, value: float) -> float:
         if self.display_unit == "mV":
@@ -398,11 +400,12 @@ class VirtualVoltageControlComponent(BaseComponent):
             delta = new_offset - old_offset
 
             try:
-                self.dc_set.increment_voltages(
-                    {gate_name: delta},
-                    requery=False,
-                    resync=False,
-                )
+                with self._voltage_lock:
+                    self.dc_set.increment_voltages(
+                        {gate_name: delta},
+                        requery=True,
+                        resync=False,
+                    )
             except Exception:
                 logger.exception(
                     "Failed to change virtual gate %s offset from %.6f V to %.6f V",
@@ -559,11 +562,12 @@ class VirtualVoltageControlComponent(BaseComponent):
             current_offset = self._offsets.get(gate_name, 0.0)
 
             try:
-                self.dc_set.increment_voltages(
-                    {gate_name: delta},
-                    requery=False,
-                    resync=False,
-                )
+                with self._voltage_lock:
+                    self.dc_set.increment_voltages(
+                        {gate_name: delta},
+                        requery=True,
+                        resync=False,
+                    )
             except Exception:
                 logger.exception(
                     "Failed to increment virtual gate %s by %.6f V",

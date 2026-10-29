@@ -684,11 +684,11 @@ class LiveViewTabController(BaseTabController):
                     + float(y_val)
                 )
             if targets:
-                print("Current DC:", current)
-                print("Clicked delta:", {"x": x_val, "y": y_val})
-                print("Targets:", targets)
-                dc_set.set_voltages(targets)
-                print("Updated DC:", dc_set.all_current_voltages)
+                # print("Current DC:", current)
+                # print("Clicked delta:", {"x": x_val, "y": y_val})
+                # print("Targets:", targets)
+                dc_set.set_voltages(targets, requery=False, resync=False)
+                # print("Updated DC:", dc_set.all_current_voltages)
             da.start_acquisition()
             return (
                 "",

@@ -83,6 +83,7 @@ def create_input_field(
     div_style: dict = None,
     units: str = None,
     type: str = "number",
+    disable_scroll: bool = True,
     **kwargs,
 ) -> Any:
     """
@@ -99,6 +100,8 @@ def create_input_field(
         input_style: A dictionary of CSS styles for the input element (default width of 80px).
         div_style: A dictionary of CSS styles for the container row.
         units: An optional string representing measurement units.
+        disable_scroll: If True, the mouse wheel does not change the input value
+            (handled by assets/no_scroll_inputs.js).
         **kwargs: Additional keyword arguments passed to dbc.Input.
 
     Returns:
@@ -106,6 +109,8 @@ def create_input_field(
     """
     if input_style is None:
         input_style = {"width": "80px"}
+    if disable_scroll:
+        kwargs["className"] = f"{kwargs.get('className', '')} no-scroll-input".strip()
 
     elements = [
         dbc.Col(

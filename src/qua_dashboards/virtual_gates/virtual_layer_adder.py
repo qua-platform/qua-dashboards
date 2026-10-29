@@ -54,6 +54,7 @@ class VirtualLayerAdder:
                               "row":i,"col":j},
                               type = "number",
                               value = default_value, 
+                              className="no-scroll-input",
                               style = {"width":"auto", "textAlign":"center"}
                               
                     ), width = col_width)

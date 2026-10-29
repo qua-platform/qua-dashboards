@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Literal
 import threading, time, requests
 from flask import url_for
 import time
@@ -32,6 +32,7 @@ from qua_dashboards.video_mode.tab_controllers.settings_tab_controller import (
 from qua_dashboards.video_mode.tab_controllers.voltage_control_tab import (
     VoltageControlTabController,
 )
+from qua_dashboards.video_mode.utils.plot_utils import AVAILABLE_COLORS
 
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,11 @@ class VideoModeComponent(BaseComponent):
     # Can also be an empty dictionary or dash.no_update.
     VIEWER_LAYOUT_CONFIG_STORE_SUFFIX = "viewer-layout-config-store"
 
+    # SUFFIX for the dcc.Store that holds the color scale applied to heatmaps
+    # in the shared viewer.
+    # Content: A Plotly color scale name (e.g., "plasma").
+    VIEWER_COLOR_SCALE_STORE_SUFFIX = "viewer-color-scale-store"
+
     DEFAULT_COMPONENT_ID = "video-mode-component"
 
     def __init__(
@@ -97,6 +103,8 @@ class VideoModeComponent(BaseComponent):
         layout_rows: int = 10,
         shutdown_callback: Optional[callable] = None,
         voltage_control_tab: Optional[VoltageControlTabController] = None,
+        color_scheme: str = "plasma",
+        close_on_shutdown: Optional[Sequence[Callable[[], Any]]] = None,
         **kwargs: Any,
     ):
         """Initializes the VideoModeComponent.
@@ -109,6 +117,12 @@ class VideoModeComponent(BaseComponent):
             component_id: Unique ID for this component instance.
             data_polling_interval_s: Interval for polling data.
             layout_columns: Number of layout columns (for grid systems).
+            color_scheme: The default plotly color scheme to use for the 2Dplot. This can be changed in the Settings Tab.
+            shutdown_callback: Called last when the shutdown button is clicked, e.g. to stop the server.
+            close_on_shutdown: Functions taking no arguments, called when the shutdown button is clicked,
+                to close connections the dashboard does not manage itself (e.g. [qdac.close]).
+                DACs connected through a QUAM machine with disconnect_from_external_source
+                are closed automatically.
             **kwargs: Additional keyword arguments for BaseComponent.
         """
         super().__init__(component_id=component_id, **kwargs)
@@ -118,10 +132,14 @@ class VideoModeComponent(BaseComponent):
             raise TypeError("data_acquirer must be an instance of BaseDataAcquirer.")
         self.save_path = save_path
         self.data_acquirer: BaseDataAcquirer = data_acquirer
+        if color_scheme not in AVAILABLE_COLORS: 
+            raise ValueError(f"Color scheme not in list of valid schemes. Received: {color_scheme}. Available: {AVAILABLE_COLORS}")
+        self.color_scheme = color_scheme
         self.shared_viewer: SharedViewerComponent = SharedViewerComponent(
             component_id=f"{self.component_id}-shared-viewer"
         )
         self.shutdown_callback = shutdown_callback
+        self.close_on_shutdown: List[Callable[[], Any]] = list(close_on_shutdown or [])
         self._last_pushed_seq: Optional[int] = None
         if hasattr(self.data_acquirer, "_plot_time_ms"): 
             self.data_acquirer._plot_time_ms = data_polling_interval_s*1000
@@ -143,7 +161,8 @@ class VideoModeComponent(BaseComponent):
             )
             settings_tab = SettingsTabController(
                 component_id = f"{self.component_id}-settings-tab",
-                data_acquirer=self.data_acquirer
+                data_acquirer=self.data_acquirer, 
+                default_color_scheme = self.color_scheme,
             )
             self.tab_controllers: List[BaseTabController] = [
                 live_view_tab,
@@ -314,6 +333,10 @@ class VideoModeComponent(BaseComponent):
             dcc.Store(
                 id=self._get_store_id(self.VIEWER_LAYOUT_CONFIG_STORE_SUFFIX), data={}
             ),
+            dcc.Store(
+                id=self._get_store_id(self.VIEWER_COLOR_SCALE_STORE_SUFFIX),
+                data=self.color_scheme,
+            ),
         ]
 
         main_layout = dbc.Container(
@@ -396,6 +419,9 @@ class VideoModeComponent(BaseComponent):
             "layout_config_store": self._get_store_id(
                 self.VIEWER_LAYOUT_CONFIG_STORE_SUFFIX
             ),
+            "color_scale_store": self._get_store_id(
+                self.VIEWER_COLOR_SCALE_STORE_SUFFIX
+            ),
         }
 
         self.shared_viewer.register_callbacks(
@@ -404,6 +430,9 @@ class VideoModeComponent(BaseComponent):
             viewer_ui_state_store_id=shared_viewer_store_ids_for_tabs["viewer_ui_state_store"],
             layout_config_store_id=shared_viewer_store_ids_for_tabs[
                 "layout_config_store"
+            ],
+            color_scale_store_id=shared_viewer_store_ids_for_tabs[
+                "color_scale_store"
             ],
         )
 
@@ -434,24 +463,9 @@ class VideoModeComponent(BaseComponent):
             if not n_clicks:
                 raise PreventUpdate
             
-            logger.info("Shutdown button clicked - calling shutdown callback")
-            
-            if self.shutdown_callback:
-                def full_shutdown():
-                    time.sleep(0.3)
-                    
-                    if hasattr(self.data_acquirer, 'shutdown'):
-                        self.data_acquirer.shutdown()
-                    else:
-                        self.data_acquirer.stop_acquisition()
-                    
-                    if self.shutdown_callback:
-                        self.shutdown_callback()
-                
-                threading.Thread(target=full_shutdown, daemon=True).start()
-                return "Shutting down video mode..."
-            else:
-                return "Shutdown not available"
+            logger.info("Shutdown button clicked")
+            threading.Thread(target=self.shutdown, daemon=True).start()
+            return "Shutting down video mode..."
         @app.callback(
             Output(self._get_id(self._DATA_POLLING_INTERVAL_ID_SUFFIX), "interval"),
             Input(self._get_store_id("auto-poll-config-store"), "data"),
@@ -767,6 +781,37 @@ class VideoModeComponent(BaseComponent):
 
             return viewer_data_update, viewer_ui_state_update, layout_config_update, main_status_update
 
+    def shutdown(self) -> None:
+        """
+        Stops acquisition, closes DAC and other external connections, then calls shutdown_callback.
+
+        Each step is attempted even if an earlier one fails.
+        """
+        time.sleep(0.3)
+
+        def attempt(description: str, fn: Callable[[], Any]) -> None:
+            try:
+                fn()
+                logger.info(f"Shutdown: {description} done")
+            except Exception as e:
+                logger.error(f"Shutdown: {description} failed: {e}", exc_info=True)
+
+        if hasattr(self.data_acquirer, "shutdown"):
+            attempt("data acquirer shutdown", self.data_acquirer.shutdown)
+        else:
+            attempt("stop acquisition", self.data_acquirer.stop_acquisition)
+
+        machine = getattr(self.data_acquirer, "machine", None)
+        disconnect = getattr(machine, "disconnect_from_external_source", None)
+        if callable(disconnect):
+            attempt("DAC disconnect", disconnect)
+
+        for close_fn in self.close_on_shutdown:
+            attempt(f"close {getattr(close_fn, '__qualname__', repr(close_fn))}", close_fn)
+
+        if self.shutdown_callback:
+            attempt("shutdown callback", self.shutdown_callback)
+
     def save(self, results_key: str) -> Dict[str, Any]:
         image_data = data_registry.get_data(results_key)
 
@@ -786,6 +831,10 @@ class VideoModeComponent(BaseComponent):
                     "Please provide data to save."
                 )
         results = {"image_data": image_data}
+
+        voltage_control = getattr(self.data_acquirer, "voltage_control_component", None)
+        if voltage_control is not None:
+            results["dac_history"] = voltage_control.get_history()
 
         # Add plotly graphs from the shared viewer
         try:

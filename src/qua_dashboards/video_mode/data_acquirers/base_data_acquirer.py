@@ -296,6 +296,7 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
                 min=1,
                 step=1,
                 debounce=True,
+                disable_scroll=True,
             )
         )
         return components

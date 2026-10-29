@@ -4,7 +4,7 @@ within the VoltageControlComponent.
 """
 
 import logging
-from typing import Optional
+from typing import List, Optional
 
 import dash
 from dash import Input, Output, State, ClientsideFunction, html
@@ -19,6 +19,7 @@ DEFAULT_INPUT_CLASS_NAME = ""  # Standard class for inputs
 LABEL_WIDTH = "140px"
 INPUT_WIDTH = "120px"
 UNITS_WIDTH = "45px"
+LAST_VALUE_WIDTH = "110px"
 DEFAULT_VOLTAGE_PRECISION = 6
 
 
@@ -71,11 +72,69 @@ class VoltageControlRow:
         self.input_id = {"type": self.input_id_type, "index": self.param.name}
         self.last_committed_text = self.current_input_text
 
+        # Previously applied values, most recent last. Undo walks back to the value at instantiation.
+        self.current_value = param.get_latest()
+        self._undo_stack: List[float] = []
+
+        self.last_value_id = {
+            "type": f"{self.input_id_type}-last-value",
+            "index": self.param.name,
+        }
+        self.undo_button_id = {
+            "type": f"{self.input_id_type}-undo",
+            "index": self.param.name,
+        }
+
         # ID for the dummy div that triggers the blur action
         self.blur_trigger_id = {
             "type": f"{self.input_id_type}-blur-trigger",
             "index": self.param.name,
         }
+
+    @property
+    def last_value(self) -> Optional[float]:
+        return self._undo_stack[-1] if self._undo_stack else None
+
+    @property
+    def can_undo(self) -> bool:
+        return bool(self._undo_stack)
+
+    def _set(self, value: float) -> str:
+        self.param.set(value)
+        self.current_value = value
+        self.current_input_text = format_voltage(value)
+        self.last_committed_text = self.current_input_text
+        return self.current_input_text
+
+    def apply_value(self, value: float) -> str:
+        """
+        Sets the parameter to value, pushing the previously held value onto the undo stack.
+
+        Returns the formatted text to display in the input.
+        """
+        previous_value = self.current_value
+        text = self._set(value)
+        if value != previous_value:
+            self._undo_stack.append(previous_value)
+        return text
+
+    def undo(self) -> str:
+        """
+        Reapplies the most recent value on the undo stack, removing it from the stack.
+
+        Returns the formatted text to display in the input.
+        """
+        if not self._undo_stack:
+            return self.current_input_text
+        value = self._undo_stack[-1]
+        text = self._set(value)
+        self._undo_stack.pop()
+        return text
+
+    def get_last_value_text(self) -> str:
+        if self.last_value is None:
+            return "Last: –"
+        return f"Last: {format_voltage(self.last_value)}"
 
     def get_layout(self) -> dbc.Row:
         """Generates the Dash layout for this single voltage control row."""
@@ -112,6 +171,28 @@ class VoltageControlRow:
                         "textAlign": "left",
                     },
                 ),
+                dbc.Col(
+                    html.Small(
+                        self.get_last_value_text(),
+                        id=self.last_value_id,  # type: ignore
+                        style={"whiteSpace": "nowrap"},
+                    ),
+                    style={
+                        "width": LAST_VALUE_WIDTH,
+                        "flex": f"0 0 {LAST_VALUE_WIDTH}",
+                    },
+                ),
+                dbc.Col(
+                    dbc.Button(
+                        "Undo",
+                        id=self.undo_button_id,
+                        n_clicks=0,
+                        disabled=not self.can_undo,
+                        size="sm",
+                        color="secondary",
+                    ),
+                    width="auto",
+                ),
                 # Hidden Div to trigger clientside callback for blur
                 html.Div(id=self.blur_trigger_id, style={"display": "none"}),  # type: ignore
             ],
@@ -147,11 +228,8 @@ class VoltageControlRow:
                 raise PreventUpdate
             try:
                 float_value = float(submitted_text_value)
-                self.param.set(float_value)
-                self.current_input_text = format_voltage(float_value)
-                self.last_committed_text = self.current_input_text
                 # Return formatted value and trigger for blur
-                return self.current_input_text, _n_submit
+                return self.apply_value(float_value), _n_submit
             except ValueError:
                 logger.warning(
                     f"Invalid float: '{submitted_text_value}' for {self.param.name}"

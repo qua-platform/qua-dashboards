@@ -63,19 +63,32 @@ def main():
     ############ CREATE QUAM MACHINE (SKIP IF EXISTING QUAM STATE) ############
     ###########################################################################
 
-    # ### If Quam state exists, instead simply load it below: 
-    # machine = BaseQuamQD.load()
+    dac_connect = True
 
     # Adjust the IP and cluster name here
-    qm_ip = "172.16.33.115"
-    cluster_name = "CS_4"
+    qm_ip = "127.0.0.1"
+    cluster_name = "my_cluster_name"
+    
+    dac_name = "main_qdac"
 
-    # If connecting to qdac, set qdac_connect = True, and the qdac_ip.
-    qdac_ip = "172.16.33.101"
-    qdac_connect = True
-
-    qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
     machine = BaseQuamQD()
+    machine.network = {
+        "host": qm_ip, 
+        "cluster_name": cluster_name,
+    }
+
+    # The DAC API here uses the QCoDeS QDAC
+    if dac_connect: 
+        qdac_ip = "127.0.0.2"
+        qdac_api_qcodes = {
+            "driver_module": "qcodes_contrib_drivers.drivers.QDevil.QDAC2",
+            "driver_class": "QDac2",
+            "connection": {"visalib": "@py", "address": f"TCPIP::{qdac_ip}::5025::SOCKET"},
+            "channel_method": "channel",
+            "accessor": "dc_constant_V",
+            "is_qdac": True,
+        }
+        machine.set_dac_config({dac_name : qdac_api_qcodes})
 
     # Define your readout pulses here. Each pulse should be uniquely mapped to your readout elements.
     readout_pulse_ch1 = pulses.SquareReadoutPulse(
@@ -89,14 +102,14 @@ def main():
     fem = 5
 
     # Set up the DC channels
-    p1 = setup_DC_channel(name="plunger_1", opx_output_port=1, qdac_port=1, fem=fem)
-    p2 = setup_DC_channel(name="plunger_2", opx_output_port=2, qdac_port=2, fem=fem)
-    p3 = setup_DC_channel(name="plunger_3", opx_output_port=3, qdac_port=3, fem=fem)
-    p4 = setup_DC_channel(name="plunger_4", opx_output_port=8, qdac_port=8, fem=fem)
-    s1 = setup_DC_channel(name="sensor_1", opx_output_port=4, qdac_port=4, fem=fem)
-    s2 = setup_DC_channel(name="sensor_2", opx_output_port=5, qdac_port=5, fem=fem)
-    b1 = setup_DC_channel(name="barrier_1", opx_output_port=6, qdac_port=6, fem=fem)
-    b2 = setup_DC_channel(name="barrier_2", opx_output_port=7, qdac_port=7, fem=fem)
+    p1 = setup_DC_channel(name="plunger_1", opx_output_port=1, dac_port=1, dac_name = dac_name, fem=fem)
+    p2 = setup_DC_channel(name="plunger_2", opx_output_port=2, dac_port=2, dac_name = dac_name, fem=fem)
+    p3 = setup_DC_channel(name="plunger_3", opx_output_port=3, dac_port=3, dac_name = dac_name, fem=fem)
+    p4 = setup_DC_channel(name="plunger_4", opx_output_port=8, dac_port=8, dac_name = dac_name, fem=fem)
+    s1 = setup_DC_channel(name="sensor_1", opx_output_port=4, dac_port=4, dac_name = dac_name, fem=fem)
+    s2 = setup_DC_channel(name="sensor_2", opx_output_port=5, dac_port=5, dac_name = dac_name, fem=fem)
+    b1 = setup_DC_channel(name="barrier_1", opx_output_port=6, dac_port=6, dac_name = dac_name, fem=fem)
+    b2 = setup_DC_channel(name="barrier_2", opx_output_port=7, dac_port=7, dac_name = dac_name, fem=fem)
 
     # Set up the readout channels
     sensor_readout_channel_1 = setup_readout_channel(
@@ -157,11 +170,8 @@ def main():
         barrier_gate_id = "virtual_barrier_2"
     )
 
-    if qdac_connect:
-        logger.info("Connecting to QDAC")
-        machine.network.update({"qdac_ip": qdac_ip})
-        machine.connect_to_external_source(external_qdac=True)
-        machine.create_virtual_dc_set("main_qpu")
+    # Instantiate the qmm once the virtual gate set is created
+    qmm = machine.connect(skip_dacs = not dac_connect)
 
     # Update Cross Capacitance matrix values
     machine.update_cross_compensation_submatrix(
@@ -197,12 +207,10 @@ def main():
     # Define the detuning axes for both QuantumDotPairs
     machine.quantum_dot_pairs["dot1_dot2_pair"].define_detuning_axis(
         matrix = [[1,-1]], 
-        detuning_axis_name = "dot1_dot2_pair_epsilon"
     )
 
     machine.quantum_dot_pairs["dot3_dot4_pair"].define_detuning_axis(
         matrix = [[1,-1]], 
-        detuning_axis_name = "dot3_dot4_pair_epsilon"
     )
 
     ################################################
@@ -221,7 +229,7 @@ def main():
 
     # External Voltage Control Component, if qdac_connect = True
     voltage_control_tab, voltage_control_component = None, None
-    if qdac_connect:
+    if dac_connect:
         voltage_control_component = VoltageControlComponent(
             component_id="Voltage_Control",
             dc_set = machine.virtual_dc_sets["main_qpu"],
@@ -255,7 +263,7 @@ def main():
         ],  # Input a list of pulses. The default only reads out from the first pulse, unless the second one is chosen in the UI.
         acquisition_interval_s=0.01,
         voltage_control_component=voltage_control_component,
-        use_buffered_stream=True,
+        use_buffered_stream=False,
     )
 
     video_mode_component = VideoModeComponent(

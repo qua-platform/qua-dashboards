@@ -1,5 +1,5 @@
 import logging
-from typing import Any
+from typing import Any, List
 from qua_dashboards.utils.dash_utils import create_input_field
 import dash_bootstrap_components as dbc
 from dash import html, ALL, no_update, Dash, Input, Output, State, dcc, callback_context, MATCH
@@ -10,6 +10,7 @@ from qua_dashboards.video_mode.tab_controllers.base_tab_controller import (
     BaseTabController,
 )
 from qua_dashboards.video_mode.data_acquirers.base_data_acquirer import BaseDataAcquirer
+from qua_dashboards.video_mode.utils.plot_utils import AVAILABLE_COLORS
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +26,14 @@ class SettingsTabController(BaseTabController):
     _TAB_LABEL = "Settings"
     _TAB_VALUE = "settings-tab"
     _DUMMY_OUT_SUFFIX = "dummy-settings-updates"
+    _COLOR_SCHEME_SUFFIX = "color-scheme"
 
     def __init__(
         self,
         data_acquirer: BaseDataAcquirer,
         component_id: str = "settings-tab",
         is_active: bool = False,
+        default_color_scheme: str = "plasma",
         **kwargs: Any,
     ) -> None:
         """Initializes the Settings Tab.
@@ -46,6 +49,9 @@ class SettingsTabController(BaseTabController):
             f"Data Acquirer '{self._data_acquirer_instance}'."
         )
         self._inner_loop_functions = self._data_acquirer_instance.inner_functions_dict
+        if default_color_scheme not in AVAILABLE_COLORS: 
+            raise ValueError(f"Color Scheme not in list of valid colors. Received: {default_color_scheme}. Available: {AVAILABLE_COLORS}")
+        self.default_color_scheme = default_color_scheme
 
     def get_layout(self):
         # ramp_duration_input = create_input_field(
@@ -208,11 +214,31 @@ class SettingsTabController(BaseTabController):
             className="mb-2 align-items-center",
         )
 
+        color_scheme_selector = dbc.Row([            
+            dbc.Label("Color Scheme", width = "auto", className = "col-form-label"), 
+            dbc.Col(
+                dcc.Dropdown(
+                    id = self._get_id(self._COLOR_SCHEME_SUFFIX), 
+                    options = [
+                        {"label": cs, "value": cs} for cs in AVAILABLE_COLORS
+                    ], 
+                    value = self.default_color_scheme, 
+                    multi= False,
+                    clearable = False, 
+                    style = {"color": "black"}, 
+                ), 
+                width = True,
+            ),
+            ], 
+            className = "mb-2 align-items-center"
+        )
+
         display_components = [
             readout_selector, 
             result_type_selector, 
             post_processing_fn_selector,
             scan_mode_selector, 
+            color_scheme_selector
         ]
         if hasattr(self._data_acquirer_instance.inner_loop_action, "pre_measurement_delay"): 
             display_components.append(pre_measurement_delay_input)
@@ -257,6 +283,16 @@ class SettingsTabController(BaseTabController):
         acq = self._data_acquirer_instance
         dummy_out = self._get_id(self._DUMMY_OUT_SUFFIX)
         main_status_id = kwargs["orchestrator_stores"]["main-status-alert"]
+        color_scale_store_id = kwargs["shared_viewer_store_ids"]["color_scale_store"]
+
+        @app.callback(
+            Output(color_scale_store_id, "data"),
+            Input(self._get_id(self._COLOR_SCHEME_SUFFIX), "value"),
+            prevent_initial_call=True,
+        )
+        def _alter_color_scheme(color_scheme):
+            logger.info(f"Color Scheme Changed to {color_scheme}")
+            return color_scheme
 
         @app.callback(
             Output(main_status_id, "children", allow_duplicate=True),
@@ -582,6 +618,7 @@ class SettingsTabController(BaseTabController):
                         min=4,
                         step=4,
                         size="sm",
+                        className="no-scroll-input",
                         style={"width": "70px"},
                     ),
                     width=2,
@@ -594,6 +631,7 @@ class SettingsTabController(BaseTabController):
                         min=0,
                         step=4,
                         size="sm",
+                        className="no-scroll-input",
                         style={"width": "80px"},
                     ),
                     width="auto", 
@@ -693,6 +731,7 @@ class SettingsTabController(BaseTabController):
                         min=16,
                         step=4,
                         size="sm",
+                        className="no-scroll-input",
                         style={"width": "70px"},
                     ),
                     width=2,
@@ -705,6 +744,7 @@ class SettingsTabController(BaseTabController):
                         min=16,
                         step=4,
                         size="sm",
+                        className="no-scroll-input",
                         style={"width": "80px"},
                     ),
                     width=3,
@@ -759,7 +799,7 @@ class SettingsTabController(BaseTabController):
         segments.append({"label": "Readout", "duration": readout_duration, "type": "readout", "ramp": 0})
         total_duration += pre_measurement_delay + readout_duration
 
-        colours = {"pre": "#6c9bd1", "xy": "#f0ad4e", "post": "#5cb85c", "pmw": "#6f5e96", "readout": "#d9534f", "ramp": "#eaff00"}
+        colors = {"pre": "#6c9bd1", "xy": "#f0ad4e", "post": "#5cb85c", "pmw": "#6f5e96", "readout": "#d9534f", "ramp": "#eaff00"}
         blocks = []
         block_height = "40px"
         for seg in segments: 
@@ -768,7 +808,7 @@ class SettingsTabController(BaseTabController):
                     f"Ramp", 
                     style = {
                         "width": f"{40}px",
-                        "backgroundColor": colours["ramp"],
+                        "backgroundColor": colors["ramp"],
                         "textAlign": "center",
                         "lineHeight": block_height,
                         "height": block_height,
@@ -780,7 +820,7 @@ class SettingsTabController(BaseTabController):
                 f"{seg['label']} {seg['duration']}ns", 
                 style={
                     "width": f"{100}px",
-                    "backgroundColor": colours[seg["type"]],
+                    "backgroundColor": colors[seg["type"]],
                     "textAlign": "center",
                     "fontSize": "10px",
                     "height": block_height,

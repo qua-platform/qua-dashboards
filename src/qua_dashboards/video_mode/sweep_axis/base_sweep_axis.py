@@ -107,6 +107,7 @@ class BaseSweepAxis(BaseUpdatableComponent):
                 input_style={"width": "150px"},
                 units=self.units if self.units is not None else "",
                 step = 0.001,
+                disable_scroll=True,
             ),
             create_input_field(
                 id=ids["points"],
@@ -115,6 +116,7 @@ class BaseSweepAxis(BaseUpdatableComponent):
                 min=1,
                 max=501,
                 step=1,
+                disable_scroll=True,
             ),
         ]
 

@@ -122,6 +122,7 @@ class SharedViewerComponent(BaseComponent):
         viewer_data_store_id: Dict[str, str],
         viewer_ui_state_store_id: Dict[str, Any],
         layout_config_store_id: Dict[str, str],
+        color_scale_store_id: Dict[str, str],
     ) -> None:
         """Registers Dash callbacks for the SharedViewerComponent.
 
@@ -130,6 +131,8 @@ class SharedViewerComponent(BaseComponent):
             viewer_data_store_id: The ID of the store containing the reference
                 to the primary data (key and version).
             layout_config_store_id: The ID of the store containing layout updates.
+            color_scale_store_id: The ID of the store containing the color
+                scale name applied to heatmap traces.
         """
         logger.debug(
             f"Registering callbacks for SharedViewerComponent '{self.component_id}'"
@@ -140,6 +143,7 @@ class SharedViewerComponent(BaseComponent):
             Input(viewer_data_store_id, "data"),
             Input(viewer_ui_state_store_id, "data"),
             Input(layout_config_store_id, "data"),
+            Input(color_scale_store_id, "data"),
             State(self._get_id(self._MAIN_GRAPH_ID_SUFFIX), "figure"),
             prevent_initial_call=True,  # Prevent update on initial app load if stores are empty
         )
@@ -147,6 +151,7 @@ class SharedViewerComponent(BaseComponent):
             viewer_data_ref: Optional[Dict[str, Any]],
             viewer_ui_state_input: Optional[Dict[str, Any]],
             layout_updates_input: Optional[Dict[str, Any]],
+            color_scale: Optional[str],
             current_fig_state_dict: Optional[Dict[str, Any]],
         ) -> go.Figure:
             fig_to_display = self._get_default_figure()  # Default to empty dark figure
@@ -211,6 +216,12 @@ class SharedViewerComponent(BaseComponent):
                 #     self._last_layout_update = layout_updates_input
             if self._last_layout_shapes:
                 fig_to_display.update_layout(shapes=self._last_layout_shapes)
+            if color_scale:
+                fig_to_display.update_traces(
+                    colorscale=color_scale,
+                    selector=lambda t: t.type == "heatmap"
+                    and t.name != "_click_capture_1d",
+                )
 
             # Commented out because it causes annotation points to become barely visible
             # Preserve zoom/pan state (uirevision)

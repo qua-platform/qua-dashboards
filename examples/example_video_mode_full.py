@@ -23,6 +23,7 @@ Quick How-to-Use:
     * Adjust the VoltageControlComponent to suit your experiment
     * Ensure that each Quam channel is mapped to the correct output in the VoltageControlComponent. 
     * This example assumes the use of a QM QDAC, however is flexible for any voltage source.
+    * For your own DAC, all you need to do is to change lines 70 and 128 to suit your DAC API. 
 4.  **Define your Readout Pulses**: 
     * First instantiate the relevant readout pulses
     * When creating your readout Quam channel, ensure that each readout pulse is correctly 
@@ -64,7 +65,7 @@ def main():
     qdac_connect = True
     qdac = None
     if qdac_connect:
-        qdac_ip = "172.16.33.101"
+        qdac_ip = "127.0.0.2"
         logger.info("Connecting to QDAC")
         qdac = connect_to_qdac(qdac_ip)
 
@@ -77,8 +78,8 @@ def main():
     # machine = BasicQuam.load()
 
     # Adjust the IP and cluster name here
-    qm_ip = "172.16.33.115"
-    cluster_name = "CS_4"
+    qm_ip = "127.0.0.1"
+    cluster_name = "my_cluster_name"
 
     qmm = QuantumMachinesManager(host=qm_ip, cluster_name=cluster_name)
     machine = BasicQuam()
@@ -95,11 +96,11 @@ def main():
     machine.channels["ch2_readout"] = setup_readout_channel(name = "ch2_readout", readout_pulse=readout_pulse_ch2, opx_output_port = 6, opx_input_port = 1, IF = 250e6, fem = fem)
 
     channel_mapping = {
-        "ch1": setup_DC_channel(name = "ch1", opx_output_port = 1, qdac_port = 1, fem = fem), 
-        "ch2": setup_DC_channel(name = "ch2", opx_output_port = 2, qdac_port = 2, fem = fem), 
-        "ch3": setup_DC_channel(name = "ch3", opx_output_port = 3, qdac_port = 3, fem = fem), 
-        "ch1_readout_DC": setup_DC_channel(name = "ch1_readout_DC", opx_output_port = 4, qdac_port = 3, fem = fem), 
-        "ch2_readout_DC": setup_DC_channel(name = "ch2_readout_DC", opx_output_port = 5, qdac_port = 3, fem = fem), 
+        "ch1": setup_DC_channel(name = "ch1", opx_output_port = 1, dac_port = 1, fem = fem, dac_name = "main_qdac"), 
+        "ch2": setup_DC_channel(name = "ch2", opx_output_port = 2, dac_port = 2, fem = fem, dac_name = "main_qdac"), 
+        "ch3": setup_DC_channel(name = "ch3", opx_output_port = 3, dac_port = 3, fem = fem, dac_name = "main_qdac"), 
+        "ch1_readout_DC": setup_DC_channel(name = "ch1_readout_DC", opx_output_port = 4, dac_port = 3, fem = fem, dac_name = "main_qdac"), 
+        "ch2_readout_DC": setup_DC_channel(name = "ch2_readout_DC", opx_output_port = 5, dac_port = 3, fem = fem, dac_name = "main_qdac"), 
     }
     for ch_name, ch in channel_mapping.items(): 
         machine.channels[ch_name] = ch
@@ -124,7 +125,7 @@ def main():
     voltage_control_tab, voltage_control_component, dc_gate_set = None, None, None
     if qdac is not None: 
         for ch_name, ch in channel_mapping.items(): 
-            ch.offset_parameter = qdac.channel(ch.qdac_spec.qdac_output_port).dc_constant_V
+            ch.offset_parameter = qdac.channel(ch.dac_spec.output_port).dc_constant_V
         dc_gate_set = VirtualDCSet(
             id = "Plungers", 
             channels = {ch_name: ch.get_reference() for ch_name, ch in channel_mapping.items()}

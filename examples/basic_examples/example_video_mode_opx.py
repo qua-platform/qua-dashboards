@@ -36,7 +36,7 @@ from quam.components import (
     pulses,
     StickyChannelAddon,
 )
-
+from quam_builder.architecture.quantum_dots.voltage_sequence import DEFAULT_PULSE_NAME
 from qua_dashboards.core import build_dashboard
 from qua_dashboards.utils import setup_logging
 from qua_dashboards.video_mode import (
@@ -59,20 +59,20 @@ machine = BasicQuam()
 machine.channels["ch1"] = SingleChannel(
     opx_output=("con1", 1),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
-    operations={"half_max_square": pulses.SquarePulse(amplitude=0.25, length=1000)}, #Ensure operation "half_max_square" exists in the channel object
+    operations={DEFAULT_PULSE_NAME: pulses.SquarePulse(amplitude=0.25, length=1000)}, #Ensure operation DEFAULT_PULSE_NAME exists in the channel object
 )
 # Define the second DC voltage output channel (e.g., for Y-axis sweep)
 machine.channels["ch2"] = SingleChannel(
     opx_output=("con1", 2),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
-    operations={"half_max_square": pulses.SquarePulse(amplitude=0.25, length=1000)},
+    operations={DEFAULT_PULSE_NAME: pulses.SquarePulse(amplitude=0.25, length=1000)},
 )
 
 # Define the sensor dot DC voltage output channel (e.g., for Y-axis sweep)
 machine.channels["ch1_readout_DC"] = SingleChannel(
     opx_output=("con1", 4),  # OPX controller and port
     sticky=StickyChannelAddon(duration=1_000, digital=False),  # For DC offsets
-    operations={"half_max_square": pulses.SquarePulse(amplitude=0.25, length=1000)},
+    operations={DEFAULT_PULSE_NAME: pulses.SquarePulse(amplitude=0.25, length=1000)},
 )
 
 # Define the readout pulse and the channel used for measurement

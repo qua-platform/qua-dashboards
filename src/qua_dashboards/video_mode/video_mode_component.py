@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Literal
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Literal
 import threading, time, requests
 from flask import url_for
 import time
@@ -104,6 +104,7 @@ class VideoModeComponent(BaseComponent):
         shutdown_callback: Optional[callable] = None,
         voltage_control_tab: Optional[VoltageControlTabController] = None,
         color_scheme: str = "plasma",
+        close_on_shutdown: Optional[Sequence[Callable[[], Any]]] = None,
         **kwargs: Any,
     ):
         """Initializes the VideoModeComponent.
@@ -117,6 +118,11 @@ class VideoModeComponent(BaseComponent):
             data_polling_interval_s: Interval for polling data.
             layout_columns: Number of layout columns (for grid systems).
             color_scheme: The default plotly color scheme to use for the 2Dplot. This can be changed in the Settings Tab.
+            shutdown_callback: Called last when the shutdown button is clicked, e.g. to stop the server.
+            close_on_shutdown: Functions taking no arguments, called when the shutdown button is clicked,
+                to close connections the dashboard does not manage itself (e.g. [qdac.close]).
+                DACs connected through a QUAM machine with disconnect_from_external_source
+                are closed automatically.
             **kwargs: Additional keyword arguments for BaseComponent.
         """
         super().__init__(component_id=component_id, **kwargs)
@@ -133,6 +139,7 @@ class VideoModeComponent(BaseComponent):
             component_id=f"{self.component_id}-shared-viewer"
         )
         self.shutdown_callback = shutdown_callback
+        self.close_on_shutdown: List[Callable[[], Any]] = list(close_on_shutdown or [])
         self._last_pushed_seq: Optional[int] = None
         if hasattr(self.data_acquirer, "_plot_time_ms"): 
             self.data_acquirer._plot_time_ms = data_polling_interval_s*1000
@@ -456,24 +463,9 @@ class VideoModeComponent(BaseComponent):
             if not n_clicks:
                 raise PreventUpdate
             
-            logger.info("Shutdown button clicked - calling shutdown callback")
-            
-            if self.shutdown_callback:
-                def full_shutdown():
-                    time.sleep(0.3)
-                    
-                    if hasattr(self.data_acquirer, 'shutdown'):
-                        self.data_acquirer.shutdown()
-                    else:
-                        self.data_acquirer.stop_acquisition()
-                    
-                    if self.shutdown_callback:
-                        self.shutdown_callback()
-                
-                threading.Thread(target=full_shutdown, daemon=True).start()
-                return "Shutting down video mode..."
-            else:
-                return "Shutdown not available"
+            logger.info("Shutdown button clicked")
+            threading.Thread(target=self.shutdown, daemon=True).start()
+            return "Shutting down video mode..."
         @app.callback(
             Output(self._get_id(self._DATA_POLLING_INTERVAL_ID_SUFFIX), "interval"),
             Input(self._get_store_id("auto-poll-config-store"), "data"),
@@ -788,6 +780,37 @@ class VideoModeComponent(BaseComponent):
                     }
 
             return viewer_data_update, viewer_ui_state_update, layout_config_update, main_status_update
+
+    def shutdown(self) -> None:
+        """
+        Stops acquisition, closes DAC and other external connections, then calls shutdown_callback.
+
+        Each step is attempted even if an earlier one fails.
+        """
+        time.sleep(0.3)
+
+        def attempt(description: str, fn: Callable[[], Any]) -> None:
+            try:
+                fn()
+                logger.info(f"Shutdown: {description} done")
+            except Exception as e:
+                logger.error(f"Shutdown: {description} failed: {e}", exc_info=True)
+
+        if hasattr(self.data_acquirer, "shutdown"):
+            attempt("data acquirer shutdown", self.data_acquirer.shutdown)
+        else:
+            attempt("stop acquisition", self.data_acquirer.stop_acquisition)
+
+        machine = getattr(self.data_acquirer, "machine", None)
+        disconnect = getattr(machine, "disconnect_from_external_source", None)
+        if callable(disconnect):
+            attempt("DAC disconnect", disconnect)
+
+        for close_fn in self.close_on_shutdown:
+            attempt(f"close {getattr(close_fn, '__qualname__', repr(close_fn))}", close_fn)
+
+        if self.shutdown_callback:
+            attempt("shutdown callback", self.shutdown_callback)
 
     def save(self, results_key: str) -> Dict[str, Any]:
         image_data = data_registry.get_data(results_key)

@@ -38,7 +38,7 @@ class LiveViewTabController(BaseTabController):
     _ACQUIRER_CONTROLS_DIV_ID_SUFFIX = "acquirer-controls-div"
     _ACQUIRER_STATUS_INDICATOR_ID_SUFFIX = "acquirer-status-indicator"
     _DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX = "dummy-output-acquirer-updates"
-
+    _SWAP_XY_BUTTON_ID_SUFFIX = "swap-xy-button"
     def __init__(
         self,
         data_acquirer: BaseDataAcquirer,
@@ -176,7 +176,18 @@ class LiveViewTabController(BaseTabController):
                 html.H5("Live Acquisition Control", className="card-title text-light"),
                 toggle_button_and_status,
                 html.Hr(),
-                html.H6("Acquirer Parameters", className="text-light"),
+                html.Div(
+                    [
+                        html.H6("Acquirer Parameters", className="text-light mb-0"),
+                        dbc.Button(
+                            "Swap X and Y axes",
+                            id=self._get_id(self._SWAP_XY_BUTTON_ID_SUFFIX),
+                            color="secondary",
+                            size="sm",
+                        ),
+                    ],
+                    className="d-flex align-items-center justify-content-between",
+                ),
                 acquirer_controls_div,
                 html.Div(
                     id=self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX),  # type: ignore
@@ -250,6 +261,7 @@ class LiveViewTabController(BaseTabController):
         self._register_gridlines_callback(app, shared_viewer_store_ids)
         self._register_readoutparams_callback(app)
         self._register_mode_callback(app)
+        self._register_swap_xy_callback(app, orchestrator_stores)
         if shared_viewer_graph_id is not None:
             self._register_click_to_centre_callback(app, shared_viewer_graph_id, tabs_id=orchestrator_stores.get("control-tabs"),)
 
@@ -435,6 +447,57 @@ class LiveViewTabController(BaseTabController):
                 }
             }
 
+            da.update_parameters(params)
+            return "", da.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
+
+    def _register_swap_xy_callback(
+            self, app: Dash, orchestrator_stores: Dict[str, Any]
+    ) -> None:
+        """Registers callback for swapping the X and Y sweep axes"""
+        from qua_dashboards.video_mode.video_mode_component import VideoModeComponent
+
+        main_status_alert_id = orchestrator_stores.get(
+            VideoModeComponent._MAIN_STATUS_ALERT_ID_SUFFIX
+        )
+
+        @app.callback(
+            Output(main_status_alert_id, "children", allow_duplicate=True),
+            Output(self._get_id(self._ACQUIRER_CONTROLS_DIV_ID_SUFFIX), "children", allow_duplicate=True),
+            Input(self._get_id(self._SWAP_XY_BUTTON_ID_SUFFIX), "n_clicks"),
+            prevent_initial_call=True,
+        )
+        def on_swap_xy(_n_clicks):
+            da = self._data_acquirer_instance
+
+            if da.y_axis_name is None:
+                return dbc.Alert(
+                    "Cannot swap axes in 1D mode. Select a Y axis first.",
+                    color="warning", dismissable=True, duration=4000,
+                ), dash.no_update
+
+            allowed_y_modes = getattr(da, "_y_mode_keys_override", None) or list(da.sweep_axes.keys())
+            allowed_x_modes = getattr(da, "_x_mode_keys_override", None) or list(da.sweep_axes.keys())
+            if da.x_mode not in allowed_y_modes or da.y_mode not in allowed_x_modes:
+                return dbc.Alert(
+                    f"Cannot swap axes: this acquirer only allows {allowed_y_modes} on the Y axis.",
+                    color="warning", dismissable=True, duration=4000,
+                ), dash.no_update
+
+            new_x_name, new_y_name = da.y_axis_name, da.x_axis_name
+            new_x_mode, new_y_mode = da.y_mode, da.x_mode
+            logger.info(
+                f"Swapping axes: x_axis {new_x_name} ({new_x_mode}), "
+                f"y_axis {new_y_name} ({new_y_mode})"
+            )
+
+            params = {
+                da.component_id: {
+                    "x-mode": new_x_mode,
+                    "y-mode": new_y_mode,
+                    "gate-select-x": new_x_name,
+                    "gate-select-y": new_y_name,
+                }
+            }
             da.update_parameters(params)
             return "", da.get_dash_components(include_subcomponents=True, include_inner_loop_controls=self._show_inner_loop_controls)
 

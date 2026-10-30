@@ -53,6 +53,7 @@ from quam_builder.architecture.quantum_dots.qpu import BaseQuamQD
 from qua_dashboards.virtual_gates import VirtualLayerEditor, ui_update
 from qua_dashboards.voltage_control import VoltageControlComponent
 from qua_dashboards.utils import setup_readout_channel, setup_DC_channel
+from qua_dashboards.post_processing import PostProcessor
 
 def main():
     logger = setup_logging(__name__)
@@ -60,9 +61,9 @@ def main():
     machine = BaseQuamQD()
 
     # If connecting to qdac, set qdac_connect = True, and the qdac_ip.
-    dac_ip = "127.0.0.2"
+    dac_ip = "172.16.33.111"
     dac_name = "main_qdac"
-    dac_connect = True
+    dac_connect = False
 
     if dac_connect: 
         dac_api_qcodes = {
@@ -239,13 +240,21 @@ def main():
             axis.span = 0.03
             axis.points = 101
 
+    color_scheme = "icefire"
     video_mode_component = VideoModeComponent(
         data_acquirer=data_acquirer,
         data_polling_interval_s=0.2,  # How often the dashboard polls for new data
         voltage_control_tab=voltage_control_tab,
         save_path=r"C:\Users\...",
+        color_scheme = color_scheme,
     )
-    components = [video_mode_component, virtual_gating_component]
+
+    post_processor = PostProcessor(
+        data_acquirer = data_acquirer,
+        color_scheme = color_scheme,
+    )
+
+    components = [video_mode_component, post_processor, virtual_gating_component]
 
     app = build_dashboard(
         components=components,

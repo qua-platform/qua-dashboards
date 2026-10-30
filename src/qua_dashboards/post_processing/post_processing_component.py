@@ -148,6 +148,9 @@ class PostProcessor(BaseComponent):
         else:
             frames = {None: data}
 
+        # 1D scans can arrive as (1, N) with a dummy axis, which functions and plotting must not see.
+        frames = {readout: frame.squeeze(drop=True) for readout, frame in frames.items()}
+
         panels, labels = [], []
         for name in self.selected_functions:
             function = self.post_processing_functions[name]

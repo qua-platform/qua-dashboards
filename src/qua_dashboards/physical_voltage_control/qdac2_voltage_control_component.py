@@ -16,6 +16,7 @@ class QDAC2VoltageControlComponent(PhysicalVoltageControlComponent):
         dc_set=None,
         step_size: float = 1e-3,
         update_interval_ms: int = 1000,
+        voltage_lock=None
     ):
         self.qdac = qdac
         self.device_mapping = dict(device_mapping)
@@ -47,4 +48,5 @@ class QDAC2VoltageControlComponent(PhysicalVoltageControlComponent):
             step_size=step_size,
             update_interval_ms=update_interval_ms,
             channel_labels=channel_labels,
+            voltage_lock=voltage_lock
         )

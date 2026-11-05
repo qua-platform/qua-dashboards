@@ -12,8 +12,8 @@ QDAC-only gates are controlled directly through their QCoDeS parameters.
 
 import logging
 import math
+import threading
 from typing import Mapping, Optional
-
 import dash
 from dash import ALL, MATCH, Input, Output, State, dcc, html
 from dash.exceptions import PreventUpdate
@@ -39,11 +39,13 @@ class PhysicalVoltageControlComponent(BaseComponent):
         step_size: float = 1e-3,
         update_interval_ms: int = 1000,
         channel_labels: Optional[Mapping[str, str]] = None,
+        voltage_lock: Optional[object] = None,
     ):
         super().__init__(component_id=component_id)
 
         self.voltage_parameters = dict(voltage_parameters)
         self.dc_set = dc_set
+        self.voltage_lock = voltage_lock or threading.RLock()
         self.step_size = step_size
         self.update_interval_ms = update_interval_ms
         self.channel_labels = dict(channel_labels or {})
@@ -275,27 +277,34 @@ class PhysicalVoltageControlComponent(BaseComponent):
 
             param = self.voltage_parameters[gate_name]
 
-            current = param.get_latest()
-
-            if current is None:
-                current = param.get()
-
-            current = float(current)
-            target = current + delta
-
-            logger.info("Setting %s: %.6f V -> %.6f V", gate_name, current, target)
-
-            # If this physical gate belongs to the VirtualDCSet,
-            # let VDC perform the update so its internal cache stays synchronized.
             try:
-                if self.dc_set is not None and gate_name in self.dc_set.channels:
-                    self.dc_set.set_voltages(
-                        {gate_name: target},
-                        requery=False,
-                        resync=False,
+                with self.voltage_lock:
+                    # Use the QCoDeS parameter cache as the current physical voltage.
+                    current = param.get_latest()
+
+                    if current is None:
+                        current = param.get()
+
+                    current = float(current)
+                    target = current + delta
+
+                    logger.info(
+                        "Setting %s: %.6f V -> %.6f V",
+                        gate_name,
+                        current,
+                        target,
                     )
-                else:
-                    param.set(target)
+
+                    if self.dc_set is not None and gate_name in self.dc_set.channels:
+
+                        # Sync the VirtualDCSet's internal cache with the QCoDeS parameter cache before setting the voltage.
+                        self.dc_set.sync_from_parameter_cache()
+
+                        # The cache is now synchronized, so no hardware requery is needed.
+                        self.dc_set.set_voltages({gate_name: target}, requery=False, resync=False)
+                    else:
+                        # QDAC-only channels are controlled directly.
+                        param.set(target)
 
             except Exception:
                 logger.exception(

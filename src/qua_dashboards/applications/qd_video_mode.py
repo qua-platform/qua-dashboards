@@ -86,6 +86,9 @@ class QDVideoMode:
         self.qdac = qdac
         self.dac_device_mapping = dac_device_mapping
 
+        # Threading locks to avoid race conditions when multiple threads are accessing the same resources.
+        self.voltage_lock = threading.RLock()
+
         self.x_axis_name = x_axis_name
         self.y_axis_name = y_axis_name
 
@@ -425,6 +428,7 @@ class QDVideoMode:
                     device_mapping=device_mapping,
                     dc_set=vdc,
                     step_size=1e-3,
+                    voltage_lock=self.voltage_lock
                 )
             )
 
@@ -446,6 +450,7 @@ class QDVideoMode:
                     gate_set=vgs,
                     dc_set=vdc,
                     step_size=1e-3,
+                    voltage_lock=self.voltage_lock
                 )
             )
 
@@ -699,6 +704,54 @@ class QDVideoMode:
         self.qmm = None
 
         print("Dashboards stopped.")
+
+    # ==========================================================
+    # Recover QOP runtime
+    # ==========================================================
+
+    def recover(self, reload_machine=False):
+        logger = logging.getLogger(__name__)
+        print("Recovering QOP runtime and Video Mode...")
+
+        old_qmm = self.qmm
+        old_acquirer = self.data_acquirer
+
+        # 1. Stop local fetching first, but avoid blocking shutdown
+        if old_acquirer is not None:
+            old_acquirer._fetch_running = False
+
+        # 2. Hard cleanup server-side QMs first
+        if old_qmm is not None:
+            print("Trying to close all QMs...")
+
+            close_all = getattr(old_qmm, "close_all_qms", None)
+            if close_all is None:
+                close_all = getattr(old_qmm, "close_all_quantum_machines", None)
+
+            if callable(close_all):
+                try:
+                    close_all()
+                    print("All Quantum Machines closed.")
+                except Exception:
+                    logger.exception("Failed to close all Quantum Machines.")
+
+        # 3. Now stop dashboards / local threads
+        try:
+            self.stop()
+        except Exception:
+            logger.exception("Normal Video Mode stop failed during recovery.")
+
+        # 4. Clear runtime references
+        self.qmm = None
+        self.data_acquirer = None
+
+        # 5. Optional QuAM reload
+        if reload_machine:
+            self.reload_machine()
+
+        # 6. Create fresh QMM + components
+        print("Starting Video Mode again...")
+        self.start()
 
     # ==========================================================
     # Restart

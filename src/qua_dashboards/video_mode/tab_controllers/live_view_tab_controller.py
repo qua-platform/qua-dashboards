@@ -667,28 +667,30 @@ class LiveViewTabController(BaseTabController):
                     dash.no_update,
                 )
             dc_set = voltage_control.dc_set
-            current = dc_set.all_current_voltages.copy()
-            targets = {}
-            if x_val is not None and da.x_axis_name in dc_set.valid_channel_names:
-                targets[da.x_axis_name] = (
-                    current.get(da.x_axis_name, 0.0)
-                    + float(x_val)
-                )
-            if (
-                y_val is not None
-                and da.y_axis_name is not None
-                and da.y_axis_name in dc_set.valid_channel_names
-            ):
-                targets[da.y_axis_name] = (
-                    current.get(da.y_axis_name, 0.0)
-                    + float(y_val)
-                )
-            if targets:
-                # print("Current DC:", current)
-                # print("Clicked delta:", {"x": x_val, "y": y_val})
-                # print("Targets:", targets)
-                dc_set.set_voltages(targets, requery=False, resync=False)
-                # print("Updated DC:", dc_set.all_current_voltages)
+
+            with voltage_control.voltage_lock:
+                current = dc_set.sync_from_parameter_cache()
+                targets = {}
+                if x_val is not None and da.x_axis_name in dc_set.valid_channel_names:
+                    targets[da.x_axis_name] = (
+                        current.get(da.x_axis_name, 0.0)
+                        + float(x_val)
+                    )
+                if (
+                    y_val is not None
+                    and da.y_axis_name is not None
+                    and da.y_axis_name in dc_set.valid_channel_names
+                ):
+                    targets[da.y_axis_name] = (
+                        current.get(da.y_axis_name, 0.0)
+                        + float(y_val)
+                    )
+                if targets:
+                    # print("Current DC:", current)
+                    # print("Clicked delta:", {"x": x_val, "y": y_val})
+                    # print("Targets:", targets)
+                    dc_set.set_voltages(targets, requery=False, resync=False)
+                    # print("Updated DC:", dc_set._current_levels)
             da.start_acquisition()
             return (
                 "",

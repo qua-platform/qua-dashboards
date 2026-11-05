@@ -11,7 +11,7 @@ Voltage changes are applied through VirtualDCSet.
 """
 
 import logging
-
+import threading
 import dash
 from dash import ALL, MATCH, Input, Output, State, dcc, html
 from dash.exceptions import PreventUpdate
@@ -21,7 +21,6 @@ from qua_dashboards.core import BaseComponent
 from .physical_voltage_control_row import format_voltage_fixed
 from .virtual_voltage_control_row import VirtualVoltageControlRow
 
-import threading
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +34,7 @@ class VirtualVoltageControlComponent(BaseComponent):
         step_size: float = 1e-3,
         update_interval_ms: int = 2000,
         preselected_gates=None,
+        voltage_lock=None
     ):
         super().__init__(component_id=component_id)
 
@@ -42,6 +42,8 @@ class VirtualVoltageControlComponent(BaseComponent):
         self.dc_set = dc_set
         self.step_size = step_size
         self._offsets: dict[str, float] = {}
+        self.voltage_lock = voltage_lock or threading.RLock()
+
 
         self.display_unit = "mV"
         
@@ -54,7 +56,6 @@ class VirtualVoltageControlComponent(BaseComponent):
             for name in (preselected_gates or [])
             if name in available
         ]
-        self._voltage_lock = threading.Lock()
 
     def _to_display_voltage(self, value: float) -> float:
         if self.display_unit == "mV":
@@ -400,10 +401,11 @@ class VirtualVoltageControlComponent(BaseComponent):
             delta = new_offset - old_offset
 
             try:
-                with self._voltage_lock:
+                with self.voltage_lock:
+                    self.dc_set.sync_from_parameter_cache()
                     self.dc_set.increment_voltages(
                         {gate_name: delta},
-                        requery=True,
+                        requery=False,
                         resync=False,
                     )
             except Exception:
@@ -562,10 +564,11 @@ class VirtualVoltageControlComponent(BaseComponent):
             current_offset = self._offsets.get(gate_name, 0.0)
 
             try:
-                with self._voltage_lock:
+                with self.voltage_lock:
+                    self.dc_set.sync_from_parameter_cache()
                     self.dc_set.increment_voltages(
                         {gate_name: delta},
-                        requery=True,
+                        requery=False,
                         resync=False,
                     )
             except Exception:

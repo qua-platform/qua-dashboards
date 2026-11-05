@@ -146,7 +146,8 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
                 )
                 self._error_queue.put(e)
                 self._acquisition_status = "error"
-                time.sleep(max(self.acquisition_interval_s, 1.0))
+                if self._stop_event.wait(timeout=max(self.acquisition_interval_s, 1.0)):
+                    break
                 continue
 
             loop_duration = time.perf_counter() - loop_start_time
@@ -178,24 +179,26 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
         logger.info(f"Data acquisition thread initiated for {self.component_id}.")
 
     def stop_acquisition(self) -> None:
-        if self._acquisition_thread is None or not self._acquisition_thread.is_alive():
-            logger.info(
-                f"Acquisition for {self.component_id} not running or already stopped."
-            )
+        thread = self._acquisition_thread
+        if thread is None or not thread.is_alive():
+            logger.info(f"Acquisition for {self.component_id} not running or already stopped.")
+            self._acquisition_thread = None
             self._acquisition_status = "stopped"
             return
 
         logger.info(f"Stopping acquisition for {self.component_id}...")
         self._stop_event.set()
-        self._acquisition_thread.join(timeout=max(self.acquisition_interval_s * 2, 2.0))
+        thread.join(timeout=max(self.acquisition_interval_s * 2, 2.0))
 
-        if self._acquisition_thread.is_alive():
+        if thread.is_alive():
+            self._acquisition_status = "error"
             logger.error(
-                f"Acquisition thread for {self.component_id} did not stop gracefully."
+                f"Acquisition thread for {self.component_id} did not stop gracefully. "
+                "Keeping the thread reference so a second acquisition thread cannot be started."
             )
-        else:
-            logger.info(f"Acquisition thread for {self.component_id} stopped.")
+            return
 
+        logger.info(f"Acquisition thread for {self.component_id} stopped.")
         self._acquisition_thread = None
         self._acquisition_status = "stopped"
 
@@ -223,16 +226,24 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
             "seq": self._latest_seq,
         }
 
-    def reset(self) -> None: 
-        """Reset the acquirer from the error state, allowing the user to continue with correct params"""
+    def reset(self) -> None:
+        """Reset the acquirer from the error state only after the old thread has stopped."""
         logger.info(f"Resetting {self.component_id} from error state")
 
-        if self._acquisition_thread is not None and self._acquisition_thread.is_alive(): 
+        thread = self._acquisition_thread
+        if thread is not None and thread.is_alive():
             self._stop_event.set()
-            self._acquisition_thread.join(timeout = 0.2)
-        self._stop_event.clear()
+            thread.join(timeout=max(self.acquisition_interval_s * 2, 2.0))
+            if thread.is_alive():
+                self._acquisition_status = "error"
+                logger.error(
+                    f"Cannot reset {self.component_id}: acquisition thread is still alive."
+                )
+                return
+
         self._acquisition_thread = None
         self._acquisition_status = "stopped"
+        self._stop_event.clear()
         while not self._error_queue.empty():
             try:
                 self._error_queue.get_nowait()

@@ -10,8 +10,8 @@ from qua_dashboards.core import build_dashboard
 from qua_dashboards.video_mode import OPXDataAcquirer, scan_modes, VideoModeComponent
 from qua_dashboards.virtual_gates import VirtualLayerEditor
 from qua_dashboards.physical_voltage_control import QDAC2VoltageControlComponent, VirtualVoltageControlComponent
-from qua_dashboards.video_mode.utils.save_backends import QCoDeSBackend, DataHandlerBackend, QualibrateBackend
-
+from qua_dashboards.video_mode.utils.save_backends import SaveBackend, QCoDeSBackend, DataHandlerBackend, QualibrateBackend
+from qualang_tools.results.data_handler import DataHandler
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
 
@@ -23,18 +23,28 @@ class QDVideoMode:
         "qualibrate": QualibrateBackend,
     }
 
-    def _create_save_backend(self, backend_name: str):
-        try:
-            backend_cls = self.SAVE_BACKENDS[
-                backend_name.lower()
-            ]
-        except KeyError:
-            raise ValueError(
-                f"Invalid save_backend '{backend_name}'. "
-                f"Choose from: {list(self.SAVE_BACKENDS)}"
+    def _create_save_backend(self, save_backend, save_dir=None):
+        if isinstance(save_backend, SaveBackend):
+            return save_backend
+
+        if save_backend == "qualibrate":
+            return QualibrateBackend()
+
+        if save_backend == "qcodes":
+            return QCoDeSBackend()
+
+        if save_backend == "datahandler":
+            if save_dir is None:
+                raise ValueError("save_dir must be provided when save_backend='datahandler'.")
+
+            handler = DataHandler(root_data_folder=Path(save_dir))
+
+            return DataHandlerBackend(
+                handler,
+                instrument_snapshot=({"qdac": self.qdac.snapshot} if self.qdac is not None else None)
             )
 
-        return backend_cls()
+        raise ValueError(f"Invalid save_backend: {save_backend}")
 
     def __init__(
         self,
@@ -45,7 +55,8 @@ class QDVideoMode:
         dac_device_mapping=None,
         x_axis_name=None,
         y_axis_name=None,
-        save_backend: Literal["qcodes", "datahandler", "qualibrate"] = "qualibrate",
+        save_backend: Literal["qcodes", "datahandler", "qualibrate"] | SaveBackend = "qualibrate",
+        save_dir: str | Path | None = None,
         video_port=8050,
         voltage_port=8051,
         editor_port=8052,
@@ -96,7 +107,8 @@ class QDVideoMode:
         self.voltage_port = voltage_port
         self.editor_port = editor_port
 
-        self.save_backend = self._create_save_backend(save_backend)
+        self.save_backend = self._create_save_backend(save_backend, save_dir=save_dir)
+        self.save_dir = Path(save_dir) if save_dir is not None else None        
         
         # Hardware / runtime
         self.qmm = None

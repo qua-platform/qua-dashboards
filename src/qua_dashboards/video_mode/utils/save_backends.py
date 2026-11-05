@@ -1,8 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
-from datahandler_helper import save_xarray as datahandler_save_xarray
-from qcodes_tools.dataset.saving import save_xarray as qcodes_save_xarray
-
+from qualang_tools.external_frameworks.qcodes.saving import save_xarray as qcodes_save_xarray
 import xarray as xr
 
 class SaveBackend(ABC):
@@ -101,34 +99,41 @@ class DataHandlerBackend(SaveBackend):
         machine=None,
     ) -> Dict[str, Any]:
 
-        save_metadata = dict(metadata or {})
+        save_data = {
+            "data": data.values,
+            "annotations": annotations or {},
+            "metadata": dict(metadata or {}),
+            "dims": list(data.dims),
+        }
 
+        # Save all axis coordinates explicitly
+        for dim in data.dims:
+            if dim in data.coords:
+                save_data[f"coord_{dim}"] = data.coords[dim].values
+
+        # Save DataArray attributes as well
+        if data.attrs:
+            save_data["data_attrs"] = dict(data.attrs)
+
+        # Optional instrument snapshots
         if self.instrument_snapshot:
-            save_metadata["instrument_snapshot"] = {
+            save_data["instrument_snapshot"] = {
                 instrument_name: snapshot_provider()
                 for instrument_name, snapshot_provider
                 in self.instrument_snapshot.items()
             }
 
-        result = datahandler_save_xarray(
-            self.handler,
-            data,
+        path = self.handler.save_data(
+            data=save_data,
             name=name,
-            extra={
-                "annotations": annotations or {},
-            },
-            metadata=save_metadata,
         )
 
-        if (
-            self.save_quam_state
-            and machine is not None
-            and result
-            and result.get("path") is not None
-        ):
-            machine.save(result["path"])
+        if self.save_quam_state and machine is not None:
+            machine.save(path)
 
-        return result or {}
+        return {
+            "path": path,
+        }
 
 class QCoDeSBackend(SaveBackend):
     name = "QCoDeS"

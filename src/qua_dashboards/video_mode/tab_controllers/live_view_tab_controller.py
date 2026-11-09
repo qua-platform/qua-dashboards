@@ -893,11 +893,11 @@ class LiveViewTabController(BaseTabController):
             )
 
     def _pause_for_axis_change(self) -> bool:
-        """Pause acquisition before changing the scan coordinate system.
+        """Pause acquisition before a scan change that requires explicit restart.
 
         Returns True when acquisition was running and was stopped by this call.
-        Numeric changes such as span/points/offset do not use this helper and
-        therefore keep their existing live-update behaviour.
+        This is used for coordinate-system changes and for span/points updates.
+        Axis offset keeps its existing live-update behaviour.
         """
         da = self._data_acquirer_instance
         state = da.get_latest_data() or {}
@@ -1395,7 +1395,13 @@ class LiveViewTabController(BaseTabController):
             return button_text, button_color, status_text, status_color, set_dc_disabled, False
 
     def _register_parameter_update_callback(self, app: Dash) -> None:
-        """Hybrid callback: pattern-matching for sweep axes, static inputs for inner loop/scan mode."""
+        """Update acquirer parameters and pause for scan span/point changes.
+
+        Span and point-count changes alter the physical scan trajectory / frame
+        shape. If acquisition is running, stop it before applying either change
+        and require the user to press Start explicitly. Other numeric parameters
+        (for example axis offset) retain their existing live-update behaviour.
+        """
         all_acquirer_components = self._data_acquirer_instance.get_components()
         static_components = [
             comp for comp in all_acquirer_components
@@ -1416,6 +1422,11 @@ class LiveViewTabController(BaseTabController):
         @app.callback(
             Output(self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX), "children", allow_duplicate=True),
             Output(self._get_id(self._ACQUIRER_CONTROLS_DIV_ID_SUFFIX), "children", allow_duplicate=True),
+            Output(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "children", allow_duplicate=True),
+            Output(self._get_id(self._TOGGLE_ACQ_BUTTON_ID_SUFFIX), "color", allow_duplicate=True),
+            Output(self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX), "children", allow_duplicate=True),
+            Output(self._get_id(self._ACQUIRER_STATUS_INDICATOR_ID_SUFFIX), "color", allow_duplicate=True),
+            Output(self._get_id("set-dc-center-button"), "disabled", allow_duplicate=True),
             Input({"type": "number-input", "index": ALL}, "value"),
             Input({"type": "toggle", "index": ALL}, "value"),
             *static_inputs,
@@ -1437,6 +1448,19 @@ class LiveViewTabController(BaseTabController):
                                 num_pattern_inputs + num_static_inputs + num_pattern_states]
             static_states_data = args[num_pattern_inputs + num_static_inputs + num_pattern_states:]
             parameters_to_update = {}
+
+            # Only span / points should force a running acquisition to stop.
+            # ``ctx.triggered_id`` is the pattern-matched ID of the control that
+            # actually changed, e.g. {"type": "number-input",
+            # "index": "<axis-component-id>::span"}.
+            triggered_param_name = None
+            triggered_id = ctx.triggered_id
+            if isinstance(triggered_id, dict):
+                triggered_index = triggered_id.get("index", "")
+                _, triggered_param_name = self._parse_param_id(triggered_index)
+
+            pause_for_scan_geometry_change = triggered_param_name in {"span", "points"}
+
             toggle_values = pattern_values[1]
             toggle_ids = pattern_states[1]
             rebuild = False
@@ -1469,12 +1493,38 @@ class LiveViewTabController(BaseTabController):
                     )
                     if component_params:
                         parameters_to_update[component.component_id] = component_params
+            was_running = False
             if parameters_to_update:
+                if pause_for_scan_geometry_change:
+                    was_running = self._pause_for_axis_change()
                 self._data_acquirer_instance.update_parameters(parameters_to_update)
-            if rebuild == True:
-                new_children = self._build_acquirer_controls()
-                return dash.no_update, new_children
-            return dash.no_update, dash.no_update
+
+            new_children = self._build_acquirer_controls() if rebuild else dash.no_update
+
+            if was_running:
+                logger.info(
+                    "Acquisition paused after changing scan %s; press Start to resume.",
+                    triggered_param_name,
+                )
+                return (
+                    dash.no_update,
+                    new_children,
+                    "Start",
+                    "success",
+                    "STOPPED",
+                    "secondary",
+                    True,
+                )
+
+            return (
+                dash.no_update,
+                new_children,
+                dash.no_update,
+                dash.no_update,
+                dash.no_update,
+                dash.no_update,
+                dash.no_update,
+            )
 
     def _parse_param_id(self, param_id_str):
         """Parse parameter ID string to extract component_id and parameter name."""

@@ -114,6 +114,7 @@ class AnnotationTabController(BaseTabController):
             "point_id": None,
         }
         self._selected_indices_for_line: List[str] = []
+        self._last_click_sig = None
         self._next_point_id_counter: int = 0  # Reset when new base_image is loaded
         self._next_line_id_counter: int = 0  # Reset when new base_image is loaded
         self._translate_all: Optional[Dict[str, Any]] = {
@@ -273,6 +274,7 @@ class AnnotationTabController(BaseTabController):
         self._next_point_id_counter = 0
         self._next_line_id_counter = 0
         self._translate_all = {"translate": False, "clicked_point_x": None, "clicked_point_y": None}
+        self._last_click_sig = None
         logger.debug(f"{self.component_id}: Transient annotation state reset.")
 
     def get_layout(self) -> html.Div:
@@ -604,8 +606,8 @@ class AnnotationTabController(BaseTabController):
             "selected_point_for_line": self._selected_indices_for_line,
             "show_labels": self._show_labels,
         }
-        layout_config_payload = {"clickmode": "event+select"}
-
+        layout_config_payload = {"clickmode": "event"}
+        
         self._axis_modes = self._get_axis_modes
 
         return {
@@ -727,6 +729,9 @@ class AnnotationTabController(BaseTabController):
         self._register_graph_interaction_callback(
             app, shared_viewer_graph_id, viewer_data_store_id, viewer_ui_state_store_id
         )
+        self._register_clickdata_reset_callback(
+            app, viewer_data_store_id, shared_viewer_graph_id
+        )
         self._register_clear_annotations_callback(
             app, viewer_data_store_id, viewer_ui_state_store_id
         )
@@ -737,19 +742,13 @@ class AnnotationTabController(BaseTabController):
             app, viewer_data_store_id
         )
         self._register_mode_change(
-            app, viewer_ui_state_store_id
+            app, viewer_ui_state_store_id, shared_viewer_graph_id
         )
         self._register_coordinate_point_controls_callback(app)
         self._register_add_coordinate_point_callback(app, viewer_data_store_id)
-        self._register_line_select(
-            app, viewer_data_store_id
-        )
-        self._register_line_profile_callback(
-            app, viewer_data_store_id
-        )
-        self._register_reset_2d_callback(
-            app, viewer_data_store_id
-        )
+        self._register_line_select(app, viewer_data_store_id)
+        self._register_line_profile_callback(app, viewer_data_store_id)
+        self._register_reset_2d_callback(app, viewer_data_store_id)
         self._register_param_editor_callback(app, viewer_data_store_id)
         self._register_selected_point_sync_callback(app, viewer_data_store_id, viewer_ui_state_store_id)
         self._register_apply_options_callback(app, viewer_data_store_id)
@@ -1317,29 +1316,40 @@ class AnnotationTabController(BaseTabController):
             return opts, new_value
 
     def _register_mode_change(
-            self,
-            app:Dash,
-            viewer_ui_state_store_id: Dict[str, Any],
+        self,
+        app: Dash,
+        viewer_ui_state_store_id: Dict[str, Any],
+        shared_viewer_graph_id: Dict[str, str],
     ) -> None:
         """Callback to reset all selected points when changing the mode"""
 
         @app.callback(
             Output(viewer_ui_state_store_id, "data", allow_duplicate=True),
+            Output(shared_viewer_graph_id, "clickData", allow_duplicate=True),
             Input(self._get_id(self._MODE_SELECTOR_SUFFIX), "value"),
-            prevent_initial_call = True,
+            prevent_initial_call=True,
         )
         def _mode_change(
             mode: str,
-        ) -> Dict[str, Any]:
-            # NOT self._reset_transient_state(), otherwise labels are reset!
+        ) -> Tuple[Dict[str, Any], None]:
+
+            # Reset transient selection state when changing modes
             self._selected_point_to_move = {"is_moving": False, "point_id": None}
+
             self._selected_indices_for_line = []
+
+            # Reset backend click signature
+            self._last_click_sig = None
+
             viewer_ui_state_store_payload = {
                 "selected_point_to_move": self._selected_point_to_move["point_id"],
                 "selected_point_for_line": self._selected_indices_for_line,
                 "show_labels": self._show_labels,
             }
-            return viewer_ui_state_store_payload
+
+            # Also clear Plotly clickData so clicking the same point
+            # again in the new mode triggers the callback.
+            return viewer_ui_state_store_payload, None
 
     def _register_import_live_frame_callback(
         self,
@@ -1696,6 +1706,35 @@ class AnnotationTabController(BaseTabController):
 
         return changed
     
+    def _find_closest_point_id(
+        self,
+        x: float,
+        y: float,
+        annotations: Dict[str, List[Dict[str, Any]]],
+        subplot_col: int = 1,
+    ) -> Optional[str]:
+
+        points = annotations.get("points", [])
+
+        if self._is_subplot_mode():
+            points = [p for p in points if int(p.get("subplot_col", 1)) == int(subplot_col)]
+
+        tol = self._absolute_click_tolerance
+
+        best_id = None
+        best_d2 = None
+
+        for p in points:
+            dx = float(p["x"]) - x
+            dy = float(p["y"]) - y
+            d2 = dx * dx + dy * dy
+
+            if d2 <= tol * tol and (best_d2 is None or d2 < best_d2):
+                best_id = p["id"]
+                best_d2 = d2
+
+        return best_id
+    
     def _handle_delete_mode_interaction(
         self,
         x: float,
@@ -1894,6 +1933,23 @@ class AnnotationTabController(BaseTabController):
 
         return changed
 
+    def _register_clickdata_reset_callback(
+        self,
+        app: Dash,
+        viewer_data_store_id: Dict[str, Any],
+        shared_viewer_graph_id: Dict[str, str],
+    ) -> None:
+        """Clear stale Plotly clickData after annotation data changes."""
+
+        @app.callback(
+            Output(shared_viewer_graph_id, "clickData", allow_duplicate=True),
+            Input(viewer_data_store_id, "data",),
+            prevent_initial_call=True,
+        )
+        def _reset_click_data(_viewer_ref):
+            self._last_click_sig = None
+            return None
+
     def _register_graph_interaction_callback(
         self,
         app: Dash,
@@ -1945,14 +2001,14 @@ class AnnotationTabController(BaseTabController):
             annotations_copy = json.loads(json.dumps(static_data_object["annotations"]))
             interaction_changed_data = False
 
-            graph_id_json_str = json.dumps(shared_viewer_graph_id, sort_keys=True)
+            # graph_id_json_str = json.dumps(shared_viewer_graph_id, sort_keys=True)
             interaction_type = list(ctx.triggered_prop_ids)[0].split(".")[-1]
             logger.debug(f"triggered_prop_id (normalized): {interaction_type}")
 
             if interaction_type == "clickData":
                 if click_data and click_data.get("points"):
                     pt = click_data["points"][0]
-                    sig = (pt.get("curveNumber"), pt.get("pointNumber"), pt.get("x"), pt.get("y"))
+                    sig = (mode, pt.get("curveNumber"), pt.get("pointNumber"), pt.get("x"), pt.get("y"), pt.get("name"), repr(pt.get("customdata")))
                     if getattr(self, "_last_click_sig", None) == sig:
                         raise PreventUpdate
                     self._last_click_sig = sig
@@ -1984,29 +2040,14 @@ class AnnotationTabController(BaseTabController):
                 x, y, subplot_col, clicked_annotation_point_id = self.extract_click_data(point_info)   
 
                 if mode == "line" and clicked_annotation_point_id is None:
-                    pts = annotations_copy.get("points", [])
-                    if self._is_subplot_mode():
-                        pts = [p for p in pts if int(p.get("subplot_col", 1)) == int(subplot_col)]
-                    tol = self._absolute_click_tolerance
-                    best_id, best_d2 = None, None
-                    for p in pts:
-                        dx, dy = float(p["x"]) - x, float(p["y"]) - y
-                        d2 = dx*dx + dy*dy
-                        if d2 <= tol*tol and (best_d2 is None or d2 < best_d2):
-                            best_id, best_d2 = p["id"], d2
-                    clicked_annotation_point_id = best_id 
+                    clicked_annotation_point_id = self._find_closest_point_id(x, y, annotations_copy, subplot_col)
+
                 if mode == "point" and clicked_annotation_point_id is None and not self._selected_point_to_move.get("is_moving"):
-                    pts = annotations_copy.get("points", [])
-                    if self._is_subplot_mode():
-                        pts = [p for p in pts if int(p.get("subplot_col", 1)) == int(subplot_col)]
-                    tol = self._absolute_click_tolerance
-                    best_id, best_d2 = None, None
-                    for p in pts:
-                        dx, dy = float(p["x"]) - x, float(p["y"]) - y
-                        d2 = dx*dx + dy*dy
-                        if d2 <= tol*tol and (best_d2 is None or d2 < best_d2):
-                            best_id, best_d2 = p["id"], d2
-                    clicked_annotation_point_id = best_id
+                    clicked_annotation_point_id = self._find_closest_point_id(x, y, annotations_copy, subplot_col)
+
+                if mode == "delete" and clicked_annotation_point_id is None:
+                    clicked_annotation_point_id = self._find_closest_point_id(x, y, annotations_copy, subplot_col)
+                    
                 if mode == "point":
                     interaction_changed_data = self._handle_point_mode_interaction(
                         x, y, clicked_annotation_point_id, annotations_copy, subplot_col

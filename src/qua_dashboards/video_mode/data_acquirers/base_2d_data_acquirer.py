@@ -172,6 +172,9 @@ class Base2DDataAcquirer(BaseDataAcquirer):
 
     def _axis_number_input(self, axis, parameter, value, units="", **kwargs):
         input_id = {"type": "number-input", "index": f"{axis.component_id}::{parameter}"}
+
+        kwargs.setdefault("debounce", True)
+
         input_component = dbc.Input(
             id=input_id,
             type="number",

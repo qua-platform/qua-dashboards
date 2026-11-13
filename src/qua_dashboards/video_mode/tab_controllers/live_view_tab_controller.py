@@ -1491,12 +1491,30 @@ class LiveViewTabController(BaseTabController):
                         static_values[i],
                         static_states_data[i],
                     )
+
                     if component_params:
                         parameters_to_update[component.component_id] = component_params
+
+            # Pattern-matched axis updates (span / points / offset / toggle)
+            # must not also apply stale gate/mode dropdown values.
+            #
+            # Gate and mode changes have dedicated callbacks which rebuild
+            # the axis controls after changing the selected sweep axis.
+            if isinstance(triggered_id, dict):
+                da_params = parameters_to_update.get(self._data_acquirer_instance.component_id)
+
+                if isinstance(da_params, dict):
+                    for key in ("gate-select-x", "gate-select-y", "x-mode", "y-mode"):
+                        da_params.pop(key, None)
+
+                    if not da_params:
+                        parameters_to_update.pop(self._data_acquirer_instance.component_id, None)
+
             was_running = False
             if parameters_to_update:
                 if pause_for_scan_geometry_change:
                     was_running = self._pause_for_axis_change()
+
                 self._data_acquirer_instance.update_parameters(parameters_to_update)
 
             new_children = self._build_acquirer_controls() if rebuild else dash.no_update

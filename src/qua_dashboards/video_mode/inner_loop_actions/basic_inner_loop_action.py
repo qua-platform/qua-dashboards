@@ -110,6 +110,11 @@ class BasicInnerLoopAction(InnerLoopAction):
         if self.pre_measurement_delay > 0: 
             self.voltage_sequence.step_to_voltages({}, duration = self.pre_measurement_delay)
         qua.align()
+        if self.selected_readout_channels:
+            readout_duration = max(
+                int(self._pulse_for(ch).length) for ch in self.selected_readout_channels
+            )
+            self.voltage_sequence.track_sticky_duration(readout_duration)
         result = []
         for channel in self.selected_readout_channels:
             elem = channel.name

@@ -64,7 +64,8 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         inner_functions_dict: Optional[Dict] = None,
         apply_compensation_pulse: bool = True, 
         voltage_control_component: Optional["VoltageControlComponent"] = None,
-        mid_scan_compensation: bool = False, 
+        mid_scan_compensation: bool = False,
+        max_compensation_amplitude: float = 0.05,
         buffer_frames: int = 20,
         use_buffered_stream: bool = True,
         **kwargs: Any,
@@ -108,6 +109,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                 x_axis=self.x_axis,
                 y_axis=self.y_axis,
                 apply_compensation=apply_compensation_pulse,
+                max_compensation_amplitude=max_compensation_amplitude,
                 **inner_loop_kwargs,
             )
         else:
@@ -128,6 +130,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         self._compiled_stream_vars: Optional[List[str]] = None
         self.inner_functions_dict = inner_functions_dict or {}
         self.mid_scan_compensation = mid_scan_compensation
+        self.max_compensation_amplitude = max_compensation_amplitude
         self.buffer_frames = buffer_frames
         self.use_buffered_stream = use_buffered_stream
         self._frame_queue = queue.Queue(maxsize=30)
@@ -247,7 +250,11 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                     y_vals=(y_qua_values if not self._is_1d else None),
                     x_mode=self.x_mode,
                     y_mode=(self.y_mode if not self._is_1d else None),  # type: ignore
-                    compensation_pulse = None if self.mid_scan_compensation is False else self.inner_loop_action.voltage_sequence.apply_compensation_pulse,
+                    compensation_pulse=(
+                        None
+                        if self.mid_scan_compensation is False
+                        else self.inner_loop_action.apply_compensation_pulse
+                    ),
                     settle_action=settle_action,
                 ):
                     measured_qua_values = self.inner_loop_action(

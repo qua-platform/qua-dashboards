@@ -35,7 +35,8 @@ class BasicInnerLoopAction(InnerLoopAction):
         pre_measurement_delay: int = 0,
         track_integrated_voltage: bool = True,
         use_dBm=False,
-        apply_compensation: bool = True
+        apply_compensation: bool = True,
+        max_compensation_amplitude: float = 0.05,
     ):
         super().__init__()
         self.gate_set = gate_set
@@ -51,6 +52,7 @@ class BasicInnerLoopAction(InnerLoopAction):
         self.x_mode = "Voltage"
         self.y_mode = "Voltage"
         self.apply_compensation = apply_compensation
+        self.max_compensation_amplitude = max_compensation_amplitude
         self.point_duration = 1000
         self.row_settle_time_ns = 0
 
@@ -131,10 +133,16 @@ class BasicInnerLoopAction(InnerLoopAction):
         # Initialize all channels to zero
         self.voltage_sequence.ramp_to_zero()
 
+    def apply_compensation_pulse(self):
+        """Apply a compensation pulse using the configured max amplitude."""
+        self.voltage_sequence.apply_compensation_pulse(
+            max_voltage=self.max_compensation_amplitude
+        )
+
     def final_action(self):
         # Apply conditional compensation pulse
-        if self.apply_compensation: 
-            self.voltage_sequence.apply_compensation_pulse()
+        if self.apply_compensation:
+            self.apply_compensation_pulse()
 
         # Use GateSet's built-in ramp to zero, in-case it is not handled by the compensation pulse
         self.voltage_sequence.ramp_to_zero()

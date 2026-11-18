@@ -367,8 +367,9 @@ class VideoModeComponent(BaseComponent):
                             width=12,
                             lg=8,
                             style={
-                                "maxHeight": "calc(100vh - 70px)",
-                                "overflowY": "hidden",  # Graph usually handles its own scroll
+                                "height": "calc(100vh - 90px)",
+                                "minHeight": "70vh",
+                                "overflow": "visible",
                             },
                         ),
                     ],

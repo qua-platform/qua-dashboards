@@ -52,13 +52,18 @@ class SharedViewerComponent(BaseComponent):
             An html.Div component containing the dcc.Graph.
         """
         return html.Div(
-            style={"height": "100%", "width": "100%"},
+            style={"height": "100%", "width": "100%", "minHeight": "70vh"},
             children=[
                 dcc.Graph(
                     id=self._get_id(self._MAIN_GRAPH_ID_SUFFIX),
                     figure=self._current_figure,
-                    style={"height": "100%", "width": "100%"},
-                    config={"scrollZoom": True, "displaylogo": False, "displayModeBar": False},
+                    style={"height": "100%", "width": "100%", "minHeight": "70vh"},
+                    config={
+                        "scrollZoom": True,
+                        "displaylogo": False,
+                        "displayModeBar": False,
+                        "responsive": True,
+                    },
                 )
             ],
         )

@@ -42,12 +42,16 @@ def xarray_to_plotly(da: xr.DataArray):
             z=da.values,
             x=x_coord.values,
             y=y_coord.values,
-            colorbar=dict(title=zaxis_label),
+            colorbar=dict(title=zaxis_label, ypad=0, thickness=16),
             zorder=0,
             hovertemplate="x: %{x}<br>y: %{y}<br>z: %{z}<extra></extra>"
         )
     )
     fig.update_layout(
-        xaxis_title=xaxis_label, yaxis_title=yaxis_label, template="plotly_dark"
+        template="plotly_dark",
+        autosize=True,
+        margin=dict(l=80, r=90, t=40, b=80, pad=4),
+        xaxis=dict(title=xaxis_label, automargin=True),
+        yaxis=dict(title=yaxis_label, automargin=True),
     )
     return fig

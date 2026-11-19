@@ -23,6 +23,7 @@ class QDVideoMode:
         "qualibrate": QualibrateBackend,
     }
 
+
     def _create_save_backend(self, save_backend, save_dir=None):
         if isinstance(save_backend, SaveBackend):
             return save_backend
@@ -41,7 +42,11 @@ class QDVideoMode:
 
             return DataHandlerBackend(
                 handler,
-                instrument_snapshot=({"qdac": self.qdac.snapshot} if self.qdac is not None else None)
+                instrument_snapshot=(
+                    {"qdac": self.qdac.snapshot}
+                    if self.qdac is not None
+                    else None
+                )
             )
 
         raise ValueError(f"Invalid save_backend: {save_backend}")
@@ -50,8 +55,8 @@ class QDVideoMode:
         self,
         *,
         machine,
-        quam_dir=None,
         qdac=None,
+        quam_dir=None,
         dac_device_mapping=None,
         x_axis_name=None,
         y_axis_name=None,
@@ -62,23 +67,37 @@ class QDVideoMode:
         editor_port=8052,
     ):
         """
-        High-level Quantum Dot Video Mode application.
+        Quantum Dot Video Mode application for the user-defined QuAM.
 
         Parameters
         ----------
         machine
-            Loaded QuAM machine instance.
+            Loaded user-defined QuAM machine instance.
+
+        qdac
+            Optional existing QCoDeS QDAC driver instance. If provided, it is
+            bound to the machine before VideoMode starts and re-bound after
+            machine reloads.
 
         quam_dir
             Optional path to the QuAM state.
             Only required if reload/restart should reload the machine from disk.
 
-        qdac
-            Optional existing QCoDeS QDAC driver instance.
-
         dac_device_mapping
-            Optional mapping used by QDAC2VoltageControlComponent.
-            If not provided, it will be derived from the VoltageGate qdac_spec.
+            Optional mapping selecting which QDAC channels are shown in
+            the physical voltage-control panel.
+
+            For a single bound QDAC:
+
+                {
+                    "P1": 1,
+                    "P2": 2,
+                    "Source": 10,
+                }
+
+            If a selected QDAC channel is already represented by a
+            physical VoltageGate in QuAM, the QuAM channel id is used
+            automatically as the control name.
 
         x_axis_name, y_axis_name
             Initial scan axes. If omitted, the first two physical gates are used.
@@ -91,10 +110,10 @@ class QDVideoMode:
         """
 
         self.machine = machine
+        self.qdac = qdac
 
         self.quam_dir = (Path(quam_dir) if quam_dir is not None else None)
 
-        self.qdac = qdac
         self.dac_device_mapping = dac_device_mapping
 
         # Threading locks to avoid race conditions when multiple threads are accessing the same resources.
@@ -138,82 +157,112 @@ class QDVideoMode:
     # ==========================================================
 
     def _validate_machine(self):
+        if not hasattr(self.machine, "connect"):
+            raise TypeError("QDVideoMode requires machine.connect().")
+
+        # This also validates the gate-set structure.
+        self._get_gate_sets()
+
+    def _get_physical_channels(self):
         """
-        Validate the minimal machine interface required by QDVideoMode.
+        Return physical VoltageGate channels from the user-defined QuAM.
+        """
+        virtual_gate_set = getattr(self.machine, "virtual_gate_set", None)
+
+        if virtual_gate_set is None:
+            raise ValueError("virtual_gate_set is not configured.")
+
+        channels = getattr(virtual_gate_set, "channels", None)
+
+        if not channels:
+            raise ValueError("virtual_gate_set does not contain any channels.")
+
+        return channels
+
+    def _get_gate_sets(self):
+        """
+        Resolve the VirtualGateSet and VirtualDCSet from the user-defined QuAM.
+        """
+        vgs = getattr(self.machine, "virtual_gate_set", None)
+
+        if vgs is None:
+            raise ValueError("virtual_gate_set is not configured.")
+
+        vdc = getattr(self.machine, "virtual_dc_set", None)
+
+        return None, vgs, vdc
+
+    def _get_bound_qdac(self):
+        """
+        Return the QDAC runtime used by the user-defined QuAM.
+
+        Preference order:
+        1. QDAC explicitly provided to QDVideoMode.
+        2. Existing machine._external_dac runtime binding.
         """
 
-        required_attributes = [
-            "virtual_gate_set",
-            "connect",
-        ]
+        if self.qdac is not None:
+            return "main", self.qdac
 
-        missing = [
-            name
-            for name in required_attributes
-            if not hasattr(self.machine, name)
-        ]
+        qdac = getattr(self.machine, "_external_dac", None)
 
-        if missing:
+        if qdac is None:
+            return None
+
+        return "main", qdac
+
+    def _bind_qdac_to_machine(self):
+        """
+        Bind the QDAC runtime to the current machine instance.
+
+        This is required after loading/reloading the user-defined QuAM,
+        because QCoDeS parameter bindings are runtime-only and are not
+        restored from the serialized QuAM state.
+        """
+
+        if self.qdac is None:
+            return
+
+        bind = getattr(
+            self.machine,
+            "bind_external_dac_source",
+            None,
+        )
+
+        if not callable(bind):
             raise TypeError(
-                "QDVideoMode requires a compatible QD QuAM machine. "
-                f"Missing attributes: {missing}"
+                "QDVideoMode received a qdac, but the machine does not "
+                "provide bind_external_dac_source(qdac)."
             )
 
-        if self.machine.virtual_gate_set is None:
-            raise ValueError(
-                "machine.virtual_gate_set is not configured."
-            )
-
-        if not hasattr(self.machine, "resonators") and not hasattr(
-            self.machine, "resonator"
-        ):
-            raise TypeError(
-                "QDVideoMode requires 'machine.resonators' "
-                "or 'machine.resonator'."
-            )
+        bind(self.qdac)
 
     def _get_resonators(self):
         """
-        Return available resonators.
+        Return readout resonators from the user-defined QuAM.
 
-        Supports both:
-            machine.resonators
-        and the legacy:
-            machine.resonator
+        Supports both machine.resonators and the legacy machine.resonator.
         """
-
-        resonators = getattr(
-            self.machine,
-            "resonators",
-            None,
-        )
+        resonators = getattr(self.machine, "resonators", None)
 
         if resonators:
             return list(resonators.values())
 
-        resonator = getattr(
-            self.machine,
-            "resonator",
-            None,
-        )
+        resonator = getattr(self.machine, "resonator", None)
 
         if resonator is not None:
             return [resonator]
 
-        raise ValueError(
-            "No readout resonators are configured."
-        )
+        raise ValueError("No readout resonators are configured.")
 
     def _get_default_axes(self):
         """
         Determine the initial X/Y scan axes.
         """
 
-        vgs = self.machine.virtual_gate_set
-
-        physical_gate_names = list(
-            vgs.channels.keys()
-        )
+        _, vgs, _ = self._get_gate_sets()
+        
+        physical_gate_names = list(vgs.channels.keys())
 
         if len(physical_gate_names) < 2:
             raise ValueError(
@@ -235,94 +284,73 @@ class QDVideoMode:
 
         return x_axis_name, y_axis_name
 
-    # ==========================================================
-    # External DAC helpers
-    # ==========================================================
-
-    def _bind_external_dac(self):
-        """
-        Bind an existing external DAC driver to the QuAM voltage gates.
-
-        If the machine provides
-        `connect_to_external_dac_source(qdac)`, use it.
-
-        Otherwise, allow operation if the voltage gates are already
-        bound to external offset parameters.
-        """
-
-        if self.qdac is None:
-            return
-
-        bind_method = getattr(self.machine, "connect_to_external_dac_source", None)
-
-        if callable(bind_method):
-            bind_method(self.qdac)
-            return
-
-        # No machine-level binding method.
-        # Check whether the relevant gates are already bound.
-        vgs = self.machine.virtual_gate_set
-
-        unbound_gates = []
-
-        for name, channel in vgs.channels.items():
-            qdac_spec = getattr(
-                channel,
-                "qdac_spec",
-                None,
-            )
-
-            if qdac_spec is None:
-                continue
-
-            offset_parameter = getattr(
-                channel,
-                "offset_parameter",
-                None,
-            )
-
-            if not callable(offset_parameter):
-                unbound_gates.append(name)
-
-        if unbound_gates:
-            raise RuntimeError(
-                "The machine does not provide "
-                "'connect_to_external_dac_source(qdac)', "
-                "and the following voltage gates are not bound "
-                "to external DAC parameters: "
-                f"{unbound_gates}"
-            )
-
     def _get_dac_device_mapping(self):
         """
-        Return the physical gate -> QDAC channel mapping.
+        Normalize user-selected QDAC controls against QuAM wiring.
 
-        Uses the explicitly provided mapping if available.
-        Otherwise derives it from channel.qdac_spec.output_port.
+        If a selected QDAC channel is already represented by a physical
+        VoltageGate in QuAM, the QuAM physical-channel id is used as the
+        canonical control name.
         """
 
-        if self.dac_device_mapping is not None:
-            return self.dac_device_mapping
+        if self.dac_device_mapping is None:
+            return {}
 
-        mapping = {}
+        user_mapping = dict(self.dac_device_mapping)
 
-        vgs = self.machine.virtual_gate_set
+        bound_qdac = self._get_bound_qdac()
 
-        for gate_name, channel in vgs.channels.items():
-            qdac_spec = getattr(
-                channel,
-                "qdac_spec",
-                None,
+        if bound_qdac is None:
+            raise RuntimeError(
+                "dac_device_mapping was provided, but no QDAC "
+                "is bound to the machine."
             )
 
-            if qdac_spec is None:
+        dac_name, _ = bound_qdac
+
+        physical_channels = self._get_physical_channels()
+
+        quam_channel_by_port = {}
+
+        for channel_name, channel in physical_channels.items():
+            dac_spec = getattr(channel,"dac_spec", None)
+
+            if dac_spec is None:
                 continue
 
-            mapping[gate_name] = (
-                qdac_spec.output_port
-            )
+            channel_dac_name = getattr(dac_spec, "dac_name", "main")
 
-        return mapping
+            if channel_dac_name != dac_name:
+                continue
+
+            port = dac_spec.output_port
+
+            if port in quam_channel_by_port:
+                raise ValueError(
+                    f"Multiple QuAM channels are mapped to "
+                    f"DAC {dac_name!r} port {port}."
+                )
+
+            quam_channel_by_port[port] = channel_name
+
+        normalized = {}
+
+        for user_name, channel_number in user_mapping.items():
+
+            canonical_name = quam_channel_by_port.get(channel_number, user_name)
+
+            if canonical_name != user_name:
+                logging.getLogger(__name__).warning(
+                    "QDAC channel %s is registered in QuAM as %r; "
+                    "replacing control name %r with the QuAM name.",
+                    channel_number,
+                    canonical_name,
+                    user_name,
+                )
+
+            normalized[canonical_name] = channel_number
+
+        return normalized
 
     # ==========================================================
     # Machine reload
@@ -347,6 +375,7 @@ class QDVideoMode:
             self.quam_dir
         )
 
+        self._bind_qdac_to_machine()
         self._validate_machine()
 
         return self.machine
@@ -357,41 +386,27 @@ class QDVideoMode:
 
     def start(self):
         if self.is_running:
-            print(
-                "Dashboards are already running."
-            )
+            print("Dashboards are already running.")
             return
 
         self._validate_machine()
 
-        vgs = self.machine.virtual_gate_set
+        # Bind the user-provided QDAC to the current machine instance.
+        # This also initializes/synchronizes VirtualDCSet when supported.
+        self._bind_qdac_to_machine()
 
-        vdc = getattr(
-            self.machine,
-            "virtual_dc_set",
-            None,
-        )
+        # Resolve the gate set before QOP connection.
+        gate_set_id, vgs, vdc = self._get_gate_sets()
 
-        # ------------------------------------------------------
-        # Resolve default scan axes
-        # ------------------------------------------------------
+        # Resolve default scan axes.
+        x_axis_name, y_axis_name = self._get_default_axes()
 
-        (
-            x_axis_name,
-            y_axis_name,
-        ) = self._get_default_axes()
-
-        # ------------------------------------------------------
-        # External DAC binding
-        # ------------------------------------------------------
-
-        self._bind_external_dac()
-
-        # ------------------------------------------------------
-        # Connect QOP
-        # ------------------------------------------------------
-
+        # Connect to QOP using the user-defined QuAM API.
+        # QDAC binding is handled separately above.
         self.qmm = self.machine.connect()
+
+        # Refresh references in case the machine state changed.
+        gate_set_id, vgs, vdc = self._get_gate_sets()
 
         # ------------------------------------------------------
         # Readout pulses
@@ -419,28 +434,21 @@ class QDVideoMode:
         # Physical QDAC control
         # ------------------------------------------------------
 
-        if self.qdac is not None:
+        bound_qdac = self._get_bound_qdac()
+        device_mapping = self._get_dac_device_mapping()
 
-            device_mapping = (
-                self._get_dac_device_mapping()
-            )
+        if bound_qdac is not None and device_mapping:
 
-            if not device_mapping:
-                raise ValueError(
-                    "QDAC was provided, but no DAC device "
-                    "mapping could be determined."
-                )
+            dac_name, qdac = bound_qdac
 
             self.physical_control = (
                 QDAC2VoltageControlComponent(
-                    component_id=(
-                        "physical-voltage-control"
-                    ),
-                    qdac=self.qdac,
+                    component_id="physical-voltage-control",
+                    qdac=qdac,
                     device_mapping=device_mapping,
                     dc_set=vdc,
                     step_size=1e-3,
-                    voltage_lock=self.voltage_lock
+                    voltage_lock=self.voltage_lock,
                 )
             )
 
@@ -456,9 +464,7 @@ class QDVideoMode:
 
             self.virtual_control = (
                 VirtualVoltageControlComponent(
-                    component_id=(
-                        "virtual-voltage-control"
-                    ),
+                    component_id="virtual-voltage-control",
                     gate_set=vgs,
                     dc_set=vdc,
                     step_size=1e-3,
@@ -772,7 +778,7 @@ class QDVideoMode:
     def restart(
         self,
         *,
-        reload_machine=True,
+        reload_machine=False,
     ):
         """
         Restart all dashboards.
@@ -780,10 +786,10 @@ class QDVideoMode:
         Parameters
         ----------
         reload_machine
-            If True, reload the QuAM state from `quam_dir`
-            before restarting.
+            If True, reload the QuAM state from `quam_dir`, then re-bind
+            the user-provided QDAC before restarting.
 
-            If False, reuse the current in-memory machine.
+            If False (default), reuse the current in-memory machine.
         """
 
         print("Restarting dashboards...")

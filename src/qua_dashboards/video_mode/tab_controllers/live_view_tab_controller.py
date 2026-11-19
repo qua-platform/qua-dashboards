@@ -204,14 +204,9 @@ class LiveViewTabController(BaseTabController):
         ]
         return physical_gate_names, virtual_gate_names
 
-    def _build_pulse_offsets_section(self):
-        """Build five optional physical/virtual-gate pulse-offset controls."""
-        inner = getattr(self._data_acquirer_instance, "inner_loop_action", None)
-        current_offsets = dict(getattr(inner, "pulse_offsets", {}) or {})
-        current_items = list(current_offsets.items())[: self._NUM_PULSE_OFFSET_SLOTS]
-
+    def _build_pulse_offset_gate_options(self):
+        """Build pulse-offset dropdown options from the current GateSet."""
         physical_gate_names, virtual_gate_names = self._get_pulse_offset_gate_names()
-        selectable_gate_names = physical_gate_names + virtual_gate_names
 
         gate_options = [{"label": "None", "value": ""}]
         if physical_gate_names:
@@ -228,6 +223,18 @@ class LiveViewTabController(BaseTabController):
             gate_options.extend(
                 {"label": name, "value": name} for name in virtual_gate_names
             )
+
+        return gate_options
+
+    def _build_pulse_offsets_section(self):
+        """Build five optional physical/virtual-gate pulse-offset controls."""
+        inner = getattr(self._data_acquirer_instance, "inner_loop_action", None)
+        current_offsets = dict(getattr(inner, "pulse_offsets", {}) or {})
+        current_items = list(current_offsets.items())[: self._NUM_PULSE_OFFSET_SLOTS]
+
+        physical_gate_names, virtual_gate_names = self._get_pulse_offset_gate_names()
+        selectable_gate_names = physical_gate_names + virtual_gate_names
+        gate_options = self._build_pulse_offset_gate_options()
 
         rows = []
         for slot in range(self._NUM_PULSE_OFFSET_SLOTS):
@@ -862,18 +869,34 @@ class LiveViewTabController(BaseTabController):
         )
 
     def _register_dynamic_gate_axis_refresh_callback(self, app: Dash) -> None:
-        """Keep X/Y gate dropdowns synchronized with a mutable GateSet."""
+        """Keep X/Y and pulse-offset gate dropdowns synchronized with a mutable GateSet."""
         da = self._data_acquirer_instance
+
+        pulse_option_outputs = [
+            Output(self._get_id(f"pulse-offset-gate-{slot}"), "options")
+            for slot in range(self._NUM_PULSE_OFFSET_SLOTS)
+        ]
+        pulse_value_outputs = [
+            Output(self._get_id(f"pulse-offset-gate-{slot}"), "value")
+            for slot in range(self._NUM_PULSE_OFFSET_SLOTS)
+        ]
+        pulse_value_states = [
+            State(self._get_id(f"pulse-offset-gate-{slot}"), "value")
+            for slot in range(self._NUM_PULSE_OFFSET_SLOTS)
+        ]
 
         @app.callback(
             Output(da._get_id("gate-select-x"), "options"),
             Output(da._get_id("gate-select-y"), "options"),
             Output(da._get_id("gate-select-x"), "value"),
             Output(da._get_id("gate-select-y"), "value"),
+            *pulse_option_outputs,
+            *pulse_value_outputs,
             Input(self._get_id(self._GATE_AXIS_REFRESH_INTERVAL_SUFFIX), "n_intervals"),
+            *pulse_value_states,
             prevent_initial_call=True,
         )
-        def _refresh_gate_axes(_n_intervals):
+        def _refresh_gate_axes(_n_intervals, *pulse_gate_values):
             current_gate_names = tuple(da.gate_set.valid_channel_names)
 
             if current_gate_names == self._known_gate_names:
@@ -885,11 +908,20 @@ class LiveViewTabController(BaseTabController):
             da.ensure_axis()
             self._known_gate_names = current_gate_names
 
+            pulse_options = self._build_pulse_offset_gate_options()
+            valid_pulse_gate_names = set(current_gate_names)
+            refreshed_pulse_values = [
+                gate_name if gate_name in valid_pulse_gate_names else ""
+                for gate_name in pulse_gate_values
+            ]
+
             return (
                 da._build_dropdown_options(da._display_x_sweep_axes),
                 da._build_dropdown_options(da._display_y_sweep_axes),
                 da.x_axis_name,
                 da.y_axis_name,
+                *([pulse_options] * self._NUM_PULSE_OFFSET_SLOTS),
+                *refreshed_pulse_values,
             )
 
     def _pause_for_axis_change(self) -> bool:

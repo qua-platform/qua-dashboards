@@ -1,4 +1,5 @@
 import logging
+import math
 import time
 from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
@@ -6,7 +7,6 @@ import threading
 import queue
 
 from qm import QuantumMachinesManager, Program
-from qm.exceptions import QMConnectionError
 from qm.jobs.running_qm_job import RunningQmJob
 from qm.qua import (
     program,
@@ -18,6 +18,7 @@ from qm.qua import (
 )
 from qualang_tools.units import unit
 
+from quam_builder.architecture.quantum_dots.voltage_sequence import DEFAULT_PULSE_NAME
 from qua_dashboards.video_mode.data_acquirers.base_gate_set_data_acquirer import BaseGateSetDataAcquirer
 from qua_dashboards.core import ModifiedFlags
 from qua_dashboards.video_mode.sweep_axis import (
@@ -64,7 +65,8 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         inner_functions_dict: Optional[Dict] = None,
         apply_compensation_pulse: bool = True, 
         voltage_control_component: Optional["VoltageControlComponent"] = None,
-        mid_scan_compensation: bool = False, 
+        mid_scan_compensation: bool = False,
+        max_compensation_amplitude: float = 0.05,
         buffer_frames: int = 20,
         use_buffered_stream: bool = True,
         **kwargs: Any,
@@ -108,11 +110,11 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                 x_axis=self.x_axis,
                 y_axis=self.y_axis,
                 apply_compensation=apply_compensation_pulse,
+                max_compensation_amplitude=max_compensation_amplitude,
                 **inner_loop_kwargs,
             )
         else:
             self.inner_loop_action = inner_loop_action
-
         self._compiled_xy = None
         # Caching the scan mode indices for faster python side operation
         self._scan_idx_cache: Optional[Tuple[Tuple[int,int,int], np.ndarray, np.ndarray]] = None
@@ -129,40 +131,39 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         self._compiled_stream_vars: Optional[List[str]] = None
         self.inner_functions_dict = inner_functions_dict or {}
         self.mid_scan_compensation = mid_scan_compensation
+        self.max_compensation_amplitude = max_compensation_amplitude
         self.buffer_frames = buffer_frames
         self.use_buffered_stream = use_buffered_stream
         self._frame_queue = queue.Queue(maxsize=30)
         self._fetch_thread = None
         self._fetch_running = False
         self._last_frame = None
-        self._job_started = False
-        self._runtime_broken = False
 
         self.u = unit(coerce_to_integer=True)
     def _ensure_pulse_names(self) -> None:
         """
-        Check for pulse name "half_max_square" in each gate_set channel, necessary for operation.
+        Check for pulse name DEFAULT_PULSE_NAME in each gate_set channel, necessary for operation.
         GateSet.new_sequence() does this check, but this function added to have a conditional regeneration of config and reinitialisation
         """
         for ch in self.gate_set.channels.values():
-            if "half_max_square" not in ch.operations.keys():
+            if DEFAULT_PULSE_NAME not in ch.operations.keys():
                 from quam.components import pulses
 
                 if hasattr(ch.opx_output, "output_mode"):
                     if ch.opx_output.output_mode == "amplified":
-                        ch.operations["half_max_square"] = pulses.SquarePulse(
+                        ch.operations[DEFAULT_PULSE_NAME] = pulses.SquarePulse(
                             amplitude=1.25, length=16
                         )
                     else:
-                        ch.operations["half_max_square"] = pulses.SquarePulse(
+                        ch.operations[DEFAULT_PULSE_NAME] = pulses.SquarePulse(
                             amplitude=0.25, length=16
                         )
                 else:
-                    ch.operations["half_max_square"] = pulses.SquarePulse(
+                    ch.operations[DEFAULT_PULSE_NAME] = pulses.SquarePulse(
                         amplitude=0.25, length=16
                     )
                 logger.info(
-                    f"Default pulse not in channel '{ch.name}'. Adding operation 'half_max_square' and regenerating config"
+                    f"Default pulse not in channel '{ch.name}'. Adding operation {DEFAULT_PULSE_NAME} and regenerating config"
                 )
                 self.qua_config = self.machine.generate_config()
                 self.qm = None
@@ -183,37 +184,36 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                 svars = svars + [f"I:{channel.name}", f"Q:{channel.name}"]
             self.stream_vars = svars
 
-    def reset(self) -> None:
-        """Reset the acquirer and discard the current QM job."""
-        if self.qm_job is not None:
+    def reset(self) -> None: 
+        """Reset the acquirer with QM job"""
+        if self.qm_job is not None: 
             try:
-                self.qm_job.cancel()
+                if self.qm_job.status == "running":
+                    self.qm_job.halt()
             except Exception as e:
-                logger.warning(f"Error cancelling QM job during reset: {e}")
-            finally:
-                self.qm_job = None
-
-        self._job_started = False
-        self._runtime_broken = False
+                logger.warning(f"Error halting QM job during reset: {e}")
+            self.qm_job = None
         self.qua_program = None
         self._compilation_flags |= ModifiedFlags.PROGRAM_MODIFIED
         super().reset()
 
-    def shutdown(self) -> None:
-        """Fully shut down Video Mode."""
+    def shutdown(self) -> None: 
+        """Fully shut down Video Mode"""
         logger.info(f"Shutdown requested on component {self.component_id}")
-
-        # Use the OPX-specific stop path so the stop event, fetch thread and QM job
-        # are all handled in one consistent order.
         self.stop_acquisition()
-
-        if self.qm is not None:
-            try:
-                self.qm.close()
+        if self.qm_job is not None: 
+            try: 
+                if self.qm_job.status == "running": 
+                    self.qm_job.cancel()
             except Exception as e:
+                logger.warning(f"Error halting QM Job: {e}")
+            self.qm_job = None
+        if self.qm is not None: 
+            try: 
+                self.qm.close()
+            except Exception as e: 
                 logger.warning(f"Error closing QM: {e}")
-            finally:
-                self.qm = None
+            self.qm = None
 
         self.qua_program = None
         logger.info(f"{self.component_id} shutdown complete")
@@ -251,7 +251,11 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                     y_vals=(y_qua_values if not self._is_1d else None),
                     x_mode=self.x_mode,
                     y_mode=(self.y_mode if not self._is_1d else None),  # type: ignore
-                    compensation_pulse = None if self.mid_scan_compensation is False else self.inner_loop_action.voltage_sequence.apply_compensation_pulse,
+                    compensation_pulse=(
+                        None
+                        if self.mid_scan_compensation is False
+                        else self.inner_loop_action.apply_compensation_pulse
+                    ),
                     settle_action=settle_action,
                 ):
                     measured_qua_values = self.inner_loop_action(
@@ -299,67 +303,36 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
     def initialize_qm(self):
         if self.qm_job is not None:
             try:
-                self.qm_job.cancel()
-            except Exception as e:
-                logger.warning(f"Error cancelling previous QM job: {e}")
-            finally:
+                if self.qm_job.status == "running":
+                    logger.info(f"Halting existing QM job for {self.component_id}.")
+                    self.qm_job.halt()
                 self.qm_job = None
-
-        if self.qm is not None:
-            try:
-                self.qm.close()
-                logger.info(f"Closed QM for {self.component_id}")
             except Exception as e:
-                logger.warning(f"Error closing QM: {e}")
-            finally:
+                logger.warning(f"Error halting previous QM job: {e}")
+
+        if self.qm is not None: 
+            try: 
+                self.qm.close()
                 self.qm = None
+                logger.info(f"Closed QM for {self.component_id}")
+            except Exception as e: 
+                logger.warning(f"Error closing QM: {e}")
 
-        if self.qua_config is None:
-            self.qua_config = self.machine.generate_config()
-
-        self.qm = self.qmm.open_qm(self.qua_config)  # type: ignore
-
-    def _ensure_qm(self) -> None:
-        """Ensure the VideoMode QM still exists on QOP, reopening it if needed."""
         if self.qua_config is None:
             self.qua_config = self.machine.generate_config()
 
         if self.qm is None:
-            logger.info(f"No QM exists for {self.component_id}. Opening a new QM.")
             self.qm = self.qmm.open_qm(self.qua_config)  # type: ignore
-            self.qm_job = None
-            self._job_started = False
-            self._runtime_broken = False
-            return
 
-        try:
-            qm_id = self.qm.id
-            open_qm_ids = self.qmm.list_open_qms()
-        except Exception as e:
-            logger.warning(
-                f"Could not validate existing QM for {self.component_id}: {e}. "
-                "Opening a fresh QM."
-            )
-            qm_id = None
-            open_qm_ids = []
+    def execute_program(self, validate_running: bool = False, startup_timeout_s: float = 0.1):
+        if self.qua_program is None:
+            logger.info(f"Generating QUA program for {self.component_id}.")
+            self.generate_qua_program()
 
-        if qm_id in open_qm_ids:
-            return
+        logger.info(f"Executing QUA program for {self.component_id}.")
+        if self.qm is None:
+            self.initialize_qm()
 
-        if qm_id is not None:
-            logger.info(
-                f"QM {qm_id} for {self.component_id} was closed externally. "
-                "Opening a fresh QM."
-            )
-
-        # Do not call close() on a stale local QM handle. It may already be invalid on QOP.
-        self.qm = None
-        self.qm_job = None
-        self._job_started = False
-        self._runtime_broken = False
-        self.qm = self.qmm.open_qm(self.qua_config)  # type: ignore
-
-    def _reapply_external_offsets(self) -> None:
         for ch in self.gate_set.channels.values():
             p = getattr(ch, "offset_parameter", None)
             if p is None:
@@ -368,49 +341,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
             if hasattr(owner, "reapply"):
                 owner.reapply()
 
-    def execute_program(self, validate_running: bool = False, startup_timeout_s: float = 0.1):
-        if self.qua_program is None:
-            logger.info(f"Generating QUA program for {self.component_id}.")
-            self.generate_qua_program()
-
-        logger.info(f"Executing QUA program for {self.component_id}.")
-        self._ensure_qm()
-        self._reapply_external_offsets()
-
-        try:
-            self.qm_job = self.qm.execute(self.qua_program)  # type: ignore
-        except QMConnectionError as first_error:
-            # A Qualibrate node or another standalone sequence may have opened a new QM
-            # after _ensure_qm() checked the old one. Reopen exactly once and retry.
-            logger.warning(
-                f"QM connection was lost while executing {self.component_id}. "
-                "The QM may have been replaced externally; reopening once and retrying."
-            )
-            self.qm = None
-            self.qm_job = None
-            self._job_started = False
-            self._runtime_broken = False
-
-            try:
-                self._ensure_qm()
-                self._reapply_external_offsets()
-                self.qm_job = self.qm.execute(self.qua_program)  # type: ignore
-            except Exception:
-                self._runtime_broken = True
-                logger.exception(
-                    f"QUA execution failed for {self.component_id} after reopening QM; "
-                    "runtime marked as unhealthy."
-                )
-                raise
-        except Exception:
-            self._runtime_broken = True
-            logger.exception(
-                f"QUA execution failed for {self.component_id}; runtime marked as unhealthy."
-            )
-            raise
-
-        self._job_started = True
-        self._runtime_broken = False
+        self.qm_job = self.qm.execute(self.qua_program)  # type: ignore
 
         if validate_running and startup_timeout_s > 0:
             try:
@@ -560,41 +491,26 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
         return max(self._min_buffer_frames, min(self._max_buffer_frames, optimal))
     
     def _fetch_loop(self):
-        """Continuously fetch completed frames until acquisition is stopped.
-
-        The loop deliberately uses the shared stop event in addition to
-        ``_fetch_running`` so a UI Stop can interrupt waits immediately. A local
-        job reference is used for each iteration so clearing ``self.qm_job`` during
-        shutdown cannot race with an in-progress fetch operation.
-        """
+        """Continuous background fetcher. Uses dual-stream (buffered + latest_frame)
+        when use_buffered_stream is True, or single-stream (latest_frame only) otherwise."""
         poll_s = self.acquisition_interval_s
-
-        while self._fetch_running and not self._stop_event.is_set():
+        while self._fetch_running:
             try:
-                job = self.qm_job
-                if job is None:
-                    if self._stop_event.wait(timeout=poll_s):
-                        break
+                if self.qm_job is None or self.qm_job.status != "running":
+                    time.sleep(poll_s)
                     continue
 
-                if not self._fetch_running or self._stop_event.is_set():
-                    break
-
                 if self.use_buffered_stream:
-                    buffered_handle = job.result_handles.get("all_streams_combined")
-                    latest_handle = job.result_handles.get("latest_frame")
+                    buffered_handle = self.qm_job.result_handles.get("all_streams_combined")
+                    latest_handle = self.qm_job.result_handles.get("latest_frame")
                     if buffered_handle is None or latest_handle is None:
-                        if self._stop_event.wait(timeout=poll_s):
-                            break
+                        time.sleep(poll_s)
                         continue
-
-                    if not self._fetch_running or self._stop_event.is_set():
-                        break
 
                     buffered_results = buffered_handle.fetch_all()
                     if buffered_results is not None and len(buffered_results) > 0:
                         for frame_idx in range(len(buffered_results)):
-                            if not self._fetch_running or self._stop_event.is_set():
+                            if not self._fetch_running:
                                 break
                             frame = buffered_results[frame_idx]
                             single_frame = tuple(frame)
@@ -604,8 +520,6 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                             except queue.Full:
                                 pass
                     else:
-                        if not self._fetch_running or self._stop_event.is_set():
-                            break
                         latest_result = latest_handle.fetch_all()
                         if latest_result is not None:
                             single_frame = tuple(latest_result)
@@ -614,17 +528,13 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                                 self._frame_queue.put(processed, timeout=poll_s)
                             except queue.Full:
                                 pass
-                        elif self._stop_event.wait(timeout=poll_s):
-                            break
+                        else:
+                            time.sleep(poll_s)
                 else:
-                    latest_handle = job.result_handles.get("latest_frame")
+                    latest_handle = self.qm_job.result_handles.get("latest_frame")
                     if latest_handle is None:
-                        if self._stop_event.wait(timeout=poll_s):
-                            break
+                        time.sleep(poll_s)
                         continue
-
-                    if not self._fetch_running or self._stop_event.is_set():
-                        break
 
                     latest_result = latest_handle.fetch_all()
                     if latest_result is not None:
@@ -634,18 +544,13 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                             self._frame_queue.put(processed, timeout=poll_s)
                         except queue.Full:
                             pass
-                    elif self._stop_event.wait(timeout=poll_s):
-                        break
+                    else:
+                        time.sleep(poll_s)
 
             except Exception as e:
-                if self._stop_event.is_set() or not self._fetch_running:
-                    break
                 logger.warning(f"Fetch loop error: {e}")
-                if self._stop_event.wait(timeout=poll_s):
-                    break
-
-        logger.info(f"Fetch loop stopped for {self.component_id}.")
-
+                time.sleep(poll_s)
+        
     def _clear_queue(self) -> None: 
         """Clear all frames from queue and reset last frame."""
         while not self._frame_queue.empty():
@@ -655,38 +560,8 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                 break
         self._last_frame = None
 
-    def start_acquisition(self) -> None:
-        """Start acquisition from a clean retry boundary.
-
-        A previous QM may have been closed externally by Qualibrate or another
-        standalone sequence. Revalidate/reopen the QM before starting the
-        background acquisition thread.
-        """
-        if self._acquisition_thread is not None and self._acquisition_thread.is_alive():
-            logger.warning(f"Acquisition for {self.component_id} already running.")
-            return
-
-        # An explicit user Start is a retry boundary. If the previous failure was
-        # caused by a stale QM handle, allow _ensure_qm() to repair it. A real QOP
-        # failure will simply fail again below and mark the runtime broken again.
-        self._runtime_broken = False
-
-        try:
-            self._ensure_qm()
-        except Exception:
-            self._runtime_broken = True
-            logger.exception(
-                f"Failed to prepare a valid QM for {self.component_id} before acquisition start."
-            )
-            raise
-
-        super().start_acquisition()
-
     def perform_actual_acquisition(self) -> np.ndarray:
-        # Stop must win over every compile/execute/fetch path. Without this early
-        # check, stop_acquisition() can clear qm_job while this thread is still in
-        # flight, and the code below may incorrectly start a brand-new job.
-        if self._stop_event.is_set() or self._acquisition_status == "stopped":
+        if self._acquisition_status == "stopped":
             return np.full((self.y_axis.points, self.x_axis.points), np.nan)
         cur = (int(self.x_axis.points), 1 if self._is_1d else int(self.y_axis.points), self._is_1d)
         if self._compiled_xy is not None and cur != self._compiled_xy:
@@ -715,94 +590,28 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
             self._fetch_running = False
             self._clear_queue()
             self._halt_acquisition()
-            if self._stop_event.is_set():
-                return np.full((self.y_axis.points, self.x_axis.points), np.nan)
             self.execute_program()
             self._compilation_flags = ModifiedFlags.NONE
 
-        if self._runtime_broken:
-            raise RuntimeError(
-                f"QM runtime for {self.component_id} is unhealthy after acquisition start/retry failed. "
-                "Stop acquisition and press Start again to retry with a fresh QM. "
-                "Use QDVideoMode.recover() only if that retry also fails."
-            )
-
-        if self.qm_job is None:
-            if not self._job_started:
-                logger.info(
-                    f"No QM job exists for {self.component_id}; starting a new acquisition job."
+        if self.qm_job is None or self.qm_job.status != "running":
+            if self._acquisition_status != "stopped":
+                logger.warning(
+                    f"QM job for {self.component_id} is not running or None. Attempting to re-initialize."
                 )
-                if self._stop_event.is_set():
-                    return np.full((self.y_axis.points, self.x_axis.points), np.nan)
+                self.initialize_qm()
                 self.execute_program()
-            else:
-                self._runtime_broken = True
-                raise RuntimeError(
-                    f"QM job for {self.component_id} disappeared while acquisition was active. "
-                    "Automatic re-initialization is disabled to avoid reusing a bad runtime. "
-                    "Run QDVideoMode.recover()."
-                )
-
-        if self.qm_job is not None:
-            try:
-                job_status = self.qm_job.status
-            except Exception as e:
-                logger.warning(
-                    f"QM job status could not be queried for {self.component_id}: {e}. "
-                    "The QM may have been replaced externally; reopening once."
-                )
-                self.qm = None
-                self.qm_job = None
-                self._job_started = False
-                self._runtime_broken = False
-
-                if self._stop_event.is_set():
-                    return np.full((self.y_axis.points, self.x_axis.points), np.nan)
-
-                try:
-                    self.execute_program()
-                except Exception:
-                    self._runtime_broken = True
+                if self.qm_job is None:
                     raise RuntimeError(
-                        f"Failed to restore QM job for {self.component_id} after the previous QM "
-                        "became unavailable. Run QDVideoMode.recover()."
-                    ) from e
-
-                job_status = "running"
-
-            if job_status != "running":
-                logger.warning(
-                    f"QM job for {self.component_id} is '{job_status}'. "
-                    "Reopening the QM once before declaring the runtime unhealthy."
-                )
-                self.qm = None
-                self.qm_job = None
-                self._job_started = False
-                self._runtime_broken = False
-
-                if self._stop_event.is_set():
-                    return np.full((self.y_axis.points, self.x_axis.points), np.nan)
-
-                try:
-                    self.execute_program()
-                except Exception:
-                    self._runtime_broken = True
-                    raise RuntimeError(
-                        f"QM job for {self.component_id} could not be restarted after status "
-                        f"'{job_status}'. Run QDVideoMode.recover()."
+                        f"Failed to initialize QM job for {self.component_id}."
                     )
-
-            if self._stop_event.is_set():
+            else:
                 return np.full((self.y_axis.points, self.x_axis.points), np.nan)
-
-            if self._fetch_thread is None or not self._fetch_thread.is_alive():
-                self._fetch_running = True
-                self._fetch_thread = threading.Thread(
-                    target=self._fetch_loop,
-                    daemon=True,
-                    name=f"{self.component_id}_fetch_thread",
-                )
-                self._fetch_thread.start()
+            
+        
+        if self._fetch_thread is None or not self._fetch_thread.is_alive():
+            self._fetch_running = True
+            self._fetch_thread = threading.Thread(target=self._fetch_loop, daemon=True)
+            self._fetch_thread.start()
 
         try:
             frame = self._frame_queue.get_nowait()
@@ -824,59 +633,67 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
 
     def _halt_acquisition(self) -> None:
         logger.info(f"Program recompile triggered for {self.component_id}.")
-        if self.qm_job is not None:
+        if (
+            self.qm_job is not None
+            and getattr(self.qm_job, "status", None) == "running"
+        ):
             try:
-                self.qm_job.cancel()
-                logger.info(f"Previous QM job for {self.component_id} cancelled.")
+                self.qm_job.halt()
             except Exception as e:
-                logger.warning(f"Cancelling previous QM job failed: {e}")
-            finally:
-                self.qm_job = None
-                self._job_started = False
+                logger.warning(f"Halting previous QM job failed: {e}")
         self.qua_program = None
 
     def stop_acquisition(self) -> None:
-        logger.info(f"Stopping OPX acquisition for {self.component_id}.")
-
-        # Stop must be visible to the acquisition and fetch threads before any
-        # job state is changed. This prevents the acquisition loop from seeing
-        # qm_job=None and immediately starting a replacement job.
-        self._stop_event.set()
         self._fetch_running = False
-
-        job = self.qm_job
-        self.qm_job = None
-        self._job_started = False
-
-        if job is not None:
-            try:
-                job.cancel()
-                logger.info(f"QM job for {self.component_id} cancelled.")
-            except Exception as e:
-                logger.warning(f"Error cancelling QM job for {self.component_id}: {e}")
-
-        # Give an in-flight fetch_all() enough time to return after cancellation.
-        fetch_thread = self._fetch_thread
-        if fetch_thread is not None and fetch_thread.is_alive():
-            fetch_thread.join(timeout=max(self.acquisition_interval_s * 3, 5.0))
-
-        if fetch_thread is not None and fetch_thread.is_alive():
-            logger.warning(
-                f"Fetch thread for {self.component_id} did not stop gracefully. "
-                "Keeping the thread reference."
-            )
-        else:
-            self._fetch_thread = None
-
-        # BaseDataAcquirer now waits for the main acquisition loop. Because the
-        # stop event was set before cancelling the job, that loop cannot create
-        # replacement work while shutdown is in progress.
+        logger.info(f"OPXDataAcquirer ({self.component_id}) attempting to halt QM job.")
         super().stop_acquisition()
+        if self.qm_job and self.qm_job.status == "running":
+            try:
+                self.qm_job.halt()
+                self.qm_job = None
+                logger.info(f"QM job for {self.component_id} halted.")
+            except Exception as e:
+                logger.warning(f"Error halting QM job for {self.component_id}: {e}")
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
         """Update parameters and clear queue if anything changed."""
         flags = super().update_parameters(parameters)
-        
+
+        # Compensation affects QUA instructions, so flag a program rebuild.
+        comp_params = parameters.get(self.component_id, {})
+        mode = comp_params.get("compensation_mode")
+        amplitude = comp_params.get("max_compensation_amplitude")
+
+        # Validate both fields before mutating either one.
+        if mode is not None and mode not in ("frame", "row", "disabled"):
+            raise ValueError(f"Unknown compensation mode: {mode!r}")
+        if amplitude is not None:
+            amplitude = float(amplitude)
+            if not math.isfinite(amplitude) or amplitude <= 0:
+                raise ValueError("Max compensation voltage must be finite and positive.")
+
+        if mode is not None:
+            per_row = mode == "row"
+            per_frame = mode == "frame"
+            if (self.mid_scan_compensation != per_row
+                    or self.inner_loop_action.apply_compensation != per_frame):
+                self.mid_scan_compensation = per_row
+                self.inner_loop_action.apply_compensation = per_frame
+                flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
+
+        if amplitude is not None and (
+            self.inner_loop_action.max_compensation_amplitude != amplitude
+            or self.max_compensation_amplitude != amplitude
+        ):
+            self.max_compensation_amplitude = amplitude
+            self.inner_loop_action.max_compensation_amplitude = amplitude
+            flags |= ModifiedFlags.PARAMETERS_MODIFIED | ModifiedFlags.PROGRAM_MODIFIED
+
+        if flags & (ModifiedFlags.PROGRAM_MODIFIED | ModifiedFlags.CONFIG_MODIFIED):
+            self._compilation_flags |= flags & (
+                ModifiedFlags.PROGRAM_MODIFIED | ModifiedFlags.CONFIG_MODIFIED
+            )
+
         if flags != ModifiedFlags.NONE:
             self._clear_queue()
         

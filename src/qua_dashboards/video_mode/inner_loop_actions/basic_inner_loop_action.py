@@ -35,7 +35,8 @@ class BasicInnerLoopAction(InnerLoopAction):
         pre_measurement_delay: int = 0,
         track_integrated_voltage: bool = True,
         use_dBm=False,
-        apply_compensation: bool = True
+        apply_compensation: bool = True,
+        max_compensation_amplitude: float = 0.05,
     ):
         super().__init__()
         self.gate_set = gate_set
@@ -51,51 +52,9 @@ class BasicInnerLoopAction(InnerLoopAction):
         self.x_mode = "Voltage"
         self.y_mode = "Voltage"
         self.apply_compensation = apply_compensation
+        self.max_compensation_amplitude = max_compensation_amplitude
         self.point_duration = 1000
         self.row_settle_time_ns = 0
-
-        # Optional fixed logical-voltage offsets applied at every scan point.
-        # Keys may be physical or virtual gate names understood by GateSet.
-        # Example for testing:
-        #     inner_loop_action.pulse_offsets = {"vB12": 5e-3}
-        # Leave empty for the original behavior.
-        self.pulse_offsets: Dict[str, Any] = {}
-
-    @staticmethod
-    def _merge_voltage_coordinates(*coordinate_dicts: Dict[str, Any]) -> Dict[str, Any]:
-        """Add voltage-coordinate contributions without overwriting duplicates.
-
-        This is important when, for example, X scans ``vP1`` while a fixed
-        pulse offset is also applied to ``vP1``: the target should be
-        ``x + offset`` rather than one value replacing the other.
-        """
-        merged: Dict[str, Any] = {}
-        for coordinates in coordinate_dicts:
-            if not coordinates:
-                continue
-            for gate_name, value in coordinates.items():
-                if gate_name in merged:
-                    merged[gate_name] = merged[gate_name] + value
-                else:
-                    merged[gate_name] = value
-        return merged
-
-    def _build_voltage_coordinates(
-        self,
-        x_apply: Dict[str, Any],
-        y_apply: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """Build the logical voltage target for one scan point / row start.
-
-        X, Y and fixed pulse-offset contributions are summed first. The
-        resulting logical coordinates are then resolved by VoltageGateSequence
-        / GateSet in the usual way.
-        """
-        return self._merge_voltage_coordinates(
-            x_apply.get("voltage", {}),
-            y_apply.get("voltage", {}) if y_apply is not None else {},
-            self.pulse_offsets,
-        )
 
     def _pulse_for(self, ch):
         if ch.name not in self.readout_pulse_mapping.keys():
@@ -134,12 +93,11 @@ class BasicInnerLoopAction(InnerLoopAction):
         x_apply = self.x_axis.apply(x)
         y_apply = self.y_axis.apply(y) if (self.y_axis and y is not None) else None
 
-        voltage_coordinates = self._build_voltage_coordinates(x_apply, y_apply)
-        self.voltage_sequence.ramp_to_voltages(
-            voltage_coordinates,
-            duration=self.point_duration,
-            ramp_duration=self.ramp_duration,
-        )
+        voltage_coordinates = {
+            **x_apply.get("voltage", {}),
+            **(y_apply.get("voltage", {}) or {}),
+        } if y_apply is not None else {**x_apply.get("voltage", {})}
+        self.voltage_sequence.ramp_to_voltages(voltage_coordinates, duration = self.point_duration, ramp_duration = self.ramp_duration)
 
         self.loop_action(self)
 
@@ -152,6 +110,11 @@ class BasicInnerLoopAction(InnerLoopAction):
         if self.pre_measurement_delay > 0: 
             self.voltage_sequence.step_to_voltages({}, duration = self.pre_measurement_delay)
         qua.align()
+        if self.selected_readout_channels:
+            readout_duration = max(
+                int(self._pulse_for(ch).length) for ch in self.selected_readout_channels
+            )
+            self.voltage_sequence.track_sticky_duration(readout_duration)
         result = []
         for channel in self.selected_readout_channels:
             elem = channel.name
@@ -175,10 +138,16 @@ class BasicInnerLoopAction(InnerLoopAction):
         # Initialize all channels to zero
         self.voltage_sequence.ramp_to_zero()
 
+    def apply_compensation_pulse(self):
+        """Apply a compensation pulse using the configured max amplitude."""
+        self.voltage_sequence.apply_compensation_pulse(
+            max_voltage=self.max_compensation_amplitude
+        )
+
     def final_action(self):
         # Apply conditional compensation pulse
-        if self.apply_compensation: 
-            self.voltage_sequence.apply_compensation_pulse()
+        if self.apply_compensation:
+            self.apply_compensation_pulse()
 
         # Use GateSet's built-in ramp to zero, in-case it is not handled by the compensation pulse
         self.voltage_sequence.ramp_to_zero()
@@ -192,7 +161,10 @@ class BasicInnerLoopAction(InnerLoopAction):
         x_apply = self.x_axis.apply(x)
         y_apply = self.y_axis.apply(y) if (self.y_axis and y is not None) else None
 
-        voltage_coordinates = self._build_voltage_coordinates(x_apply, y_apply)
+        voltage_coordinates = {
+            **x_apply.get("voltage", {}),
+            **(y_apply.get("voltage", {}) or {}),
+        } if y_apply is not None else {**x_apply.get("voltage", {})}
         self.voltage_sequence.ramp_to_voltages(
             voltage_coordinates,
             duration=self.row_settle_time_ns,

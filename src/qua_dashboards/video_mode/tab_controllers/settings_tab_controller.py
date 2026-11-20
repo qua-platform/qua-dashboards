@@ -208,12 +208,46 @@ class SettingsTabController(BaseTabController):
             className="mb-2 align-items-center",
         )
 
+        # Compensation is a QUA-program setting (values are displayed in mV).
+        compensation_components = []
+        if hasattr(self._data_acquirer_instance, "mid_scan_compensation"):
+            acq = self._data_acquirer_instance
+            action = acq.inner_loop_action
+            mode = (
+                "row" if acq.mid_scan_compensation
+                else "frame" if getattr(action, "apply_compensation", False)
+                else "disabled"
+            )
+            compensation_components = [
+                html.H6("Bias-Tee Compensation", className="text-light mt-3"),
+                dbc.Row([
+                    dbc.Label("Compensation Mode", width="auto"),
+                    dbc.Col(dcc.Dropdown(
+                        id=acq._get_id("compensation-mode"),
+                        options=[
+                            {"label": "Per Frame", "value": "frame"},
+                            {"label": "Per Row (Raster / Switch Raster)", "value": "row"},
+                            {"label": "Disabled", "value": "disabled"},
+                        ],
+                        value=mode, clearable=False,
+                        style={"color": "black"},
+                    )),
+                ], className="mb-2 align-items-center"),
+                create_input_field(
+                    id=acq._get_id("max-compensation-mv"),
+                    label="Max Compensation Voltage",
+                    value=1000 * float(getattr(action, "max_compensation_amplitude", 0.05)),
+                    units="mV", step=1
+                ),
+            ]
+
         display_components = [
             readout_selector, 
             result_type_selector, 
             post_processing_fn_selector,
             scan_mode_selector, 
         ]
+        display_components.extend(compensation_components)
         if hasattr(self._data_acquirer_instance.inner_loop_action, "pre_measurement_delay"): 
             display_components.append(pre_measurement_delay_input)
         if hasattr(self._data_acquirer_instance.inner_loop_action, "row_settle_time_ns"):
@@ -271,10 +305,23 @@ class SettingsTabController(BaseTabController):
             State({"type": "pre_measurement_delay", "index": ALL}, "id"),
             Input({"type": "row_settle_time", "index": ALL}, "value"),
             State({"type": "row_settle_time", "index": ALL}, "id"),
+            Input(acq._get_id("compensation-mode"), "value"),
+            Input(acq._get_id("max-compensation-mv"), "value"),
             prevent_initial_call=True,
         )
         def _apply_settings(
-            inner_vals, inner_ids, select_vals, select_ids, ramp_vals, ramp_ids, pre_meas_delay_vals, pre_meas_delay_ids, row_settle_vals, row_settle_ids
+            inner_vals,
+            inner_ids,
+            select_vals,
+            select_ids,
+            ramp_vals,
+            ramp_ids,
+            pre_meas_delay_vals,
+            pre_meas_delay_ids,
+            row_settle_vals,
+            row_settle_ids,
+            compensation_mode,
+            max_compensation_mv,
         ):
             """
             Collect changes from the Settings tab and forward them to the acquirer.
@@ -315,6 +362,23 @@ class SettingsTabController(BaseTabController):
                 if row_settle_vals[0] is not None:
                     row_settle_vals[0] = int(row_settle_vals[0])
                 params_to_update.setdefault(comp_id, {})[param] = row_settle_vals[0]
+
+            if hasattr(acq, "mid_scan_compensation"):
+                if max_compensation_mv is None:
+                    return (
+                        dbc.Alert(
+                            "Max compensation voltage must not be empty.",
+                            color="danger",
+                            dismissable=True,
+                        ),
+                        no_update,
+                    )
+
+                params_to_update.setdefault(acq.component_id, {}).update({
+                    "compensation_mode": compensation_mode,
+                    "max_compensation_amplitude": float(max_compensation_mv) / 1000,
+                })
+
             if getattr(self, "_last_total_pixel_duration_ns", None) is not None:
                 params_to_update.setdefault(acq.component_id, {})["total_pixel_duration_ns"] = int(self._last_total_pixel_duration_ns)
 

@@ -43,8 +43,11 @@ class QDVideoMode:
             return DataHandlerBackend(
                 handler,
                 instrument_snapshot=(
-                    {"qdac": self.qdac.snapshot}
-                    if self.qdac is not None
+                    {
+                        dac_name: dac.snapshot
+                        for dac_name, dac in self.qdacs.items()
+                    }
+                    if self.qdacs
                     else None
                 )
             )
@@ -56,6 +59,7 @@ class QDVideoMode:
         *,
         machine,
         qdac=None,
+        qdacs=None,
         quam_dir=None,
         dac_device_mapping=None,
         x_axis_name=None,
@@ -75,9 +79,13 @@ class QDVideoMode:
             Loaded user-defined QuAM machine instance.
 
         qdac
-            Optional existing QCoDeS QDAC driver instance. If provided, it is
-            bound to the machine before VideoMode starts and re-bound after
-            machine reloads.
+            Optional existing QCoDeS QDAC driver instance for the single-DAC
+            convenience API. It is normalized internally as {"main": qdac}.
+
+        qdacs
+            Optional mapping of DAC names to existing QCoDeS QDAC driver
+            instances, for example {"qdac1": qdac1, "qdac2": qdac2}.
+            DAC names must match VoltageGate.dac_spec.dac_name.
 
         quam_dir
             Optional path to the QuAM state.
@@ -87,12 +95,19 @@ class QDVideoMode:
             Optional mapping selecting which QDAC channels are shown in
             the physical voltage-control panel.
 
-            For a single bound QDAC:
+            Single DAC (legacy / convenience form):
 
                 {
                     "P1": 1,
                     "P2": 2,
                     "Source": 10,
+                }
+
+            Multiple DACs:
+
+                {
+                    "qdac1": {"P1": 1, "P2": 2},
+                    "qdac2": {"Source": 1, "Drain": 2},
                 }
 
             If a selected QDAC channel is already represented by a
@@ -110,7 +125,23 @@ class QDVideoMode:
         """
 
         self.machine = machine
-        self.qdac = qdac
+
+        if qdac is not None and qdacs is not None:
+            raise ValueError("Provide either 'qdac' or 'qdacs', not both.")
+
+        if qdacs is not None:
+            self.qdacs = dict(qdacs)
+        elif qdac is not None:
+            self.qdacs = {"main": qdac}
+        else:
+            self.qdacs = {}
+
+        # Backward-compatible single-QDAC attribute.
+        self.qdac = (
+            next(iter(self.qdacs.values()))
+            if len(self.qdacs) == 1
+            else None
+        )
 
         self.quam_dir = (Path(quam_dir) if quam_dir is not None else None)
 
@@ -137,6 +168,7 @@ class QDVideoMode:
         self.data_acquirer = None
 
         self.physical_control = None
+        self.physical_controls = {}
         self.virtual_control = None
         self.editor = None
 
@@ -192,50 +224,46 @@ class QDVideoMode:
 
         return None, vgs, vdc
 
-    def _get_bound_qdac(self):
+    def _get_bound_qdacs(self):
+        """Return the QDAC runtimes explicitly provided to QDVideoMode."""
+        return dict(self.qdacs)
+
+    def _bind_qdacs_to_machine(self):
         """
-        Return the QDAC runtime used by the user-defined QuAM.
+        Bind all QDAC runtimes to the current machine instance.
 
-        Preference order:
-        1. QDAC explicitly provided to QDVideoMode.
-        2. Existing machine._external_dac runtime binding.
-        """
-
-        if self.qdac is not None:
-            return "main", self.qdac
-
-        qdac = getattr(self.machine, "_external_dac", None)
-
-        if qdac is None:
-            return None
-
-        return "main", qdac
-
-    def _bind_qdac_to_machine(self):
-        """
-        Bind the QDAC runtime to the current machine instance.
-
-        This is required after loading/reloading the user-defined QuAM,
-        because QCoDeS parameter bindings are runtime-only and are not
-        restored from the serialized QuAM state.
+        Runtime QCoDeS parameter bindings are not serialized with QuAM, so
+        this is called both at startup and after machine reloads.
         """
 
-        if self.qdac is None:
+        if not self.qdacs:
             return
 
-        bind = getattr(
+        bind_many = getattr(
             self.machine,
-            "bind_external_dac_source",
+            "bind_external_dac_sources",
             None,
         )
 
-        if not callable(bind):
-            raise TypeError(
-                "QDVideoMode received a qdac, but the machine does not "
-                "provide bind_external_dac_source(qdac)."
-            )
+        if callable(bind_many):
+            bind_many(self.qdacs)
+            return
 
-        bind(self.qdac)
+        # Backward compatibility for older user-defined QuAM classes.
+        if len(self.qdacs) == 1:
+            bind_one = getattr(
+                self.machine,
+                "bind_external_dac_source",
+                None,
+            )
+            if callable(bind_one):
+                bind_one(next(iter(self.qdacs.values())))
+                return
+
+        raise TypeError(
+            "QDVideoMode received multiple QDACs, but the machine does not "
+            "provide bind_external_dac_sources(dacs)."
+        )
 
     def _get_resonators(self):
         """
@@ -284,73 +312,106 @@ class QDVideoMode:
 
         return x_axis_name, y_axis_name
 
-    def _get_dac_device_mapping(self):
+    def _get_dac_device_mappings(self):
         """
         Normalize user-selected QDAC controls against QuAM wiring.
 
-        If a selected QDAC channel is already represented by a physical
-        VoltageGate in QuAM, the QuAM physical-channel id is used as the
-        canonical control name.
+        Returns
+        -------
+        dict
+            {dac_name: {control_name: channel_number}}
         """
 
         if self.dac_device_mapping is None:
             return {}
 
-        user_mapping = dict(self.dac_device_mapping)
-
-        bound_qdac = self._get_bound_qdac()
-
-        if bound_qdac is None:
+        if not self.qdacs:
             raise RuntimeError(
-                "dac_device_mapping was provided, but no QDAC "
-                "is bound to the machine."
+                "dac_device_mapping was provided, but no QDAC was "
+                "provided to QDVideoMode."
             )
 
-        dac_name, _ = bound_qdac
+        raw_mapping = dict(self.dac_device_mapping)
+
+        # Backward-compatible flat mapping for exactly one QDAC.
+        is_nested = bool(raw_mapping) and all(
+            isinstance(value, dict)
+            for value in raw_mapping.values()
+        )
+
+        if is_nested:
+            mappings_by_dac = {
+                dac_name: dict(mapping)
+                for dac_name, mapping in raw_mapping.items()
+            }
+        else:
+            if len(self.qdacs) != 1:
+                raise ValueError(
+                    "A flat dac_device_mapping can only be used with one QDAC. "
+                    "For multiple QDACs, use {dac_name: {label: channel}}."
+                )
+            dac_name = next(iter(self.qdacs))
+            mappings_by_dac = {dac_name: raw_mapping}
+
+        unknown_dacs = set(mappings_by_dac) - set(self.qdacs)
+        if unknown_dacs:
+            raise ValueError(
+                f"dac_device_mapping contains unknown DAC names: "
+                f"{sorted(unknown_dacs)}. Available DACs: {sorted(self.qdacs)}"
+            )
 
         physical_channels = self._get_physical_channels()
+        normalized_by_dac = {}
 
-        quam_channel_by_port = {}
+        for dac_name, user_mapping in mappings_by_dac.items():
+            quam_channel_by_port = {}
 
-        for channel_name, channel in physical_channels.items():
-            dac_spec = getattr(channel,"dac_spec", None)
+            for channel_name, channel in physical_channels.items():
+                dac_spec = getattr(channel, "dac_spec", None)
+                if dac_spec is None:
+                    continue
 
-            if dac_spec is None:
-                continue
+                channel_dac_name = getattr(dac_spec, "dac_name", "main")
+                if channel_dac_name != dac_name:
+                    continue
 
-            channel_dac_name = getattr(dac_spec, "dac_name", "main")
+                port = dac_spec.output_port
+                if port in quam_channel_by_port:
+                    raise ValueError(
+                        f"Multiple QuAM channels are mapped to "
+                        f"DAC {dac_name!r} port {port}."
+                    )
 
-            if channel_dac_name != dac_name:
-                continue
+                quam_channel_by_port[port] = channel_name
 
-            port = dac_spec.output_port
-
-            if port in quam_channel_by_port:
-                raise ValueError(
-                    f"Multiple QuAM channels are mapped to "
-                    f"DAC {dac_name!r} port {port}."
-                )
-
-            quam_channel_by_port[port] = channel_name
-
-        normalized = {}
-
-        for user_name, channel_number in user_mapping.items():
-
-            canonical_name = quam_channel_by_port.get(channel_number, user_name)
-
-            if canonical_name != user_name:
-                logging.getLogger(__name__).warning(
-                    "QDAC channel %s is registered in QuAM as %r; "
-                    "replacing control name %r with the QuAM name.",
+            normalized = {}
+            for user_name, channel_number in user_mapping.items():
+                canonical_name = quam_channel_by_port.get(
                     channel_number,
-                    canonical_name,
                     user_name,
                 )
 
-            normalized[canonical_name] = channel_number
+                if canonical_name != user_name:
+                    logging.getLogger(__name__).warning(
+                        "QDAC %s channel %s is registered in QuAM as %r; "
+                        "replacing control name %r with the QuAM name.",
+                        dac_name,
+                        channel_number,
+                        canonical_name,
+                        user_name,
+                    )
 
-        return normalized
+                if canonical_name in normalized:
+                    raise ValueError(
+                        f"Duplicate physical-control name {canonical_name!r} "
+                        f"for DAC {dac_name!r}."
+                    )
+
+                normalized[canonical_name] = channel_number
+
+            normalized_by_dac[dac_name] = normalized
+
+        return normalized_by_dac
 
     # ==========================================================
     # Machine reload
@@ -375,7 +436,7 @@ class QDVideoMode:
             self.quam_dir
         )
 
-        self._bind_qdac_to_machine()
+        self._bind_qdacs_to_machine()
         self._validate_machine()
 
         return self.machine
@@ -391,9 +452,9 @@ class QDVideoMode:
 
         self._validate_machine()
 
-        # Bind the user-provided QDAC to the current machine instance.
+        # Bind the user-provided QDAC(s) to the current machine instance.
         # This also initializes/synchronizes VirtualDCSet when supported.
-        self._bind_qdac_to_machine()
+        self._bind_qdacs_to_machine()
 
         # Resolve the gate set before QOP connection.
         gate_set_id, vgs, vdc = self._get_gate_sets()
@@ -434,26 +495,34 @@ class QDVideoMode:
         # Physical QDAC control
         # ------------------------------------------------------
 
-        bound_qdac = self._get_bound_qdac()
-        device_mapping = self._get_dac_device_mapping()
+        qdacs = self._get_bound_qdacs()
+        device_mappings = self._get_dac_device_mappings()
 
-        if bound_qdac is not None and device_mapping:
+        self.physical_controls = {}
+        self.physical_control = None
 
-            dac_name, qdac = bound_qdac
+        for dac_name, qdac in qdacs.items():
+            device_mapping = device_mappings.get(dac_name, {})
+            if not device_mapping:
+                continue
 
-            self.physical_control = (
-                QDAC2VoltageControlComponent(
-                    component_id="physical-voltage-control",
-                    qdac=qdac,
-                    device_mapping=device_mapping,
-                    dc_set=vdc,
-                    step_size=1e-3,
-                    voltage_lock=self.voltage_lock,
-                )
+            component = QDAC2VoltageControlComponent(
+                component_id=f"physical-voltage-control-{dac_name}",
+                qdac=qdac,
+                device_mapping=device_mapping,
+                dc_set=vdc,
+                step_size=1e-3,
+                voltage_lock=self.voltage_lock,
             )
 
-            voltage_components.append(
-                self.physical_control
+            self.physical_controls[dac_name] = component
+            voltage_components.append(component)
+
+        # Keep the legacy single physical_control reference for code paths
+        # that only need access to the shared dc_set / voltage_lock.
+        if self.physical_controls:
+            self.physical_control = next(
+                iter(self.physical_controls.values())
             )
 
         # ------------------------------------------------------
@@ -716,6 +785,7 @@ class QDVideoMode:
         self.data_acquirer = None
 
         self.physical_control = None
+        self.physical_controls = {}
         self.virtual_control = None
         self.editor = None
 

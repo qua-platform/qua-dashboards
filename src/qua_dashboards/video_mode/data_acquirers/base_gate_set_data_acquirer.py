@@ -159,6 +159,15 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
                 inner_loop.y_axis = axis
             return axis
         except ValueError:
+            valid_axes = self._display_y_sweep_axes
+            if valid_axes:
+                axis = valid_axes[0]
+                self.y_axis_name = axis.name
+                if inner_loop is not None:
+                    inner_loop.y_axis_name = self.y_axis_name
+                    inner_loop.y_axis = axis
+                return axis
+
             self.y_axis_name = None
             return self._dummy_axis
     

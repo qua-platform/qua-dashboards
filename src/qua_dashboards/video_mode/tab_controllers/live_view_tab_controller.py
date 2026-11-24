@@ -1016,20 +1016,29 @@ class LiveViewTabController(BaseTabController):
 
             was_running = self._pause_for_axis_change()
 
-            da.x_mode = x_mode
-            da.y_mode = y_mode
-            x_names = [ax.name for ax in da._display_x_sweep_axes]
-            y_names = [ax.name for ax in da._display_y_sweep_axes]
-            if da.x_axis_name not in x_names:
-                da.x_axis_name = x_names[0] if x_names else None
-            if da.y_axis_name not in y_names:
-                da.y_axis_name = None
+            # Resolve valid axes for the requested modes before mutating the
+            # acquirer. This keeps mode and axis changes atomic and avoids
+            # transiently dropping the Y axis to 1D when switching modes.
+            x_axes = da.sweep_axes.get(x_mode, [])
+            y_axes = da.sweep_axes.get(y_mode, [])
+            x_names = [axis.name for axis in x_axes]
+            y_names = [axis.name for axis in y_axes]
+
+            new_x_axis_name = da.x_axis_name
+            new_y_axis_name = da.y_axis_name
+
+            if new_x_axis_name not in x_names:
+                new_x_axis_name = x_names[0] if x_names else None
+
+            if new_y_axis_name not in y_names:
+                new_y_axis_name = y_names[0] if y_names else None
+
             params = {
                 da.component_id: {
                     "x-mode": x_mode,
                     "y-mode": y_mode,
-                    "gate-select-x": da.x_axis_name,
-                    "gate-select-y": da.y_axis_name,
+                    "gate-select-x": new_x_axis_name,
+                    "gate-select-y": new_y_axis_name,
                 }
             }
             da.update_parameters(params)
@@ -1487,15 +1496,33 @@ class LiveViewTabController(BaseTabController):
             # "index": "<axis-component-id>::span"}.
             triggered_param_name = None
             triggered_id = ctx.triggered_id
+            triggered_index = ""
             if isinstance(triggered_id, dict):
                 triggered_index = triggered_id.get("index", "")
+
+                # Mode and gate selectors have dedicated callbacks which update the
+                # selected axis atomically and rebuild the axis-control table. This
+                # hybrid callback also sees those controls through the acquirer-wide
+                # ALL input, so continuing here would create a competing rebuild.
+                if triggered_index in {
+                    "x-mode",
+                    "y-mode",
+                    "gate-select-x",
+                    "gate-select-y",
+                }:
+                    raise dash.exceptions.PreventUpdate
+
                 _, triggered_param_name = self._parse_param_id(triggered_index)
 
             pause_for_scan_geometry_change = triggered_param_name in {"span", "points"}
 
             toggle_values = pattern_values[1]
             toggle_ids = pattern_states[1]
-            rebuild = False
+
+            # Rebuild only when the dBm toggle itself changed. Previously, merely
+            # having an Amplitude axis made every invocation rebuild the controls,
+            # racing with the dedicated mode callback during mode changes.
+            rebuild = triggered_param_name == "dbm-toggle"
             if toggle_values and toggle_ids:
                 for value, id_dict in zip(toggle_values, toggle_ids):
                     if not isinstance(id_dict, dict):
@@ -1503,8 +1530,6 @@ class LiveViewTabController(BaseTabController):
                     comp_id, param = self._parse_param_id(id_dict.get("index", ""))
                     if comp_id and param:
                         parameters_to_update.setdefault(comp_id, {})[param] = value
-                        if param.endswith("dbm-toggle"):
-                            rebuild = True
             if len(pattern_values) >= 1 and len(pattern_states) >= 1:
                 number_values = pattern_values[0]
                 number_ids = pattern_states[0]

@@ -560,6 +560,10 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                 break
         self._last_frame = None
 
+    def _discard_pending_frames(self) -> None:
+        """Discard OPX frames buffered while software consumption was paused."""
+        self._clear_queue()
+
     def perform_actual_acquisition(self) -> Optional[np.ndarray]:
         if self._acquisition_status == "stopped":
             return None

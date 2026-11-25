@@ -61,8 +61,9 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
         self._data_lock: threading.Lock = threading.Lock()
         self._acquisition_thread: Optional[threading.Thread] = None
         self._stop_event: threading.Event = threading.Event()
+        self._pause_event: threading.Event = threading.Event()
         self._error_queue: queue.Queue = queue.Queue()
-        self._acquisition_status: str = "stopped"  # stopped, running, error
+        self._acquisition_status: str = "stopped"  # stopped, running, paused, error
 
         # Live acquisition-rate metrics.  The frame period is measured between
         # successive successfully acquired raw snapshots, so it includes both
@@ -125,9 +126,21 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
         self._acquisition_status = "running"
 
         while not self._stop_event.is_set():
+            # Soft pause: keep the acquisition thread and hardware job alive, but
+            # temporarily stop admitting frames into the software-average buffer.
+            if self._pause_event.is_set():
+                self._stop_event.wait(timeout=min(self.acquisition_interval_s, 0.05))
+                continue
+
             loop_start_time = time.perf_counter()
             try:
                 raw_snapshot = self.perform_actual_acquisition()
+
+                # The pause may have been requested while the hardware call above
+                # was in flight. Drop that frame so data acquired during the DC
+                # move does not contaminate the preserved rolling average.
+                if self._pause_event.is_set():
+                    continue
 
                 # Some acquirers (notably OPXDataAcquirer) return None while
                 # waiting for a genuinely new hardware frame.  None is not a
@@ -184,15 +197,29 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
         self._acquisition_status = "stopped"
         logger.info(f"Acquisition loop stopped for {self.component_id}.")
 
-    def start_acquisition(self) -> None:
+    def start_acquisition(self, preserve_average_history: bool = False) -> None:
+        """Start the acquisition thread.
+
+        Args:
+            preserve_average_history: Keep the existing software-average buffer and
+                latest processed frame when resuming a scan at a new DC centre.
+                Frame-timing statistics are always reset so the pause duration is not
+                counted as acquisition time. Normal starts keep the previous behaviour
+                and begin with an empty averaging buffer.
+        """
         if self._acquisition_thread is not None and self._acquisition_thread.is_alive():
             logger.warning(f"Acquisition for {self.component_id} already running.")
             return
 
         self._stop_event.clear()
-        with self._data_lock:  # Clear history before starting a new acquisition run
-            self._data_history_raw.clear()
-            self._latest_processed_data = None
+        self._pause_event.clear()
+        with self._data_lock:
+            if not preserve_average_history:
+                self._data_history_raw.clear()
+                self._latest_processed_data = None
+
+            # Timing is always restarted. Otherwise a manual pause / DC update would
+            # appear as one very long frame and distort the reported FPS.
             self._last_frame_timestamp = None
             self._frame_periods_s.clear()
         while not self._error_queue.empty():
@@ -205,6 +232,49 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
         )
         self._acquisition_thread.start()
         logger.info(f"Data acquisition thread initiated for {self.component_id}.")
+
+    def _discard_pending_frames(self) -> None:
+        """Hook for subclasses to discard hardware frames collected while paused."""
+        return
+
+    def pause_acquisition(self) -> None:
+        """Soft-pause frame consumption without stopping the hardware job."""
+        thread = self._acquisition_thread
+        if thread is None or not thread.is_alive():
+            logger.info(
+                "Acquisition for %s is not running; soft pause ignored.",
+                self.component_id,
+            )
+            return
+
+        self._pause_event.set()
+        self._acquisition_status = "paused"
+        with self._data_lock:
+            self._last_frame_timestamp = None
+            self._frame_periods_s.clear()
+        logger.info("Acquisition consumption soft-paused for %s.", self.component_id)
+
+    def resume_acquisition(self, *, discard_pending_frames: bool = True) -> None:
+        """Resume a soft-paused acquisition while preserving average history."""
+        thread = self._acquisition_thread
+        if thread is None or not thread.is_alive():
+            logger.info(
+                "No live acquisition thread for %s; starting while preserving average history.",
+                self.component_id,
+            )
+            self.start_acquisition(preserve_average_history=True)
+            return
+
+        if discard_pending_frames:
+            self._discard_pending_frames()
+
+        with self._data_lock:
+            self._last_frame_timestamp = None
+            self._frame_periods_s.clear()
+
+        self._acquisition_status = "running"
+        self._pause_event.clear()
+        logger.info("Acquisition consumption resumed for %s.", self.component_id)
 
     def stop_acquisition(self) -> None:
         thread = self._acquisition_thread
@@ -272,6 +342,7 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
         self._acquisition_thread = None
         self._acquisition_status = "stopped"
         self._stop_event.clear()
+        self._pause_event.clear()
         while not self._error_queue.empty():
             try:
                 self._error_queue.get_nowait()

@@ -775,7 +775,7 @@ class LiveViewTabController(BaseTabController):
                     # print("Targets:", targets)
                     dc_set.set_voltages(targets, requery=False, resync=False)
                     # print("Updated DC:", dc_set._current_levels)
-            da.start_acquisition()
+            da.resume_acquisition()
             return (
                 "",
                 False,
@@ -1369,7 +1369,9 @@ class LiveViewTabController(BaseTabController):
             da = self._data_acquirer_instance
 
             if armed:
-                da.start_acquisition()
+                # Cancel the DC-pick mode and resume the same scan without throwing
+                # away the software-average history accumulated before pausing.
+                da.resume_acquisition()
                 return (
                     False,
                     "Set DC point",
@@ -1386,7 +1388,7 @@ class LiveViewTabController(BaseTabController):
             if status != "RUNNING":
                 raise dash.exceptions.PreventUpdate
 
-            da.stop_acquisition()
+            da.pause_acquisition()
             return (
                 True,
                 "Cancel",

@@ -560,9 +560,9 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                 break
         self._last_frame = None
 
-    def perform_actual_acquisition(self) -> np.ndarray:
+    def perform_actual_acquisition(self) -> Optional[np.ndarray]:
         if self._acquisition_status == "stopped":
-            return np.full((self.y_axis.points, self.x_axis.points), np.nan)
+            return None
         cur = (int(self.x_axis.points), 1 if self._is_1d else int(self.y_axis.points), self._is_1d)
         if self._compiled_xy is not None and cur != self._compiled_xy:
             logger.info(f"Scan shape changed {self._compiled_xy} -> {cur}. Forcing recompile.")
@@ -605,7 +605,7 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
                         f"Failed to initialize QM job for {self.component_id}."
                     )
             else:
-                return np.full((self.y_axis.points, self.x_axis.points), np.nan)
+                return None
             
         
         if self._fetch_thread is None or not self._fetch_thread.is_alive():
@@ -618,9 +618,11 @@ class OPXDataAcquirer(BaseGateSetDataAcquirer):
             self._last_frame = frame
             return frame
         except queue.Empty:
-            if self._last_frame is not None:
-                return self._last_frame
-            return np.full((self.y_axis.points, self.x_axis.points), np.nan)
+            # No new OPX frame is available yet. Returning the cached frame here
+            # would make BaseDataAcquirer count the same frame repeatedly as new
+            # software averages; returning NaNs would poison the rolling mean after
+            # restart until the whole averaging window refills.
+            return None
 
     def _regenerate_config_and_reopen_qm(self) -> None:
         logger.info(f"Regenerating QUA config for {self.component_id} from machine.")

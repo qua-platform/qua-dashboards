@@ -3,6 +3,7 @@ import logging
 import threading
 import queue
 import time
+from collections import deque
 from typing import Any, Optional, List, Dict
 
 from dash.dash import Dash
@@ -63,6 +64,12 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
         self._error_queue: queue.Queue = queue.Queue()
         self._acquisition_status: str = "stopped"  # stopped, running, error
 
+        # Live acquisition-rate metrics.  The frame period is measured between
+        # successive successfully acquired raw snapshots, so it includes both
+        # the hardware acquisition time and any configured acquisition interval.
+        self._last_frame_timestamp: Optional[float] = None
+        self._frame_periods_s = deque(maxlen=10)
+
     @abc.abstractmethod
     def perform_actual_acquisition(self) -> Any:
         """
@@ -122,7 +129,26 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
             try:
                 raw_snapshot = self.perform_actual_acquisition()
 
+                # Some acquirers (notably OPXDataAcquirer) return None while
+                # waiting for a genuinely new hardware frame.  None is not a
+                # data sample: do not count it toward software averaging, FPS,
+                # or the processed-data sequence.
+                if raw_snapshot is None:
+                    loop_duration = time.perf_counter() - loop_start_time
+                    wait_time = self.acquisition_interval_s - loop_duration
+                    if wait_time > 0:
+                        self._stop_event.wait(timeout=wait_time)
+                    continue
+
+                frame_timestamp = time.perf_counter()
+
                 with self._data_lock:
+                    if self._last_frame_timestamp is not None:
+                        frame_period_s = frame_timestamp - self._last_frame_timestamp
+                        if frame_period_s > 0:
+                            self._frame_periods_s.append(frame_period_s)
+                    self._last_frame_timestamp = frame_timestamp
+
                     self._data_history_raw.append(raw_snapshot)
                     if len(self._data_history_raw) > self.num_software_averages:
                         self._data_history_raw.pop(0)
@@ -167,6 +193,8 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
         with self._data_lock:  # Clear history before starting a new acquisition run
             self._data_history_raw.clear()
             self._latest_processed_data = None
+            self._last_frame_timestamp = None
+            self._frame_periods_s.clear()
         while not self._error_queue.empty():
             self._error_queue.get_nowait()
 
@@ -252,6 +280,30 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
         with self._data_lock:
             self._data_history_raw.clear()
             self._latest_processed_data = None
+            self._last_frame_timestamp = None
+            self._frame_periods_s.clear()
+
+    @property
+    def software_average_count(self) -> int:
+        """Number of raw frames currently contributing to the rolling average."""
+        with self._data_lock:
+            return min(len(self._data_history_raw), self.num_software_averages)
+
+    @property
+    def average_frame_time_s(self) -> Optional[float]:
+        """Smoothed raw-frame period in seconds, averaged over the latest frames."""
+        with self._data_lock:
+            if not self._frame_periods_s:
+                return None
+            return float(np.mean(self._frame_periods_s))
+
+    @property
+    def acquisition_fps(self) -> Optional[float]:
+        """Smoothed acquisition frames per second."""
+        frame_time_s = self.average_frame_time_s
+        if frame_time_s is None or frame_time_s <= 0:
+            return None
+        return 1.0 / frame_time_s
 
     def update_parameters(self, parameters: Dict[str, Dict[str, Any]]) -> ModifiedFlags:
         flags = super().update_parameters(parameters)  # From BaseUpdatableComponent
@@ -303,9 +355,11 @@ class BaseDataAcquirer(BaseUpdatableComponent, abc.ABC):
             create_input_field(
                 id=self._get_id("num_software_averages"),
                 label="Software Averages",
-                value=self.num_software_averages,
-                min=1,
-                step=1,
+                value=str(self.num_software_averages),
+                # Use a plain text field rather than type="number" so browsers
+                # do not render spinner arrows.  Debounce means the new value is
+                # committed on Enter / focus loss, after the user finishes typing.
+                type="text",
                 debounce=True,
             )
         )

@@ -34,6 +34,7 @@ class LiveViewTabController(BaseTabController):
     _ACQUIRER_STATUS_INDICATOR_ID_SUFFIX = "acquirer-status-indicator"
     _DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX = "dummy-output-acquirer-updates"
     _GATE_AXIS_REFRESH_INTERVAL_SUFFIX = "gate-axis-refresh-interval"
+    _ACQ_METRICS_INTERVAL_SUFFIX = "acq-metrics-interval"
     _NUM_PULSE_OFFSET_SLOTS = 5
 
     def __init__(
@@ -178,6 +179,42 @@ class LiveViewTabController(BaseTabController):
             if self._component_contains_id_fragment(control, "gate-select-x"):
                 axis_controls.append(control)
             elif self._component_contains_id_fragment(control, "num_software_averages"):
+                # Keep the existing Software Averages input, and append live
+                # averaging progress + acquisition-rate metrics on the same row.
+                children = list(getattr(control, "children", []) or [])
+                children.extend(
+                    [
+                        dbc.Col(
+                            dbc.Progress(
+                                id=self._get_id("software-average-progress"),
+                                value=0,
+                                max=100,
+                                label=f"0 / {self._data_acquirer_instance.num_software_averages}",
+                                striped=True,
+                                animated=False,
+                                style={
+                                    "width": "150px",
+                                    "height": "24px",
+                                    "fontSize": "0.75rem",
+                                },
+                            ),
+                            width="auto",
+                        ),
+                        dbc.Col(
+                            html.Span(
+                                "-- s/frame",
+                                id=self._get_id("frame-rate-text"),
+                                style={
+                                    "whiteSpace": "nowrap",
+                                    "fontSize": "0.85rem",
+                                },
+                            ),
+                            width="auto",
+                            className="d-flex align-items-center",
+                        ),
+                    ]
+                )
+                control.children = children
                 software_average_controls.append(control)
             else:
                 other_controls.append(control)
@@ -481,6 +518,14 @@ class LiveViewTabController(BaseTabController):
             )
 
         card_children.append(
+            dcc.Interval(
+                id=self._get_id(self._ACQ_METRICS_INTERVAL_SUFFIX),
+                interval=250,
+                n_intervals=0,
+            )
+        )
+
+        card_children.append(
             html.Div(
                 id=self._get_id(self._DUMMY_OUTPUT_ACQUIRER_UPDATE_SUFFIX),
                 style={"display": "none"},
@@ -545,6 +590,7 @@ class LiveViewTabController(BaseTabController):
         )
         self._register_acquisition_control_callback(app, orchestrator_stores)
         self._register_parameter_update_callback(app)
+        self._register_acquisition_metrics_callback(app)
         self._register_gate_selection_callback(app)
         if self._supports_dynamic_gate_axis_refresh():
             self._register_dynamic_gate_axis_refresh_callback(app)
@@ -560,6 +606,37 @@ class LiveViewTabController(BaseTabController):
         )
         if shared_viewer_graph_id is not None:
             self._register_click_to_centre_callback(app, shared_viewer_graph_id, tabs_id=orchestrator_stores.get("control-tabs"),)
+
+    def _register_acquisition_metrics_callback(self, app: Dash) -> None:
+        """Refresh software-average fill level and smoothed acquisition rate."""
+        @app.callback(
+            Output(self._get_id("software-average-progress"), "value"),
+            Output(self._get_id("software-average-progress"), "label"),
+            Output(self._get_id("software-average-progress"), "animated"),
+            Output(self._get_id("frame-rate-text"), "children"),
+            Input(self._get_id(self._ACQ_METRICS_INTERVAL_SUFFIX), "n_intervals"),
+            prevent_initial_call=False,
+        )
+        def _refresh_acquisition_metrics(_n_intervals):
+            da = self._data_acquirer_instance
+            target = max(1, int(getattr(da, "num_software_averages", 1)))
+            current = int(getattr(da, "software_average_count", 0))
+            current = min(max(current, 0), target)
+            progress_pct = 100.0 * current / target
+
+            frame_time_s = getattr(da, "average_frame_time_s", None)
+            fps = getattr(da, "acquisition_fps", None)
+
+            if frame_time_s is None or fps is None:
+                rate_text = "-- s/frame"
+            elif frame_time_s >= 1.0:
+                rate_text = f"{frame_time_s:.2f} s/frame ({fps:.2f} FPS)"
+            else:
+                rate_text = f"{frame_time_s * 1e3:.0f} ms/frame ({fps:.1f} FPS)"
+
+            is_running = str(getattr(da, "_acquisition_status", "")).lower() == "running"
+            animated = is_running and current < target
+            return progress_pct, f"{current} / {target}", animated, rate_text
 
     def _register_readoutparams_callback(self, app):
         @app.callback(
@@ -1436,12 +1513,11 @@ class LiveViewTabController(BaseTabController):
             return button_text, button_color, status_text, status_color, set_dc_disabled, False
 
     def _register_parameter_update_callback(self, app: Dash) -> None:
-        """Update acquirer parameters and pause for scan span/point changes.
+        """Update acquirer parameters and pause for restart-sensitive changes.
 
-        Span and point-count changes alter the physical scan trajectory / frame
-        shape. If acquisition is running, stop it before applying either change
-        and require the user to press Start explicitly. Other numeric parameters
-        (for example axis offset) retain their existing live-update behaviour.
+        Span, point-count, and software-average changes require an explicit
+        restart when acquisition is running. Other numeric parameters (for
+        example axis offset) retain their existing live-update behaviour.
         """
         all_acquirer_components = self._data_acquirer_instance.get_components()
         static_components = [
@@ -1514,7 +1590,11 @@ class LiveViewTabController(BaseTabController):
 
                 _, triggered_param_name = self._parse_param_id(triggered_index)
 
-            pause_for_scan_geometry_change = triggered_param_name in {"span", "points"}
+            pause_for_restart_sensitive_change = triggered_param_name in {
+                "span",
+                "points",
+                "num_software_averages",
+            }
 
             toggle_values = pattern_values[1]
             toggle_ids = pattern_states[1]
@@ -1569,7 +1649,7 @@ class LiveViewTabController(BaseTabController):
 
             was_running = False
             if parameters_to_update:
-                if pause_for_scan_geometry_change:
+                if pause_for_restart_sensitive_change:
                     was_running = self._pause_for_axis_change()
 
                 self._data_acquirer_instance.update_parameters(parameters_to_update)
@@ -1578,8 +1658,8 @@ class LiveViewTabController(BaseTabController):
 
             if was_running:
                 logger.info(
-                    "Acquisition paused after changing scan %s; press Start to resume.",
-                    triggered_param_name,
+                    "Acquisition paused after changing %s; press Start to resume.",
+                    triggered_param_name or triggered_index,
                 )
                 return (
                     dash.no_update,

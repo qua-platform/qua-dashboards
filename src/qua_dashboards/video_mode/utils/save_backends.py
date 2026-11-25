@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 from qualang_tools.external_frameworks.qcodes.saving import save_xarray as qcodes_save_xarray
 import xarray as xr
+import numpy as np
+import matplotlib.pyplot as plt
 
 class SaveBackend(ABC):
     name = "Save backend"
@@ -76,6 +78,102 @@ class QualibrateBackend(SaveBackend):
         return message
 
 
+def _plot_annotations(ax, annotations: Optional[Dict[str, Any]]) -> None:
+    if not annotations:
+        return
+
+    points = annotations.get("points", []) or []
+    lines = annotations.get("lines", []) or []
+    point_map = {p.get("id"): p for p in points if isinstance(p, dict)}
+
+    for point in points:
+        if not isinstance(point, dict):
+            continue
+        x = point.get("x")
+        y = point.get("y")
+        if x is None or y is None:
+            continue
+        ax.plot([x], [y], marker="o", linestyle="None")
+        point_id = point.get("id")
+        if point_id:
+            ax.annotate(str(point_id), (x, y), xytext=(4, 4), textcoords="offset points")
+
+    for line in lines:
+        if not isinstance(line, dict):
+            continue
+        start_point = point_map.get(line.get("start_point_id"))
+        end_point = point_map.get(line.get("end_point_id"))
+        if start_point is None or end_point is None:
+            continue
+        x0, y0 = start_point.get("x"), start_point.get("y")
+        x1, y1 = end_point.get("x"), end_point.get("y")
+        if None in (x0, y0, x1, y1):
+            continue
+        ax.plot([x0, x1], [y0, y1])
+
+
+def _plot_single_dataarray(ax, data: xr.DataArray, title: str, annotations: Optional[Dict[str, Any]] = None) -> None:
+    if data.ndim == 2:
+        y_dim, x_dim = data.dims
+        x = data.coords[x_dim].values if x_dim in data.coords else np.arange(data.shape[1])
+        y = data.coords[y_dim].values if y_dim in data.coords else np.arange(data.shape[0])
+        mesh = ax.pcolormesh(x, y, data.values, shading="auto")
+        ax.set_xlabel(x_dim)
+        ax.set_ylabel(y_dim)
+        ax.set_title(title)
+        cbar = ax.figure.colorbar(mesh, ax=ax)
+        cbar.set_label(title)
+        _plot_annotations(ax, annotations)
+        return
+
+    if data.ndim == 1:
+        x_dim = data.dims[0]
+        x = data.coords[x_dim].values if x_dim in data.coords else np.arange(data.shape[0])
+        ax.plot(x, data.values)
+        ax.set_xlabel(x_dim)
+        ax.set_ylabel(title)
+        ax.set_title(title)
+        return
+
+    ax.text(0.5, 0.5, f"Unsupported shape: {data.shape}", ha="center", va="center")
+    ax.set_axis_off()
+    ax.set_title(title)
+
+
+def _build_datahandler_figure(data: xr.DataArray, annotations=None, metadata=None, name="video_mode"):
+    plot_name = data.name or name
+    plot_data = data.squeeze()
+
+    if isinstance(plot_data, xr.DataArray) and "readout" in plot_data.dims:
+        labels = list(plot_data.coords["readout"].values)
+        result_names = list((metadata or {}).get("readout_result_names", []))
+        n = len(labels)
+        if n == 0:
+            fig, ax = plt.subplots()
+            ax.text(0.5, 0.5, "No readout channels", ha="center", va="center")
+            ax.set_axis_off()
+            return fig
+        ncols = int(np.ceil(np.sqrt(n)))
+        nrows = int(np.ceil(n / ncols))
+        fig, axes = plt.subplots(nrows, ncols, squeeze=False, figsize=(6 * ncols, 5 * nrows))
+        axes_flat = axes.flatten()
+        for i, label in enumerate(labels):
+            sensor_data = plot_data.sel(readout=label)
+            title = result_names[i] if i < len(result_names) else str(label)
+            if not result_names and data.attrs.get("result_type"):
+                title = f"{label}_{data.attrs['result_type']}"
+            _plot_single_dataarray(axes_flat[i], sensor_data, title, annotations=annotations)
+        for j in range(n, len(axes_flat)):
+            axes_flat[j].set_axis_off()
+        fig.tight_layout()
+        return fig
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+    _plot_single_dataarray(ax, plot_data, plot_name, annotations=annotations)
+    fig.tight_layout()
+    return fig
+
+
 class DataHandlerBackend(SaveBackend):
     name = "DataHandler"
 
@@ -99,11 +197,14 @@ class DataHandlerBackend(SaveBackend):
         machine=None,
     ) -> Dict[str, Any]:
 
+        figure = _build_datahandler_figure(data, annotations=annotations, metadata=metadata, name=name)
+
         save_data = {
             "data": data.values,
             "annotations": annotations or {},
             "metadata": dict(metadata or {}),
             "dims": list(data.dims),
+            "video_mode_figure": figure,
         }
 
         # Save all axis coordinates explicitly
@@ -115,28 +216,8 @@ class DataHandlerBackend(SaveBackend):
         if data.attrs:
             save_data["data_attrs"] = dict(data.attrs)
 
-        # Save a snapshot of the current Video Mode data
-        import matplotlib.pyplot as plt
-        plot_data = data.squeeze()
-        plot_name = data.name or name
-        figure, ax = plt.subplots()
-        if plot_data.ndim == 2:
-            y_dim, x_dim = plot_data.dims[-2], plot_data.dims[-1]
-            x = plot_data.coords[x_dim].values if x_dim in plot_data.coords else range(plot_data.shape[-1])
-            y = plot_data.coords[y_dim].values if y_dim in plot_data.coords else range(plot_data.shape[-2])
-            image = ax.pcolormesh(x, y, plot_data.values, shading="auto")
-            colorbar = figure.colorbar(image, ax=ax)
-            colorbar.set_label(plot_name)
-            ax.set_xlabel(x_dim)
-            ax.set_ylabel(y_dim)
-        elif plot_data.ndim == 1:
-            x_dim = plot_data.dims[0]
-            x = plot_data.coords[x_dim].values if x_dim in plot_data.coords else range(plot_data.shape[0])
-            ax.plot(x, plot_data.values)
-            ax.set_xlabel(x_dim)
-            ax.set_ylabel(plot_name)
-        ax.set_title(plot_name)
-        save_data["video_mode_figure"] = figure
+        if data.name is not None:
+            save_data["data_name"] = data.name
 
         # Optional instrument snapshots
         if self.instrument_snapshot:
@@ -150,6 +231,7 @@ class DataHandlerBackend(SaveBackend):
             data=save_data,
             name=name,
         )
+
         plt.close(figure)
 
         if self.save_quam_state and machine is not None:
@@ -186,8 +268,13 @@ class QCoDeSBackend(SaveBackend):
         if self.save_quam_state and machine is not None:
             save_metadata["quam_state"] = machine.to_dict()
 
+        qcodes_data = data.copy(deep=False)
+        readout_result_names = save_metadata.get("readout_result_names", [])
+        if "readout" in qcodes_data.dims and len(readout_result_names) == qcodes_data.sizes["readout"]:
+            qcodes_data = qcodes_data.assign_coords(readout=readout_result_names)
+
         run_id = qcodes_save_xarray(
-            data,
+            qcodes_data,
             name=name,
             metadata=save_metadata,
         )

@@ -470,6 +470,7 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
                 and len(self.selected_readout_channels) == 1
             ):
                 data.name = self.selected_readout_channels[0].name
+                data.attrs["result_type"] = self.result_type
 
             return result
 
@@ -525,6 +526,7 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
                     data_xr.attrs["units"] = "rad"
                     
                 data_xr = self.selected_function(data_xr)
+                data_xr.attrs["result_type"] = self.result_type
                 x_attrs = {"label": self.x_axis.label or self.x_axis.coord_name}
                 if self.x_axis.units is not None:
                     x_attrs["units"] = self.x_axis.units
@@ -564,6 +566,7 @@ class BaseGateSetDataAcquirer(Base2DDataAcquirer):
                 data_xr.attrs["units"] = "rad"
 
             data_xr = self.selected_function(data_xr)
+            data_xr.attrs["result_type"] = self.result_type
             for axis in [self.x_axis, self.y_axis]:
                 attrs = {"label": axis.label or axis.coord_name}
                 if axis.units is not None:

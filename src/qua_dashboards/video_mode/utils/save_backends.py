@@ -115,6 +115,29 @@ class DataHandlerBackend(SaveBackend):
         if data.attrs:
             save_data["data_attrs"] = dict(data.attrs)
 
+        # Save a snapshot of the current Video Mode data
+        import matplotlib.pyplot as plt
+        plot_data = data.squeeze()
+        plot_name = data.name or name
+        figure, ax = plt.subplots()
+        if plot_data.ndim == 2:
+            y_dim, x_dim = plot_data.dims[-2], plot_data.dims[-1]
+            x = plot_data.coords[x_dim].values if x_dim in plot_data.coords else range(plot_data.shape[-1])
+            y = plot_data.coords[y_dim].values if y_dim in plot_data.coords else range(plot_data.shape[-2])
+            image = ax.pcolormesh(x, y, plot_data.values, shading="auto")
+            colorbar = figure.colorbar(image, ax=ax)
+            colorbar.set_label(plot_name)
+            ax.set_xlabel(x_dim)
+            ax.set_ylabel(y_dim)
+        elif plot_data.ndim == 1:
+            x_dim = plot_data.dims[0]
+            x = plot_data.coords[x_dim].values if x_dim in plot_data.coords else range(plot_data.shape[0])
+            ax.plot(x, plot_data.values)
+            ax.set_xlabel(x_dim)
+            ax.set_ylabel(plot_name)
+        ax.set_title(plot_name)
+        save_data["video_mode_figure"] = figure
+
         # Optional instrument snapshots
         if self.instrument_snapshot:
             save_data["instrument_snapshot"] = {
@@ -127,6 +150,7 @@ class DataHandlerBackend(SaveBackend):
             data=save_data,
             name=name,
         )
+        plt.close(figure)
 
         if self.save_quam_state and machine is not None:
             machine.save(path)
